@@ -5,7 +5,7 @@ export interface AppNotification {
   id: string;
   title: string;
   body?: string;
-  category: "approval" | "system" | "calendar" | "other";
+  category: "approval" | "system" | "calendar" | "security" | "other";
   read: boolean;
   createdAt: string;
   href?: string;

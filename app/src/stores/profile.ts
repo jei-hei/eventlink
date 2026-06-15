@@ -185,26 +185,28 @@ export const useProfileStore = defineStore("profile", () => {
     routeRole: PortalRoleKey,
   ): Promise<void> {
     const auth = useAuthStore();
+    const allowEmailEdit = routeRole !== "student";
+    const emailToPersist = allowEmailEdit ? partial.email : undefined;
 
     if (isSupabaseConfigured && auth.userId && !auth.useMock) {
       const emailChanged =
-        partial.email !== undefined &&
-        partial.email.trim() !== (email.value || "").trim();
+        emailToPersist !== undefined &&
+        emailToPersist.trim() !== (email.value || "").trim();
 
       await updateMyProfile(auth.userId, {
         displayName: partial.displayName,
         phone: partial.phone,
-        email: partial.email,
+        email: emailToPersist,
       });
 
-      if (emailChanged && partial.email?.trim()) {
-        const { error } = await getSupabase().auth.updateUser({ email: partial.email.trim() });
+      if (emailChanged && emailToPersist?.trim()) {
+        const { error } = await getSupabase().auth.updateUser({ email: emailToPersist.trim() });
         if (error) {
           throw new Error(
             `Profile saved, but login email was not updated: ${error.message}. Use Change password / Supabase email change if needed.`,
           );
         }
-        auth.email = partial.email.trim();
+        auth.email = emailToPersist.trim();
       }
 
       if (partial.displayName !== undefined) {
@@ -223,12 +225,18 @@ export const useProfileStore = defineStore("profile", () => {
         });
       }
 
-      patchPersonal(partial);
+      patchPersonal({
+        ...partial,
+        email: emailToPersist,
+      });
       await ensureHydrated(routeRole);
       return;
     }
 
-    patchPersonal(partial);
+    patchPersonal({
+      ...partial,
+      email: emailToPersist,
+    });
     touchLogin();
   }
 

@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { ROLE_HOME_PATH, type AppRole } from "@/types/appRole";
+import { useNotificationsStore } from "@/stores/notifications";
 
 export function formatAuthError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
@@ -18,8 +19,17 @@ export function formatAuthError(err: unknown): string {
 export const useAuthStore = defineStore("auth", () => {
   const DEFAULT_INACTIVITY_LOGOUT_MS = 10 * 60 * 1000;
   const EXTENDED_INACTIVITY_LOGOUT_MS = 5 * 60 * 60 * 1000;
+  const SINGLE_SESSION_CHECK_MS = 15 * 1000;
   const ACTIVITY_EVENTS = ["pointerdown", "keydown", "mousemove", "scroll", "touchstart"] as const;
   const EXTENDED_SESSION_ROLES = new Set<AppRole>(["eo", "gso", "osas"]);
+  const SECURITY_EXEMPT_EMAIL_DOMAINS = new Set([
+    "eventlink.local",
+    "university.edu",
+    "example.com",
+    "example.org",
+    "test.local",
+    "localhost",
+  ]);
 
   const ready = ref(false);
   const userId = ref<string | null>(null);
@@ -49,7 +59,9 @@ export const useAuthStore = defineStore("auth", () => {
     readyResolve = resolve;
   });
   let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+  let singleSessionTimer: ReturnType<typeof setInterval> | null = null;
   let inactivityListenersBound = false;
+  let currentSessionMarker: string | null = null;
 
   function sessionPreferenceKey() {
     if (!userId.value || !appRole.value) return null;
@@ -86,6 +98,157 @@ export const useAuthStore = defineStore("auth", () => {
       clearTimeout(inactivityTimer);
       inactivityTimer = null;
     }
+  }
+
+  function clearSingleSessionTimer() {
+    if (singleSessionTimer) {
+      clearInterval(singleSessionTimer);
+      singleSessionTimer = null;
+    }
+  }
+
+  function isSecurityExemptEmail(mail: string | null | undefined): boolean {
+    const domain = (mail ?? "").trim().toLowerCase().split("@")[1] ?? "";
+    return SECURITY_EXEMPT_EMAIL_DOMAINS.has(domain);
+  }
+
+  function sessionMarkerKey() {
+    if (!userId.value) return null;
+    return `eventlink:session-marker:${userId.value}`;
+  }
+
+  function generateSessionMarker(): string {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  async function fetchLoginMeta() {
+    const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "Unknown device";
+    let ip = "unknown";
+    let location = "unknown";
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 2500);
+      const res = await fetch("https://ipapi.co/json/", { signal: ctl.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        const json = (await res.json()) as {
+          ip?: string;
+          city?: string;
+          region?: string;
+          country_name?: string;
+        };
+        ip = json.ip ?? ip;
+        const parts = [json.city, json.region, json.country_name].filter(Boolean);
+        if (parts.length) location = parts.join(", ");
+      }
+    } catch {
+      // best effort only
+    }
+    return { userAgent, ip, location };
+  }
+
+  async function writeActiveSession(marker: string, showLoginAlert: boolean) {
+    if (!userId.value) return;
+    const supabase = getSupabase();
+    const loginMeta = await fetchLoginMeta();
+    const metadata = {
+      browser: loginMeta.userAgent,
+      ip: loginMeta.ip,
+      location: loginMeta.location,
+      logged_at: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        active_session_id: marker,
+        active_session_updated_at: new Date().toISOString(),
+        last_login_metadata: metadata,
+      })
+      .eq("id", userId.value);
+    if (error) throw error;
+
+    if (typeof window !== "undefined") {
+      const key = sessionMarkerKey();
+      if (key) window.localStorage.setItem(key, marker);
+    }
+
+    const { error: notifyErr } = await supabase.from("notifications").insert({
+      user_id: userId.value,
+      title: "New login detected",
+      body:
+        `Device: ${metadata.browser}\n` +
+        `IP: ${metadata.ip}\n` +
+        `Location: ${metadata.location}\n` +
+        `Time: ${new Date(metadata.logged_at).toLocaleString()}\n` +
+        `If this wasn't you, use "This wasn't me" in Notifications.`,
+      category: "security",
+    });
+    if (!notifyErr && showLoginAlert) {
+      try {
+        useNotificationsStore().push({
+          title: "New login detected",
+          body:
+            `Device: ${metadata.browser}\n` +
+            `IP: ${metadata.ip}\n` +
+            `Location: ${metadata.location}\n` +
+            `Time: ${new Date(metadata.logged_at).toLocaleString()}`,
+          category: "security",
+          href: "/forgot-password",
+        });
+      } catch {
+        // store may not be ready yet
+      }
+    }
+  }
+
+  async function verifySingleSessionStillActive() {
+    if (!userId.value || !currentSessionMarker) return;
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("active_session_id")
+      .eq("id", userId.value)
+      .maybeSingle();
+    if (error) return;
+    const active = (data?.active_session_id as string | null) ?? null;
+    if (active && active !== currentSessionMarker) {
+      await signOut();
+      if (typeof window !== "undefined") {
+        window.alert(
+          "Your account was signed in from another device, so this session was ended for security.",
+        );
+      }
+    }
+  }
+
+  async function activateCurrentSessionSecurity(showLoginAlert: boolean) {
+    if (useMock.value || !userId.value || isSecurityExemptEmail(email.value)) return;
+    clearSingleSessionTimer();
+    const marker = generateSessionMarker();
+    currentSessionMarker = marker;
+    await writeActiveSession(marker, showLoginAlert);
+    singleSessionTimer = setInterval(() => {
+      void verifySingleSessionStillActive();
+    }, SINGLE_SESSION_CHECK_MS);
+    await verifySingleSessionStillActive();
+  }
+
+  function resumeSingleSessionMonitorFromStorage() {
+    if (useMock.value || !userId.value || isSecurityExemptEmail(email.value)) return;
+    if (singleSessionTimer && currentSessionMarker) return;
+    if (typeof window !== "undefined") {
+      const key = sessionMarkerKey();
+      const stored = key ? window.localStorage.getItem(key) : null;
+      if (stored) currentSessionMarker = stored;
+    }
+    if (!currentSessionMarker) return;
+    singleSessionTimer = setInterval(() => {
+      void verifySingleSessionStillActive();
+    }, SINGLE_SESSION_CHECK_MS);
+    void verifySingleSessionStillActive();
   }
 
   async function signOutDueToInactivity() {
@@ -166,9 +329,16 @@ export const useAuthStore = defineStore("auth", () => {
     if (data?.email) email.value = data.email;
   }
 
-  async function applySession(session: { user: { id: string; email?: string | null } } | null) {
+  async function applySession(
+    session: { user: { id: string; email?: string | null } } | null,
+    opts?: { enforceSingleSession?: boolean; showLoginAlert?: boolean },
+  ) {
+    const enforceSingleSession = opts?.enforceSingleSession ?? true;
+    const showLoginAlert = opts?.showLoginAlert ?? false;
     if (!session?.user) {
       clearInactivityTimer();
+      clearSingleSessionTimer();
+      currentSessionMarker = null;
       stayOnlineEnabled.value = false;
       userId.value = null;
       email.value = null;
@@ -183,6 +353,14 @@ export const useAuthStore = defineStore("auth", () => {
     await loadProfile(session.user.id);
     loadSessionPreference();
     startInactivityMonitor();
+    if (isSecurityExemptEmail(session.user.email ?? email.value)) {
+      clearSingleSessionTimer();
+      currentSessionMarker = null;
+    } else if (enforceSingleSession) {
+      await activateCurrentSessionSecurity(showLoginAlert);
+    } else {
+      resumeSingleSessionMonitorFromStorage();
+    }
   }
 
   function setStayOnlineEnabled(enabled: boolean) {
@@ -204,10 +382,13 @@ export const useAuthStore = defineStore("auth", () => {
 
     const supabase = getSupabase();
     const { data } = await supabase.auth.getSession();
-    await applySession(data.session);
+    await applySession(data.session, { enforceSingleSession: true, showLoginAlert: false });
 
-    supabase.auth.onAuthStateChange(async (_event, session) => {
-      await applySession(session);
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      await applySession(session, {
+        enforceSingleSession: event === "SIGNED_IN",
+        showLoginAlert: false,
+      });
     });
 
     markReady();
@@ -261,7 +442,7 @@ export const useAuthStore = defineStore("auth", () => {
     };
   }
 
-  async function signIn(mail: string, password: string) {
+  async function signIn(mail: string, password: string, opts?: { provisional?: boolean }) {
     if (useMock.value) {
       loginMock(mail, mail.includes("admin") ? "Admin User" : "Portal User", mail.includes("admin") ? "admin" : "student");
       return { mock: true as const };
@@ -273,7 +454,10 @@ export const useAuthStore = defineStore("auth", () => {
       password,
     });
     if (error) throw new Error(formatAuthError(error));
-    await applySession(data.session);
+    await applySession(data.session, {
+      enforceSingleSession: !opts?.provisional,
+      showLoginAlert: !opts?.provisional,
+    });
     return { mock: false as const };
   }
 
@@ -309,7 +493,10 @@ export const useAuthStore = defineStore("auth", () => {
       type: "email",
     });
     if (error) throw new Error(formatAuthError(error));
-    await applySession(data.session ?? null);
+    await applySession(data.session ?? null, {
+      enforceSingleSession: true,
+      showLoginAlert: true,
+    });
   }
 
   async function signUp(opts: {
@@ -357,6 +544,8 @@ export const useAuthStore = defineStore("auth", () => {
 
   async function signOut() {
     clearInactivityTimer();
+    clearSingleSessionTimer();
+    currentSessionMarker = null;
     if (useMock.value) {
       logout();
       return;
@@ -394,6 +583,8 @@ export const useAuthStore = defineStore("auth", () => {
 
   function logout() {
     clearInactivityTimer();
+    clearSingleSessionTimer();
+    currentSessionMarker = null;
     stayOnlineEnabled.value = false;
     email.value = null;
     displayName.value = null;
@@ -424,6 +615,7 @@ export const useAuthStore = defineStore("auth", () => {
     resendSignupConfirmation,
     sendEmailOtp,
     verifyEmailOtp,
+    activateCurrentSessionSecurity,
     resetPassword,
     signOut,
     setStayOnlineEnabled,

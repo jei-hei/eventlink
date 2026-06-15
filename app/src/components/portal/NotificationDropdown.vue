@@ -25,6 +25,7 @@ const grouped = computed(() => {
   const buckets: Record<string, typeof items.value> = {
     approval: [],
     calendar: [],
+    security: [],
     system: [],
     other: [],
   };
@@ -40,6 +41,13 @@ function fmt(iso: string) {
     return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
   } catch {
     return iso;
+  }
+}
+
+function openNotification(n: (typeof items.value)[number]) {
+  store.markRead(n.id);
+  if (n.href) {
+    window.location.assign(n.href);
   }
 }
 </script>
@@ -102,13 +110,19 @@ function fmt(iso: string) {
                 type="button"
                 class="flex w-full gap-2 border-t border-slate-50 px-3 py-2.5 text-left transition hover:bg-slate-50"
                 :class="n.read ? 'opacity-70' : 'bg-emerald-50/40'"
-                @click="store.markRead(n.id)"
+                @click="openNotification(n)"
               >
                 <span class="mt-1 h-2 w-2 shrink-0 rounded-full" :class="n.read ? 'bg-slate-300' : 'bg-emerald-500'" />
                 <span class="min-w-0 flex-1">
                   <span class="block text-sm font-medium text-slate-900">{{ n.title }}</span>
                   <span v-if="n.body" class="mt-0.5 line-clamp-2 text-xs text-slate-600">{{ n.body }}</span>
                   <span class="mt-1 block text-[10px] font-medium text-slate-400">{{ fmt(n.createdAt) }}</span>
+                  <span
+                    v-if="n.category === 'security'"
+                    class="mt-1 inline-block rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700"
+                  >
+                    This wasn't me
+                  </span>
                 </span>
               </button>
             </div>

@@ -169,7 +169,7 @@ async function onSubmit() {
   }
   loading.value = true;
   try {
-    await auth.signIn(email.value.trim(), password.value);
+    await auth.signIn(email.value.trim(), password.value, { provisional: true });
     clearLockoutState(email.value);
     const requiresEmailOtp =
       !auth.useMock &&
@@ -191,6 +191,7 @@ async function onSubmit() {
         "warning",
       );
     }
+    await auth.activateCurrentSessionSecurity(true);
     await completeLogin();
   } catch (e) {
     const msg = formatAuthError(e);

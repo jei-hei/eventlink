@@ -153,6 +153,7 @@ const idLabel = computed(() =>
 );
 
 const idEditable = computed(() => editMode.value && portalRole.value !== "student");
+const emailEditable = computed(() => editMode.value && portalRole.value !== "student");
 
 /** Student-adjacent portals use the same tight header as standalone `/student/profile` (no tall hero card). */
 const compactProfileHeader = computed(
@@ -215,7 +216,7 @@ const compactProfileHeader = computed(
                 v-model="draft.email"
                 label="Email"
                 input-type="email"
-                :editable="editMode"
+                :editable="emailEditable"
               />
               <ProfileField v-model="draft.phone" label="Contact number" input-type="tel" :editable="editMode" />
               <ProfileField
@@ -231,6 +232,9 @@ const compactProfileHeader = computed(
             <p v-if="editMode && usesSupabaseProfile" class="mt-2 text-xs text-slate-500">
               Full name, email, and phone are saved to your account. Changing email may require confirmation from
               Supabase.
+            </p>
+            <p v-if="portalRole === 'student'" class="mt-2 text-xs text-slate-500">
+              Student email cannot be changed here. For email replacement, please visit the admin office.
             </p>
           </ProfileSectionCard>
 
