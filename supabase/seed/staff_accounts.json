@@ -1,0 +1,44 @@
+[
+  {
+    "role": "student_officer",
+    "email": "officer@eventlink.local",
+    "password": "EventLinkTest123!",
+    "displayName": "CCSICT Student Officer"
+  },
+  {
+    "role": "ssc",
+    "email": "ssc@eventlink.local",
+    "password": "EventLinkTest123!",
+    "displayName": "SSC President"
+  },
+  {
+    "role": "adviser",
+    "email": "adviser@eventlink.local",
+    "password": "EventLinkTest123!",
+    "displayName": "Organization Adviser"
+  },
+  {
+    "role": "dean",
+    "email": "dean@eventlink.local",
+    "password": "EventLinkTest123!",
+    "displayName": "CCSICT Dean"
+  },
+  {
+    "role": "osas",
+    "email": "osas@eventlink.local",
+    "password": "EventLinkTest123!",
+    "displayName": "OSAS Staff"
+  },
+  {
+    "role": "eo",
+    "email": "eo@eventlink.local",
+    "password": "EventLinkTest123!",
+    "displayName": "Executive Officer"
+  },
+  {
+    "role": "gso",
+    "email": "gso@eventlink.local",
+    "password": "EventLinkTest123!",
+    "displayName": "GSO Staff"
+  }
+]

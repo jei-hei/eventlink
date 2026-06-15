@@ -1,0 +1,622 @@
+import { getSupabase } from "@/lib/supabase";
+import { uploadEventLetter } from "@/services/eventLetterStorage";
+import { getEventPostImagePublicUrl, uploadEventPostImage } from "@/services/eventPostImageStorage";
+import type { PublishStudentPostInput } from "@/types/studentPost";
+import type { AppRole } from "@/types/appRole";
+import type {
+  CreateEventRequestInput,
+  EventRequestHistoryRow,
+  EventRequestRow,
+} from "@/types/eventRequest";
+import type { PortalEvent } from "@/types/portalEvent";
+import {
+  buildWorkflowHistory,
+  getInitialStep,
+  getNextStep,
+  roleMatchesStep,
+  stepLabel,
+  workflowStatusForStep,
+} from "@/services/eventRequestWorkflow";
+import type { DbWorkflowStep } from "@/types/eventRequest";
+
+function formatTime(t: string): string {
+  if (!t) return "";
+  const parts = t.split(":");
+  if (parts.length < 2) return t;
+  let h = parseInt(parts[0] ?? "0", 10);
+  const m = parts[1] ?? "00";
+  const am = h < 12;
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${m} ${am ? "AM" : "PM"}`;
+}
+
+function formatShortDate(iso: string): string {
+  const d = new Date(iso + "T12:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatDateRange(start: string, end: string): string {
+  if (start === end) return formatShortDate(start);
+  return `${formatShortDate(start)} – ${formatShortDate(end)}`;
+}
+
+function mapStatus(row: EventRequestRow): PortalEvent["status"] {
+  if (row.status === "declined") return "Pending";
+  if (row.status === "posted") return "Approved";
+  if (row.status === "approved" && row.current_step === "eo_publish") return "Pending";
+  if (row.status === "approved") return "Approved";
+  return "Pending";
+}
+
+function equipmentSummary(row: EventRequestRow): string {
+  const lines = row.event_request_equipment ?? [];
+  if (!lines.length) return "";
+  return lines
+    .map((line) => {
+      const name = line.equipment?.name?.trim() || "Equipment";
+      const qty = Number(line.quantity_requested ?? 0);
+      return `${name} (x${qty > 0 ? qty : 1})`;
+    })
+    .join(", ");
+}
+
+function extractCollegeTag(purpose: string | null | undefined): { college: string | null; cleanPurpose: string } {
+  const raw = (purpose ?? "").trim();
+  const m = raw.match(/^\[COLLEGE:(.+?)\]\s*(.*)$/i);
+  if (!m) return { college: null, cleanPurpose: raw };
+  return {
+    college: (m[1] ?? "").trim() || null,
+    cleanPurpose: (m[2] ?? "").trim(),
+  };
+}
+
+export function mapRowToPortalEvent(
+  row: EventRequestRow,
+  history: EventRequestHistoryRow[] = [],
+): PortalEvent {
+  const parsedPurpose = extractCollegeTag(row.purpose);
+  const orgName = row.organizations?.name ?? parsedPurpose.college ?? "Organization";
+  const submitter = row.profiles?.display_name ?? "Requester";
+  const approvals = history
+    .filter((h) => h.action === "approved" && h.step)
+    .map((h) => ({
+      step: h.step as DbWorkflowStep,
+      approver: h.profiles?.display_name ?? "Staff",
+      at: new Date(h.created_at).toLocaleString(),
+    }));
+
+  const wfStatus =
+    row.status === "declined"
+      ? "Rejected"
+      : row.status === "posted"
+        ? "Approved"
+        : row.current_step === "eo_publish"
+          ? "Pending EO"
+          : row.status === "approved"
+            ? "Approved"
+            : (workflowStatusForStep(row.current_step) as PortalEvent["workflowStatus"]);
+
+  return {
+    id: row.id,
+    name: row.activity,
+    activity: row.activity,
+    date: formatDateRange(row.start_date, row.end_date),
+    startDate: row.start_date,
+    endDate: row.end_date,
+    venue: row.venue,
+    status: mapStatus(row),
+    workflowStatus: wfStatus,
+    organization: orgName,
+    eventType: row.request_type === "ssc" ? "SSC Event" : "Student Event",
+    description: parsedPurpose.cleanPurpose,
+    purpose: parsedPurpose.cleanPurpose,
+    itemsEquipment: equipmentSummary(row),
+    startTime: formatTime(row.start_time),
+    endTime: formatTime(row.end_time),
+    participants: row.number_of_participants,
+    sdgs: row.sdgs,
+    requesterName: submitter,
+    needsGSO: row.needs_gso,
+    posted: row.status === "posted",
+    calendarPosted: row.calendar_posted_at != null,
+    awaitingPublish: row.current_step === "eo_publish" && row.status !== "posted",
+    awaitingCalendarPost: row.current_step === "eo_publish" && !row.calendar_posted_at,
+    declineReason: row.decline_reason ?? undefined,
+    letterPath: row.letter_path,
+    studentPostCaption: row.student_post_caption,
+    studentPostImagePath: row.student_post_image_path,
+    studentPostImageUrl: row.student_post_image_path
+      ? getEventPostImagePublicUrl(row.student_post_image_path)
+      : null,
+    postedAt: row.posted_at,
+    workflowHistory: buildWorkflowHistory(
+      row.request_type,
+      row.current_step,
+      row.needs_gso,
+      approvals,
+    ),
+  };
+}
+
+/** Posted events only — for the public /student dashboard (works with anon + auth). */
+export async function fetchPostedEventRequests(): Promise<EventRequestRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("event_requests")
+    .select(
+      `
+      *,
+      organizations ( name ),
+      event_request_equipment ( quantity_requested, equipment ( id, name ) )
+    `,
+    )
+    .eq("status", "posted")
+    .order("start_date", { ascending: true });
+
+  if (error) {
+    const fallback = await supabase
+      .from("event_requests")
+      .select(`*, organizations ( name ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
+      .eq("status", "posted")
+      .order("start_date", { ascending: true });
+    if (fallback.error) throw fallback.error;
+    return (fallback.data ?? []) as EventRequestRow[];
+  }
+  return (data ?? []) as EventRequestRow[];
+}
+
+export async function fetchAllEventRequests(): Promise<EventRequestRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("event_requests")
+    .select(
+      `
+      *,
+      organizations ( name ),
+      profiles!event_requests_submitted_by_fkey ( display_name ),
+      event_request_equipment ( quantity_requested, equipment ( id, name ) )
+    `,
+    )
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    const fallback = await supabase
+      .from("event_requests")
+      .select(`*, organizations ( name ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
+      .order("created_at", { ascending: false });
+    if (fallback.error) throw fallback.error;
+    return (fallback.data ?? []) as EventRequestRow[];
+  }
+  return (data ?? []) as EventRequestRow[];
+}
+
+export async function fetchHistoryForRequest(requestId: string): Promise<EventRequestHistoryRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("event_request_history")
+    .select(`*, profiles ( display_name )`)
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as EventRequestHistoryRow[];
+}
+
+export async function checkVenueAvailable(
+  venue: string,
+  startDate: string,
+  endDate: string,
+  excludeId?: string,
+): Promise<boolean> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc("check_venue_availability", {
+    p_venue: venue,
+    p_start: startDate,
+    p_end: endDate,
+    p_exclude_id: excludeId ?? null,
+  });
+  if (error) throw error;
+  return Boolean(data);
+}
+
+export async function createEventRequest(
+  input: CreateEventRequestInput,
+  submittedBy: string,
+): Promise<string> {
+  if (
+    (input.requestType === "student_officer" || input.requestType === "ssc") &&
+    !input.letterFile
+  ) {
+    throw new Error("Please upload your Word letter (.doc or .docx).");
+  }
+
+  const available = await checkVenueAvailable(input.venue, input.startDate, input.endDate);
+  if (!available) {
+    throw new Error("This venue is already booked for the selected date range.");
+  }
+
+  const initialStep = getInitialStep(input.requestType);
+  const supabase = getSupabase();
+
+  const { data, error } = await supabase
+    .from("event_requests")
+    .insert({
+      request_type: input.requestType,
+      status: input.requestType === "eo_direct" ? "posted" : "pending",
+      current_step: input.requestType === "eo_direct" ? null : initialStep,
+      organization_id: input.organizationId ?? null,
+      submitted_by: submittedBy,
+      activity: input.activity.trim(),
+      start_date: input.startDate,
+      end_date: input.endDate,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      venue: input.venue.trim(),
+      number_of_participants: input.numberOfParticipants,
+      sdgs: input.sdgs?.trim() ?? "",
+      purpose: input.purpose?.trim() ?? "",
+      needs_gso: input.needsGso,
+      posted_at: input.requestType === "eo_direct" ? new Date().toISOString() : null,
+      calendar_posted_at: input.requestType === "eo_direct" ? new Date().toISOString() : null,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    if (error.message.toLowerCase().includes("row-level security")) {
+      throw new Error(
+        "Permission denied. Sign in as Student Officer or SSC (officer@eventlink.local / ssc@eventlink.local). " +
+          "If you already use those accounts, run the latest SQL in supabase/migrations/20260528200000_fix_event_requests_rls.sql in the Supabase SQL Editor.",
+      );
+    }
+    throw error;
+  }
+
+  const requestId = data.id as string;
+
+  if (input.letterFile) {
+    try {
+      const letterPath = await uploadEventLetter(input.letterFile, submittedBy, requestId);
+      const { error: letterErr } = await supabase
+        .from("event_requests")
+        .update({ letter_path: letterPath })
+        .eq("id", requestId);
+      if (letterErr) throw letterErr;
+    } catch (letterErr) {
+      const msg = letterErr instanceof Error ? letterErr.message : String(letterErr);
+      if (msg.toLowerCase().includes("row-level security") || msg.toLowerCase().includes("policy")) {
+        throw new Error(
+          "Event was created but the Word letter could not be saved. Run supabase/migrations/20260528120000_event_letters_storage.sql and 20260528200000_fix_event_requests_rls.sql in the Supabase SQL Editor, then try again.",
+        );
+      }
+      throw letterErr;
+    }
+  }
+
+  if (input.equipment?.length) {
+    const { error: eqErr } = await supabase.from("event_request_equipment").insert(
+      input.equipment.map((e) => ({
+        request_id: requestId,
+        equipment_id: e.equipmentId,
+        quantity_requested: e.quantity,
+      })),
+    );
+    if (eqErr) throw eqErr;
+  }
+
+  await supabase.from("event_request_history").insert({
+    request_id: requestId,
+    actor_id: submittedBy,
+    action: "submitted",
+    step: initialStep,
+    comment: "Event request submitted",
+  });
+
+  return requestId;
+}
+
+async function getRow(id: string): Promise<EventRequestRow> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("event_requests")
+    .select(`*, organizations ( name ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
+    .eq("id", id)
+    .single();
+  if (error) throw error;
+  return data as EventRequestRow;
+}
+
+async function decrementEquipmentForRequest(row: EventRequestRow): Promise<void> {
+  const lines = row.event_request_equipment ?? [];
+  if (!lines.length) return;
+  const supabase = getSupabase();
+
+  for (const line of lines) {
+    const equipmentId = line.equipment?.id;
+    if (!equipmentId) continue;
+    const qty = Math.max(0, Number(line.quantity_requested ?? 0));
+    if (qty <= 0) continue;
+
+    const { data: eqRow, error: eqFetchError } = await supabase
+      .from("equipment")
+      .select("id, quantity_available")
+      .eq("id", equipmentId)
+      .single();
+    if (eqFetchError) throw eqFetchError;
+
+    const current = Math.max(0, Number(eqRow.quantity_available ?? 0));
+    const next = Math.max(0, current - qty);
+    const { error: eqUpdateError } = await supabase
+      .from("equipment")
+      .update({ quantity_available: next })
+      .eq("id", equipmentId);
+    if (eqUpdateError) throw eqUpdateError;
+  }
+}
+
+export async function fetchDefaultOrganizationId(): Promise<string | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("organizations").select("id").limit(1).maybeSingle();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+export async function approveEventRequest(
+  id: string,
+  actorId: string,
+  actorRole: AppRole,
+): Promise<void> {
+  const row = await getRow(id);
+  if (row.current_step === "eo_publish") {
+    throw new Error("Use Post to calendar (EO) or Post to students (organization) for this step.");
+  }
+  if (row.status !== "pending") {
+    throw new Error("Only pending requests can be approved.");
+  }
+  if (!row.current_step || !roleMatchesStep(actorRole, row.current_step)) {
+    throw new Error(`This request is not awaiting ${stepLabel(row.current_step)}.`);
+  }
+
+  const next = getNextStep(row.request_type, row.current_step, row.needs_gso);
+  const supabase = getSupabase();
+
+  if (actorRole === "gso" && row.current_step === "gso") {
+    await decrementEquipmentForRequest(row);
+  }
+
+  const patch: Partial<EventRequestRow> = {
+    current_step: next,
+  };
+  // Workflow complete without a publish step (unusual); otherwise stay pending until EO posts.
+  if (!next) {
+    patch.status = "approved";
+  }
+
+  const { error } = await supabase.from("event_requests").update(patch).eq("id", id);
+  if (error) throw error;
+
+  await supabase.from("event_request_history").insert({
+    request_id: id,
+    actor_id: actorId,
+    action: "approved",
+    step: row.current_step,
+    comment: `Approved at ${stepLabel(row.current_step)}`,
+  });
+}
+
+export async function declineEventRequest(
+  id: string,
+  actorId: string,
+  reason: string,
+): Promise<void> {
+  const row = await getRow(id);
+  if (row.status !== "pending") {
+    throw new Error("Only pending requests can be declined.");
+  }
+
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("event_requests")
+    .update({
+      status: "declined",
+      decline_reason: reason.trim() || "Declined",
+      declined_at_step: row.current_step,
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  await supabase.from("event_request_history").insert({
+    request_id: id,
+    actor_id: actorId,
+    action: "declined",
+    step: row.current_step,
+    comment: reason.trim() || "Declined",
+  });
+}
+
+function assertReadyForPublishStep(row: EventRequestRow): void {
+  const ready =
+    row.current_step === "eo_publish" &&
+    (row.status === "approved" || row.status === "pending");
+  if (!ready) {
+    throw new Error("Event is not ready to publish. Complete prior approvals first.");
+  }
+}
+
+/** SSC / student officer — visible on /student (caption + optional image). */
+export async function postEventToStudents(
+  id: string,
+  actorId: string,
+  actorRole: AppRole,
+  input: PublishStudentPostInput,
+): Promise<void> {
+  if (actorRole !== "student_officer" && actorRole !== "ssc") {
+    throw new Error("Only SSC or a student officer can post to the student dashboard.");
+  }
+
+  const caption = input.caption.trim();
+  if (!caption) {
+    throw new Error("Please write a caption for your post.");
+  }
+
+  const row = await getRow(id);
+  if (row.status === "posted") {
+    throw new Error("Event is already on the student dashboard.");
+  }
+  if (row.submitted_by !== actorId) {
+    throw new Error("You can only publish your own event requests.");
+  }
+  assertReadyForPublishStep(row);
+
+  let imagePath: string | null = null;
+  if (input.imageFile) {
+    imagePath = await uploadEventPostImage(input.imageFile, actorId, id);
+  }
+
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("event_requests")
+    .update({
+      status: "posted",
+      current_step: null,
+      posted_at: new Date().toISOString(),
+      student_post_caption: caption,
+      student_post_image_path: imagePath,
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  await supabase.from("event_request_history").insert({
+    request_id: id,
+    actor_id: actorId,
+    action: "posted",
+    step: "eo_publish",
+    comment: `Published to student dashboard (${actorRole === "ssc" ? "SSC" : "Student organization"})`,
+  });
+}
+
+/** Executive Officer — staff schedule calendar only (not /student). */
+export async function postEventToStaffCalendar(id: string, actorId: string): Promise<void> {
+  const row = await getRow(id);
+  if (row.calendar_posted_at) {
+    throw new Error("Event is already on the staff calendar.");
+  }
+  assertReadyForPublishStep(row);
+
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("event_requests")
+    .update({
+      calendar_posted_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  await supabase.from("event_request_history").insert({
+    request_id: id,
+    actor_id: actorId,
+    action: "calendar_posted",
+    step: "eo_publish",
+    comment: "Published to staff schedule calendar",
+  });
+}
+
+export function filterPendingForRole(
+  rows: EventRequestRow[],
+  role: AppRole,
+  userId: string,
+): EventRequestRow[] {
+  return rows.filter((r) => {
+    if (role === "student_officer" || role === "ssc") {
+      // Once request reaches EO publish step, treat it as approved queue (not "in review").
+      return r.submitted_by === userId && r.status === "pending" && r.current_step !== "eo_publish";
+    }
+    if (r.status !== "pending" && r.status !== "approved") return false;
+    if (role === "eo") {
+      if (r.current_step === "eo_schedule") return true;
+      if (r.current_step === "eo_publish") {
+        return !r.calendar_posted_at && (r.status === "pending" || r.status === "approved");
+      }
+      return false;
+    }
+    if (role === "gso") {
+      return r.status === "pending" && r.current_step === "gso";
+    }
+    return r.status === "pending" && roleMatchesStep(role, r.current_step);
+  });
+}
+
+export function filterApprovedForRole(
+  rows: EventRequestRow[],
+  role: AppRole,
+  userId: string,
+): EventRequestRow[] {
+  return rows.filter((r) => {
+    if (role === "student_officer" || role === "ssc") {
+      return (
+        r.submitted_by === userId &&
+        (r.status === "approved" || r.status === "posted" || (r.status === "pending" && r.current_step === "eo_publish"))
+      );
+    }
+    if (r.status !== "approved" && r.status !== "posted") return false;
+    return true;
+  });
+}
+
+export function filterPostedEvents(rows: EventRequestRow[]): EventRequestRow[] {
+  return rows.filter((r) => r.status === "posted");
+}
+
+/** Staff schedule calendar (EO publishes here). */
+export function filterCalendarEvents(rows: EventRequestRow[]): EventRequestRow[] {
+  return rows.filter((r) => r.calendar_posted_at != null);
+}
+
+export type UpdateEventRequestInput = {
+  activity: string;
+  startDate: string;
+  endDate: string;
+  startTime: string;
+  endTime: string;
+  venue: string;
+  numberOfParticipants: number;
+  sdgs?: string;
+  purpose?: string;
+};
+
+export async function updateEventRequest(
+  id: string,
+  input: UpdateEventRequestInput,
+  actorId: string,
+): Promise<void> {
+  const available = await checkVenueAvailable(input.venue, input.startDate, input.endDate, id);
+  if (!available) {
+    throw new Error("This venue is already booked for the selected date range.");
+  }
+
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("event_requests")
+    .update({
+      activity: input.activity.trim(),
+      start_date: input.startDate,
+      end_date: input.endDate,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      venue: input.venue.trim(),
+      number_of_participants: input.numberOfParticipants,
+      sdgs: input.sdgs?.trim() ?? "",
+      purpose: input.purpose?.trim() ?? "",
+    })
+    .eq("id", id);
+
+  if (error) throw error;
+
+  await supabase.from("event_request_history").insert({
+    request_id: id,
+    actor_id: actorId,
+    action: "updated",
+    step: "eo_publish",
+    comment: "Schedule details updated by Executive Officer",
+  });
+}

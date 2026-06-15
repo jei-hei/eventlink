@@ -8,19 +8,28 @@
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "build-only": "vite build",
-    "type-check": "vue-tsc --build"
+    "type-check": "vue-tsc --build",
+    "seed:admin": "node --env-file=.env.seed scripts/create-admin.mjs",
+    "seed:staff": "node --env-file=.env.seed scripts/seed-staff.mjs",
+    "create:user": "node --env-file=.env.seed scripts/create-portal-user.mjs",
+    "confirm:user": "node --env-file=.env.seed scripts/confirm-user.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.3",
+    "lucide-vue-next": "^1.0.0",
+    "pinia": "^3.0.4",
     "vue": "^3.5.32",
-    "vue-router": "^5.0.6"
+    "vue-router": "^5.0.6",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
     "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.12.2",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vue/tsconfig": "^0.9.1",
     "npm-run-all2": "^8.0.4",
+    "tailwindcss": "^4.3.0",
     "typescript": "~6.0.0",
     "vite": "^8.0.8",
     "vite-plugin-vue-devtools": "^8.1.1",

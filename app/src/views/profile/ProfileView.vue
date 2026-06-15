@@ -1,0 +1,374 @@
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter, RouterLink } from "vue-router";
+import { storeToRefs } from "pinia";
+import { ArrowLeft, Bell, KeyRound, LogOut, Pencil, Save, X } from "lucide-vue-next";
+import type { PortalRoleKey } from "@/types/portalProfile";
+import { useProfileStore } from "@/stores/profile";
+import { useAuthStore } from "@/stores/auth";
+import { useUiStore } from "@/stores/ui";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import ProfileHeader from "@/components/profile/ProfileHeader.vue";
+import ProfileSectionCard from "@/components/profile/ProfileSectionCard.vue";
+import ProfileField from "@/components/profile/ProfileField.vue";
+import ActivityStatCard from "@/components/profile/ActivityStatCard.vue";
+import AvatarUpload from "@/components/profile/AvatarUpload.vue";
+import ProfilePageSkeleton from "@/components/profile/ProfilePageSkeleton.vue";
+
+const route = useRoute();
+const router = useRouter();
+const profile = useProfileStore();
+const auth = useAuthStore();
+const ui = useUiStore();
+
+const portalRole = computed(() => (route.meta.portalRole as PortalRoleKey | undefined) ?? "student");
+const standalone = computed(() => !!route.meta.profileStandalone);
+
+const loading = ref(true);
+const editMode = ref(false);
+const saving = ref(false);
+const themePref = ref<"system" | "light">("system");
+const notifyEmail = ref(true);
+
+const { avatarDataUrl } = storeToRefs(profile);
+
+const draft = reactive({
+  displayName: "",
+  email: "",
+  phone: "",
+  studentOrEmployeeId: "",
+  course: "",
+  program: "",
+  yearLevel: "",
+  organization: "",
+  department: "",
+  office: "",
+  position: "",
+});
+
+function syncDraftFromStore() {
+  draft.displayName = profile.displayName;
+  draft.email = profile.email;
+  draft.phone = profile.phone;
+  draft.studentOrEmployeeId = profile.studentOrEmployeeId;
+  draft.course = profile.course;
+  draft.program = profile.program;
+  draft.yearLevel = profile.yearLevel;
+  draft.organization = profile.organization;
+  draft.department = profile.department;
+  draft.office = profile.office;
+  draft.position = profile.position;
+}
+
+watch(editMode, (on) => {
+  if (on) syncDraftFromStore();
+});
+
+const showAcademic = computed(() =>
+  ["student", "student-officer", "ssc"].includes(portalRole.value),
+);
+const showOffice = computed(() => portalRole.value !== "student");
+
+onMounted(async () => {
+  try {
+    await profile.ensureHydrated(portalRole.value);
+  } finally {
+    loading.value = false;
+    syncDraftFromStore();
+  }
+});
+
+watch(portalRole, async (r) => {
+  await profile.ensureHydrated(r);
+  syncDraftFromStore();
+});
+
+const registryLinked = computed(
+  () =>
+    isSupabaseConfigured &&
+    !auth.useMock &&
+    !!auth.userId &&
+    !!profile.studentOrEmployeeId &&
+    showAcademic.value,
+);
+
+const usesSupabaseProfile = computed(
+  () => isSupabaseConfigured && !auth.useMock && !!auth.userId,
+);
+
+async function saveProfile() {
+  saving.value = true;
+  try {
+    await profile.persistPersonal({ ...draft }, portalRole.value);
+    editMode.value = false;
+    syncDraftFromStore();
+    ui.pushToast("Profile updated", "Your changes have been saved.", "success");
+  } catch (e) {
+    ui.pushToast(
+      "Could not save profile",
+      e instanceof Error ? e.message : "Try again.",
+      "error",
+    );
+  } finally {
+    saving.value = false;
+  }
+}
+
+function cancelEdit() {
+  editMode.value = false;
+  syncDraftFromStore();
+}
+
+async function onChangePassword() {
+  const mail = (draft.email || profile.email || auth.email || "").trim();
+  if (!mail) {
+    ui.pushToast("No email on file", "Add an email to your account first.", "error");
+    return;
+  }
+  if (auth.useMock || !isSupabaseConfigured) {
+    ui.pushToast("Not available offline", "Connect Supabase to send a password reset link.", "info");
+    return;
+  }
+  try {
+    await auth.resetPassword(mail);
+    ui.pushToast("Check your inbox", `Password reset link sent to ${mail}.`, "success");
+  } catch (e) {
+    ui.pushToast(
+      "Could not send reset link",
+      e instanceof Error ? e.message : "Try again.",
+      "error",
+    );
+  }
+}
+
+async function onLogout() {
+  await auth.signOut();
+  profile.clear();
+  ui.pushToast("Signed out", "See you next time.", "success");
+  router.push("/login");
+}
+
+const idLabel = computed(() =>
+  ["admin", "adviser", "dean", "osas", "eo", "gso"].includes(portalRole.value) ? "Employee ID" : "Student ID",
+);
+
+const idEditable = computed(() => editMode.value && portalRole.value !== "student");
+
+/** Student-adjacent portals use the same tight header as standalone `/student/profile` (no tall hero card). */
+const compactProfileHeader = computed(
+  () => !standalone.value && (portalRole.value === "student-officer" || portalRole.value === "ssc"),
+);
+</script>
+
+<template>
+  <div :class="standalone ? 'portal-root flex min-h-dvh flex-col' : 'dash-page pb-8'">
+    <header v-if="standalone" class="portal-topbar shrink-0">
+      <div class="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-2 sm:px-4">
+        <RouterLink
+          to="/student"
+          class="portal-topbar-btn inline-flex shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium"
+        >
+          <ArrowLeft class="h-4 w-4" />
+          <span class="hidden sm:inline">Events</span>
+        </RouterLink>
+        <span class="min-w-0 truncate text-sm font-semibold">My profile</span>
+      </div>
+    </header>
+
+    <div :class="standalone ? 'portal-main-scroll min-h-0 flex-1' : ''">
+      <div class="mx-auto w-full max-w-3xl px-3 py-4 sm:px-4 sm:py-6">
+        <ProfilePageSkeleton v-if="loading" />
+
+        <div v-else class="profile-fade space-y-4">
+          <p
+            v-if="profile.loadError"
+            class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          >
+            {{ profile.loadError }}
+          </p>
+
+          <div v-if="!standalone" class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p class="portal-section-title">Account</p>
+              <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">My profile</h1>
+            </div>
+            <RouterLink
+              v-if="portalRole === 'student'"
+              to="/student"
+              class="portal-btn-secondary inline-flex w-full items-center justify-center px-3 py-2 text-xs sm:w-auto"
+            >
+              <ArrowLeft class="h-3.5 w-3.5" />
+              Back to events
+            </RouterLink>
+          </div>
+
+          <ProfileHeader :compact="compactProfileHeader" />
+
+          <ProfileSectionCard title="Photo" description="Optional — preview only until cloud upload is connected.">
+            <AvatarUpload v-model="avatarDataUrl" :display-name="profile.displayName" />
+          </ProfileSectionCard>
+
+          <ProfileSectionCard title="Personal information" description="Keep your contact details current.">
+            <div class="grid gap-3 sm:grid-cols-2">
+              <ProfileField v-model="draft.displayName" label="Full name" :editable="editMode" />
+              <ProfileField
+                v-model="draft.email"
+                label="Email"
+                input-type="email"
+                :editable="editMode"
+              />
+              <ProfileField v-model="draft.phone" label="Contact number" input-type="tel" :editable="editMode" />
+              <ProfileField
+                v-model="draft.studentOrEmployeeId"
+                :label="idLabel"
+                :editable="idEditable"
+                :copyable="!editMode"
+              />
+              <div class="sm:col-span-2">
+                <ProfileField :model-value="profile.roleLabel" label="Role" :editable="false" />
+              </div>
+            </div>
+            <p v-if="editMode && usesSupabaseProfile" class="mt-2 text-xs text-slate-500">
+              Full name, email, and phone are saved to your account. Changing email may require confirmation from
+              Supabase.
+            </p>
+          </ProfileSectionCard>
+
+          <ProfileSectionCard
+            v-if="showAcademic"
+            title="Academic information"
+            description="Shown on endorsements and student-facing workflows."
+          >
+            <div class="grid gap-3 sm:grid-cols-2">
+              <ProfileField
+                v-model="draft.course"
+                label="College"
+                :editable="editMode && !registryLinked"
+              />
+              <ProfileField
+                v-model="draft.program"
+                label="Program"
+                :editable="editMode && !registryLinked"
+              />
+              <div class="sm:col-span-2">
+                <ProfileField
+                  v-model="draft.organization"
+                  label="Organization (optional)"
+                  :editable="editMode && !registryLinked"
+                />
+              </div>
+            </div>
+            <p v-if="registryLinked" class="mt-2 text-xs text-slate-500">
+              College and program come from the student registry. Ask an administrator to update them if needed.
+            </p>
+          </ProfileSectionCard>
+
+          <ProfileSectionCard
+            v-if="showOffice"
+            title="Office information"
+            description="Used in routing memos and approval queues."
+          >
+            <div class="grid gap-3 sm:grid-cols-2">
+              <ProfileField v-model="draft.department" label="Department" :editable="editMode" />
+              <ProfileField v-model="draft.office" label="Office" :editable="editMode" />
+              <div class="sm:col-span-2">
+                <ProfileField v-model="draft.position" label="Position" :editable="editMode" />
+              </div>
+            </div>
+            <p v-if="editMode && usesSupabaseProfile" class="mt-2 text-xs text-slate-500">
+              Office details are saved on this device for your account (not yet in the central database).
+            </p>
+          </ProfileSectionCard>
+
+          <ProfileSectionCard title="Activity summary" description="Snapshot of your recent profile activity.">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <ActivityStatCard
+                v-for="s in profile.activityStats"
+                :key="s.id"
+                :label="s.label"
+                :value="s.value"
+                :icon-key="s.icon"
+              />
+            </div>
+          </ProfileSectionCard>
+
+          <ProfileSectionCard title="Account settings">
+            <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <button
+                v-if="!editMode"
+                type="button"
+                class="portal-btn w-full sm:w-auto"
+                @click="editMode = true"
+              >
+                <Pencil class="h-4 w-4" />
+                Edit profile
+              </button>
+              <template v-else>
+                <button type="button" class="portal-btn w-full sm:w-auto" :disabled="saving" @click="saveProfile">
+                  <Save class="h-4 w-4" />
+                  {{ saving ? "Saving…" : "Save changes" }}
+                </button>
+                <button
+                  type="button"
+                  class="portal-btn-secondary w-full sm:w-auto"
+                  :disabled="saving"
+                  @click="cancelEdit"
+                >
+                  <X class="h-4 w-4" />
+                  Cancel
+                </button>
+              </template>
+              <button type="button" class="portal-btn-secondary w-full sm:w-auto" @click="onChangePassword">
+                <KeyRound class="h-4 w-4" />
+                Change password
+              </button>
+              <button
+                type="button"
+                class="portal-btn w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 sm:ml-auto sm:w-auto"
+                @click="onLogout"
+              >
+                <LogOut class="h-4 w-4" />
+                Logout
+              </button>
+            </div>
+
+            <div class="mt-6 grid gap-4 border-t border-slate-100 pt-6 sm:grid-cols-2">
+              <label
+                class="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2.5 sm:px-4"
+              >
+                <span class="flex items-center gap-2 text-sm font-medium text-slate-800">
+                  <Bell class="h-4 w-4 text-emerald-700" />
+                  Email notifications
+                </span>
+                <input v-model="notifyEmail" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-emerald-600" />
+              </label>
+              <div>
+                <p class="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">Theme</p>
+                <select v-model="themePref" class="portal-input text-sm">
+                  <option value="system">System default</option>
+                  <option value="light">Light (placeholder)</option>
+                </select>
+              </div>
+            </div>
+          </ProfileSectionCard>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.profile-fade {
+  animation: profile-fade 0.35s ease-out both;
+}
+@keyframes profile-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>
