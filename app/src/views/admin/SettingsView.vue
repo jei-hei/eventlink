@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { Save, Bell, Shield, Database, Mail } from "lucide-vue-next";
+import { Save, Bell, Database, Mail } from "lucide-vue-next";
 import { useUiStore } from "@/stores/ui";
 
 const ui = useUiStore();
 
-const universityName = ref("University of Excellence");
-const academicYear = ref("2025-2026");
-const semester = ref("1st Semester");
 const adminEmail = ref("admin@university.edu");
 const supportEmail = ref("support@university.edu");
 const emailNotifications = ref(true);
@@ -40,42 +37,6 @@ function backupNow() {
     </div>
 
     <div class="space-y-6">
-      <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-        <div class="px-6 py-4 border-b border-gray-200 flex items-center gap-3">
-          <Shield class="w-5 h-5 text-gray-700 shrink-0" />
-          <h3 class="font-semibold text-lg text-gray-900">General Settings</h3>
-        </div>
-        <div class="p-6 space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">University Name</label>
-            <input
-              v-model="universityName"
-              type="text"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Academic Year</label>
-            <input
-              v-model="academicYear"
-              type="text"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Semester</label>
-            <select
-              v-model="semester"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option>1st Semester</option>
-              <option>2nd Semester</option>
-              <option>Summer</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
       <div class="bg-white rounded-lg shadow-sm border border-gray-200">
         <div class="px-6 py-4 border-b border-gray-200 flex items-center gap-3">
           <Bell class="w-5 h-5 text-gray-700 shrink-0" />
