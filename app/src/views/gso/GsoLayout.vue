@@ -2,7 +2,6 @@
 import { ref, provide } from "vue";
 import { RouterView } from "vue-router";
 import type { GsoEvent } from "./types";
-import { initialApprovedEvents, initialPendingEvents } from "./initialData";
 import { gsoPortalKey } from "./portalContext";
 import GsoSidebar from "./components/GsoSidebar.vue";
 import PortalShell from "@/components/PortalShell.vue";
@@ -10,8 +9,8 @@ import { usePortalEvents } from "@/composables/usePortalEvents";
 
 const sidebarOpen = ref(false);
 
-const mockPending = ref<GsoEvent[]>([...initialPendingEvents]);
-const mockApproved = ref<GsoEvent[]>([...initialApprovedEvents]);
+const mockPending = ref<GsoEvent[]>([]);
+const mockApproved = ref<GsoEvent[]>([]);
 
 const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, handleCreateEvent, useDb } =
   usePortalEvents("gso", { events: mockPending, approvedEvents: mockApproved });

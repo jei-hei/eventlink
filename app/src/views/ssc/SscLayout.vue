@@ -2,7 +2,6 @@
 import { ref, provide } from "vue";
 import { RouterView } from "vue-router";
 import type { SscEvent } from "./types";
-import { initialApprovedEvents, initialPendingEvents } from "./initialData";
 import { sscPortalKey } from "./portalContext";
 import SscSidebar from "./components/SscSidebar.vue";
 import PortalShell from "@/components/PortalShell.vue";
@@ -11,8 +10,8 @@ import { studentPostPublishKey } from "@/composables/studentPostPublishKey";
 
 const sidebarOpen = ref(false);
 
-const mockPending = ref<SscEvent[]>([...initialPendingEvents]);
-const mockApproved = ref<SscEvent[]>([...initialApprovedEvents]);
+const mockPending = ref<SscEvent[]>([]);
+const mockApproved = ref<SscEvent[]>([]);
 
 const portal = usePortalEvents("ssc", { events: mockPending, approvedEvents: mockApproved });
 const {

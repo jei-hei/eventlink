@@ -2,7 +2,6 @@
 import { ref, provide } from "vue";
 import { RouterView } from "vue-router";
 import type { OfficerEvent } from "./types";
-import { initialApprovedEvents, initialPendingEvents } from "./initialData";
 import { officerPortalKey } from "./portalContext";
 import OfficerSidebar from "./components/OfficerSidebar.vue";
 import PortalShell from "@/components/PortalShell.vue";
@@ -11,8 +10,8 @@ import { studentPostPublishKey } from "@/composables/studentPostPublishKey";
 
 const sidebarOpen = ref(false);
 
-const mockPending = ref<OfficerEvent[]>([...initialPendingEvents]);
-const mockApproved = ref<OfficerEvent[]>([...initialApprovedEvents]);
+const mockPending = ref<OfficerEvent[]>([]);
+const mockApproved = ref<OfficerEvent[]>([]);
 
 const portal = usePortalEvents("student_officer", {
   events: mockPending,

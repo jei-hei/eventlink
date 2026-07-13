@@ -12,16 +12,7 @@ export interface AppNotification {
 }
 
 export const useNotificationsStore = defineStore("notifications", () => {
-  const items = ref<AppNotification[]>([
-    {
-      id: "1",
-      title: "Welcome to EventLink",
-      body: "Use the bell for approvals, calendar updates, and system notices.",
-      category: "system",
-      read: false,
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+  const items = ref<AppNotification[]>([]);
 
   const unreadCount = computed(() => items.value.filter((n) => !n.read).length);
 

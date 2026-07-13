@@ -1,29 +1,29 @@
 import type { PortalProfileDefaults, PortalRoleKey } from "@/types/portalProfile";
 
-const baseMember = "2026-01-18T08:00:00.000Z";
-const baseLogin = "2026-05-27T06:30:00.000Z";
+const baseMember = "";
+const baseLogin = "";
 
 function statsStudent(): PortalProfileDefaults["activityStats"] {
   return [
-    { id: "joined", label: "Joined events", value: 6, icon: "CalendarCheck" },
-    { id: "saved", label: "Saved events", value: 3, icon: "Bookmark" },
-    { id: "feedback", label: "Feedback submitted", value: 2, icon: "MessageSquare" },
+    { id: "joined", label: "Posted events", value: 0, icon: "CalendarCheck" },
+    { id: "saved", label: "Calendar events", value: 0, icon: "Bookmark" },
+    { id: "feedback", label: "Your notifications", value: 0, icon: "MessageSquare" },
   ];
 }
 
 function statsApprover(): PortalProfileDefaults["activityStats"] {
   return [
-    { id: "approved", label: "Approved requests", value: 24, icon: "CheckCircle" },
-    { id: "pending", label: "Pending reviews", value: 5, icon: "Clock" },
-    { id: "scheduled", label: "Scheduled events", value: 11, icon: "Calendar" },
+    { id: "approved", label: "Approved requests", value: 0, icon: "CheckCircle" },
+    { id: "pending", label: "Pending reviews", value: 0, icon: "Clock" },
+    { id: "scheduled", label: "Scheduled events", value: 0, icon: "Calendar" },
   ];
 }
 
 function statsAdmin(): PortalProfileDefaults["activityStats"] {
   return [
-    { id: "users", label: "Managed users", value: 184, icon: "Users" },
-    { id: "orgs", label: "Active organizations", value: 32, icon: "Building2" },
-    { id: "events", label: "Total events", value: 412, icon: "LayoutDashboard" },
+    { id: "users", label: "Managed users", value: 0, icon: "Users" },
+    { id: "orgs", label: "Active organizations", value: 0, icon: "Building2" },
+    { id: "events", label: "Total events", value: 0, icon: "LayoutDashboard" },
   ];
 }
 

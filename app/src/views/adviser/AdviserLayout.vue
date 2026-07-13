@@ -2,7 +2,6 @@
 import { ref, provide } from "vue";
 import { RouterView } from "vue-router";
 import type { AdviserEvent } from "./types";
-import { initialApprovedEvents, initialPendingEvents } from "./initialData";
 import { adviserPortalKey } from "./portalContext";
 import AdviserSidebar from "./components/AdviserSidebar.vue";
 import PortalShell from "@/components/PortalShell.vue";
@@ -10,8 +9,8 @@ import { usePortalEvents } from "@/composables/usePortalEvents";
 
 const sidebarOpen = ref(false);
 
-const mockPending = ref<AdviserEvent[]>([...initialPendingEvents]);
-const mockApproved = ref<AdviserEvent[]>([...initialApprovedEvents]);
+const mockPending = ref<AdviserEvent[]>([]);
+const mockApproved = ref<AdviserEvent[]>([]);
 
 const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, handleCreateEvent } =
   usePortalEvents("adviser", { events: mockPending, approvedEvents: mockApproved });

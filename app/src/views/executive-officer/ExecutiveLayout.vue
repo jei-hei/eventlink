@@ -2,7 +2,6 @@
 import { ref, provide } from "vue";
 import { RouterView } from "vue-router";
 import type { EoEvent } from "./types";
-import { initialApprovedEvents, initialPendingEvents } from "./initialData";
 import { executivePortalKey } from "./portalContext";
 import ExecutiveSidebar from "./components/ExecutiveSidebar.vue";
 import PortalShell from "@/components/PortalShell.vue";
@@ -10,8 +9,8 @@ import { usePortalEvents } from "@/composables/usePortalEvents";
 
 const sidebarOpen = ref(false);
 
-const mockPending = ref<EoEvent[]>([...initialPendingEvents]);
-const mockApproved = ref<EoEvent[]>([...initialApprovedEvents]);
+const mockPending = ref<EoEvent[]>([]);
+const mockApproved = ref<EoEvent[]>([]);
 
 const {
   events,

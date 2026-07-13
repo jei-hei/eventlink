@@ -4,7 +4,9 @@ import { getProfileDefaults } from "@/config/portalProfileDefaults";
 import type { ActivityStatModel, PortalRoleKey } from "@/types/portalProfile";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { fetchMyProfile, updateMyProfile } from "@/services/profilesDb";
+import { fetchProfileActivityStats } from "@/services/profileActivityDb";
 import { useAuthStore } from "./auth";
+import { portalRoleToAppRole } from "@/types/appRole";
 
 const OFFICE_EXTRAS_PREFIX = "eventlink_profile_office";
 
@@ -138,6 +140,11 @@ export const useProfileStore = defineStore("profile", () => {
         const row = await fetchMyProfile(auth.userId);
         if (row) {
           applyServerProfile(row, routeRole);
+          try {
+            activityStats.value = await fetchProfileActivityStats(portalRoleToAppRole(routeRole), auth.userId);
+          } catch {
+            // keep defaults if stats query fails
+          }
           return;
         }
         loadError.value =
