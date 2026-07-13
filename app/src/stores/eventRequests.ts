@@ -122,7 +122,11 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   }
 
   function pendingForRole(role: AppRole, userId: string): PortalEvent[] {
-    return filterPendingForRole(rows.value, role, userId).map((r) => mapRowToPortalEvent(r));
+    const auth = useAuthStore();
+    return filterPendingForRole(rows.value, role, userId, {
+      collegeId: auth.collegeId,
+      organizationId: auth.organizationId,
+    }).map((r) => mapRowToPortalEvent(r));
   }
 
   function approvedForRole(role: AppRole, userId: string): PortalEvent[] {
@@ -145,8 +149,8 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
 
   async function decline(id: string, reason = "Declined") {
     const auth = useAuthStore();
-    if (!auth.userId) throw new Error("You must be signed in.");
-    await declineEventRequest(id, auth.userId, reason);
+    if (!auth.userId || !auth.appRole) throw new Error("You must be signed in.");
+    await declineEventRequest(id, auth.userId, auth.appRole, reason);
     await load(true);
   }
 

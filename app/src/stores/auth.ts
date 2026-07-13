@@ -36,6 +36,8 @@ export const useAuthStore = defineStore("auth", () => {
   const email = ref<string | null>(null);
   const displayName = ref<string | null>(null);
   const appRole = ref<AppRole | null>(null);
+  const collegeId = ref<string | null>(null);
+  const organizationId = ref<string | null>(null);
   const useMock = ref(!isSupabaseConfigured);
   const stayOnlineEnabled = ref(false);
 
@@ -320,13 +322,15 @@ export const useAuthStore = defineStore("auth", () => {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("profiles")
-      .select("display_name, email")
+      .select("display_name, email, college_id, organization_id")
       .eq("id", uid)
       .maybeSingle();
 
     if (error) throw error;
     displayName.value = data?.display_name ?? displayName.value;
     if (data?.email) email.value = data.email;
+    collegeId.value = (data?.college_id as string | null | undefined) ?? null;
+    organizationId.value = (data?.organization_id as string | null | undefined) ?? null;
   }
 
   async function applySession(
@@ -344,6 +348,8 @@ export const useAuthStore = defineStore("auth", () => {
       email.value = null;
       displayName.value = null;
       appRole.value = null;
+      collegeId.value = null;
+      organizationId.value = null;
       return;
     }
     userId.value = session.user.id;
@@ -589,6 +595,8 @@ export const useAuthStore = defineStore("auth", () => {
     email.value = null;
     displayName.value = null;
     appRole.value = null;
+    collegeId.value = null;
+    organizationId.value = null;
     userId.value = null;
   }
 
@@ -600,6 +608,8 @@ export const useAuthStore = defineStore("auth", () => {
     email,
     displayName,
     appRole,
+    collegeId,
+    organizationId,
     stayOnlineEnabled,
     canUseExtendedSession,
     inactivityLogoutMs,

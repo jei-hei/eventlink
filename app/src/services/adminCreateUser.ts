@@ -5,6 +5,8 @@ export type CreatePortalUserInput = {
   email: string;
   password: string;
   displayName: string;
+  collegeId?: string | null;
+  organizationId?: string | null;
 };
 
 export type CreatePortalUserResult = {
@@ -21,6 +23,8 @@ export async function createPortalUser(input: CreatePortalUserInput): Promise<Cr
       email: input.email.trim(),
       password: input.password,
       displayName: input.displayName.trim(),
+      collegeId: input.collegeId ?? null,
+      organizationId: input.organizationId ?? null,
     },
   });
 

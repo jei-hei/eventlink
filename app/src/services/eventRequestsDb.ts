@@ -147,7 +147,7 @@ export async function fetchPostedEventRequests(): Promise<EventRequestRow[]> {
     .select(
       `
       *,
-      organizations ( name ),
+      organizations ( id, name, college_id ),
       event_request_equipment ( quantity_requested, equipment ( id, name ) )
     `,
     )
@@ -157,7 +157,7 @@ export async function fetchPostedEventRequests(): Promise<EventRequestRow[]> {
   if (error) {
     const fallback = await supabase
       .from("event_requests")
-      .select(`*, organizations ( name ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
+      .select(`*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
       .eq("status", "posted")
       .order("start_date", { ascending: true });
     if (fallback.error) throw fallback.error;
@@ -173,7 +173,7 @@ export async function fetchAllEventRequests(): Promise<EventRequestRow[]> {
     .select(
       `
       *,
-      organizations ( name ),
+      organizations ( id, name, college_id ),
       profiles!event_requests_submitted_by_fkey ( display_name ),
       event_request_equipment ( quantity_requested, equipment ( id, name ) )
     `,
@@ -183,7 +183,7 @@ export async function fetchAllEventRequests(): Promise<EventRequestRow[]> {
   if (error) {
     const fallback = await supabase
       .from("event_requests")
-      .select(`*, organizations ( name ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
+      .select(`*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
       .order("created_at", { ascending: false });
     if (fallback.error) throw fallback.error;
     return (fallback.data ?? []) as EventRequestRow[];
@@ -319,11 +319,42 @@ async function getRow(id: string): Promise<EventRequestRow> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("event_requests")
-    .select(`*, organizations ( name ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
+    .select(`*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
     .eq("id", id)
     .single();
   if (error) throw error;
   return data as EventRequestRow;
+}
+
+async function assertActorCanHandleCurrentStep(
+  row: EventRequestRow,
+  actorId: string,
+  actorRole: AppRole,
+): Promise<void> {
+  if (!row.current_step || !roleMatchesStep(actorRole, row.current_step)) {
+    throw new Error(`This request is not awaiting ${stepLabel(row.current_step)}.`);
+  }
+  if (actorRole !== "adviser" && actorRole !== "dean") return;
+
+  const supabase = getSupabase();
+  const { data: actorProfile, error: actorErr } = await supabase
+    .from("profiles")
+    .select("college_id, organization_id")
+    .eq("id", actorId)
+    .maybeSingle();
+  if (actorErr) throw actorErr;
+
+  if (actorRole === "adviser") {
+    if (!actorProfile?.organization_id || actorProfile.organization_id !== row.organization_id) {
+      throw new Error("This request is assigned to a different organization adviser.");
+    }
+    return;
+  }
+
+  const requestCollegeId = row.organizations?.college_id ?? null;
+  if (!actorProfile?.college_id || !requestCollegeId || actorProfile.college_id !== requestCollegeId) {
+    throw new Error("This request is assigned to a different college dean.");
+  }
 }
 
 async function decrementEquipmentForRequest(row: EventRequestRow): Promise<void> {
@@ -373,9 +404,7 @@ export async function approveEventRequest(
   if (row.status !== "pending") {
     throw new Error("Only pending requests can be approved.");
   }
-  if (!row.current_step || !roleMatchesStep(actorRole, row.current_step)) {
-    throw new Error(`This request is not awaiting ${stepLabel(row.current_step)}.`);
-  }
+  await assertActorCanHandleCurrentStep(row, actorId, actorRole);
 
   const next = getNextStep(row.request_type, row.current_step, row.needs_gso);
   const supabase = getSupabase();
@@ -407,12 +436,14 @@ export async function approveEventRequest(
 export async function declineEventRequest(
   id: string,
   actorId: string,
+  actorRole: AppRole,
   reason: string,
 ): Promise<void> {
   const row = await getRow(id);
   if (row.status !== "pending") {
     throw new Error("Only pending requests can be declined.");
   }
+  await assertActorCanHandleCurrentStep(row, actorId, actorRole);
 
   const supabase = getSupabase();
   const { error } = await supabase
@@ -525,6 +556,7 @@ export function filterPendingForRole(
   rows: EventRequestRow[],
   role: AppRole,
   userId: string,
+  scope?: { collegeId?: string | null; organizationId?: string | null },
 ): EventRequestRow[] {
   return rows.filter((r) => {
     if (role === "student_officer" || role === "ssc") {
@@ -541,6 +573,22 @@ export function filterPendingForRole(
     }
     if (role === "gso") {
       return r.status === "pending" && r.current_step === "gso";
+    }
+    if (role === "adviser") {
+      if (!scope?.organizationId) return false;
+      return (
+        r.status === "pending" &&
+        r.current_step === "adviser" &&
+        r.organization_id === scope.organizationId
+      );
+    }
+    if (role === "dean") {
+      if (!scope?.collegeId) return false;
+      return (
+        r.status === "pending" &&
+        r.current_step === "dean" &&
+        (r.organizations?.college_id ?? null) === scope.collegeId
+      );
     }
     return r.status === "pending" && roleMatchesStep(role, r.current_step);
   });

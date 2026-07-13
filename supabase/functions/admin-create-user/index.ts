@@ -24,6 +24,8 @@ type CreateUserBody = {
   email?: string;
   password?: string;
   displayName?: string;
+  collegeId?: string | null;
+  organizationId?: string | null;
 };
 
 function json(status: number, body: Record<string, unknown>) {
@@ -91,6 +93,8 @@ Deno.serve(async (req) => {
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
   const displayName = String(body.displayName ?? "").trim();
+  const collegeId = String(body.collegeId ?? "").trim();
+  const organizationId = String(body.organizationId ?? "").trim();
 
   if (!validRoles.has(role)) {
     return json(400, { error: "Invalid role selected." });
@@ -104,19 +108,35 @@ Deno.serve(async (req) => {
   if (!displayName) {
     return json(400, { error: "Display name is required." });
   }
+  const needsCollege = role === "dean" || role === "adviser" || role === "student_officer";
+  const needsOrganization = role === "adviser" || role === "student_officer";
+  if (needsCollege && !collegeId) {
+    return json(400, { error: "College is required for this role." });
+  }
+  if (needsOrganization && !organizationId) {
+    return json(400, { error: "Organization is required for this role." });
+  }
 
-  if (singletonRoles.has(role)) {
-    const { data: existingRole, error: singletonErr } = await admin
-      .from("user_roles")
-      .select("user_id")
-      .eq("role", role)
-      .limit(1)
+  if (collegeId) {
+    const { data: collegeRow, error: collegeErr } = await admin
+      .from("colleges")
+      .select("id")
+      .eq("id", collegeId)
       .maybeSingle();
-    if (singletonErr) {
-      return json(500, { error: singletonErr.message });
-    }
-    if (existingRole?.user_id) {
-      return json(409, { error: `Only one ${role.toUpperCase()} account is allowed.` });
+    if (collegeErr) return json(500, { error: collegeErr.message });
+    if (!collegeRow) return json(400, { error: "Selected college was not found." });
+  }
+
+  if (organizationId) {
+    const { data: orgRow, error: orgErr } = await admin
+      .from("organizations")
+      .select("id, college_id")
+      .eq("id", organizationId)
+      .maybeSingle();
+    if (orgErr) return json(500, { error: orgErr.message });
+    if (!orgRow) return json(400, { error: "Selected organization was not found." });
+    if (collegeId && orgRow.college_id !== collegeId) {
+      return json(400, { error: "Selected organization does not belong to the selected college." });
     }
   }
 
@@ -125,6 +145,21 @@ Deno.serve(async (req) => {
     return json(500, { error: listErr.message });
   }
   const existing = usersPage.users.find((u) => (u.email ?? "").toLowerCase() === email) ?? null;
+  const existingUserId = existing?.id ?? null;
+
+  if (singletonRoles.has(role)) {
+    let singletonQuery = admin.from("user_roles").select("user_id").eq("role", role).limit(1);
+    if (existingUserId) {
+      singletonQuery = singletonQuery.neq("user_id", existingUserId);
+    }
+    const { data: existingRole, error: singletonErr } = await singletonQuery.maybeSingle();
+    if (singletonErr) {
+      return json(500, { error: singletonErr.message });
+    }
+    if (existingRole?.user_id) {
+      return json(409, { error: `Only one ${role.toUpperCase()} account is allowed.` });
+    }
+  }
 
   let userId = existing?.id ?? "";
   if (!existing) {
@@ -162,6 +197,8 @@ Deno.serve(async (req) => {
       id: userId,
       display_name: displayName,
       email,
+      college_id: collegeId || null,
+      organization_id: organizationId || null,
     },
     { onConflict: "id" },
   );
