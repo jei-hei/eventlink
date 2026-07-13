@@ -164,9 +164,8 @@ async function resetUserPassword(user: UserRow) {
         <p class="portal-section-title">Administration</p>
         <h1 class="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Users</h1>
         <p class="mt-1 max-w-2xl text-sm text-slate-600">
-          Directory of accounts with a portal role. New staff accounts are created with
-          <code class="rounded bg-slate-100 px-1 text-xs">npm run create:user</code>
-          (service role in <code class="rounded bg-slate-100 px-1 text-xs">.env.seed</code>). Students register at
+          Directory of accounts with a portal role. New staff accounts can be created from the
+          <span class="font-semibold">Add user</span> modal. Students register at
           <RouterLink to="/signup" class="font-medium text-emerald-700 underline">/signup</RouterLink>.
         </p>
       </div>
@@ -301,6 +300,6 @@ async function resetUserPassword(user: UserRow) {
       <code class="rounded bg-slate-100 px-1">public.user_roles</code> or your seed scripts.
     </p>
 
-    <AddUserModal :open="addUserOpen" @close="addUserOpen = false" />
+    <AddUserModal :open="addUserOpen" @close="addUserOpen = false" @created="loadUsers()" />
   </div>
 </template>
