@@ -9,6 +9,11 @@ export type MyProfileRow = {
   organization_id: string | null;
   college_id: string | null;
   avatar_url: string | null;
+  department: string;
+  office: string;
+  position: string;
+  notify_email: boolean;
+  theme_preference: "system" | "light";
   created_at: string;
   updated_at: string;
   organizations: { name: string } | null;
@@ -30,6 +35,11 @@ const PROFILE_SELECT = `
   organization_id,
   college_id,
   avatar_url,
+  department,
+  office,
+  position,
+  notify_email,
+  theme_preference,
   created_at,
   updated_at,
   organizations ( name ),
@@ -81,6 +91,11 @@ export async function fetchMyProfile(userId: string): Promise<MyProfileRow | nul
     organization_id: (row.organization_id as string | null) ?? null,
     college_id: (row.college_id as string | null) ?? null,
     avatar_url: (row.avatar_url as string | null) ?? null,
+    department: (row.department as string) ?? "",
+    office: (row.office as string) ?? "",
+    position: (row.position as string) ?? "",
+    notify_email: (row.notify_email as boolean | null | undefined) ?? true,
+    theme_preference: ((row.theme_preference as "system" | "light" | null | undefined) ?? "system"),
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
     organizations: Array.isArray(org) ? (org[0] as { name: string }) ?? null : (org as { name: string } | null),
@@ -95,13 +110,25 @@ export type UpdateMyProfileInput = {
   displayName?: string;
   phone?: string;
   email?: string;
+  avatarUrl?: string | null;
+  department?: string;
+  office?: string;
+  position?: string;
+  notifyEmail?: boolean;
+  themePreference?: "system" | "light";
 };
 
 export async function updateMyProfile(userId: string, input: UpdateMyProfileInput): Promise<void> {
-  const body: Record<string, string> = {};
+  const body: Record<string, unknown> = {};
   if (input.displayName !== undefined) body.display_name = input.displayName.trim();
   if (input.phone !== undefined) body.phone = input.phone.trim();
   if (input.email !== undefined) body.email = input.email.trim();
+  if (input.avatarUrl !== undefined) body.avatar_url = input.avatarUrl;
+  if (input.department !== undefined) body.department = input.department.trim();
+  if (input.office !== undefined) body.office = input.office.trim();
+  if (input.position !== undefined) body.position = input.position.trim();
+  if (input.notifyEmail !== undefined) body.notify_email = input.notifyEmail;
+  if (input.themePreference !== undefined) body.theme_preference = input.themePreference;
 
   if (!Object.keys(body).length) return;
 

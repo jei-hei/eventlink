@@ -7,32 +7,7 @@ import { fetchMyProfile, updateMyProfile } from "@/services/profilesDb";
 import { fetchProfileActivityStats } from "@/services/profileActivityDb";
 import { useAuthStore } from "./auth";
 import { portalRoleToAppRole } from "@/types/appRole";
-
-const OFFICE_EXTRAS_PREFIX = "eventlink_profile_office";
-
-type OfficeExtras = {
-  department: string;
-  office: string;
-  position: string;
-};
-
-function officeExtrasKey(userId: string) {
-  return `${OFFICE_EXTRAS_PREFIX}_${userId}`;
-}
-
-function readOfficeExtras(userId: string): OfficeExtras | null {
-  try {
-    const raw = localStorage.getItem(officeExtrasKey(userId));
-    if (!raw) return null;
-    return JSON.parse(raw) as OfficeExtras;
-  } catch {
-    return null;
-  }
-}
-
-function writeOfficeExtras(userId: string, extras: OfficeExtras) {
-  localStorage.setItem(officeExtrasKey(userId), JSON.stringify(extras));
-}
+import { getProfileAvatarPublicUrl, uploadProfileAvatar } from "@/services/profileAvatarStorage";
 
 export interface ProfileState {
   displayName: string;
@@ -61,6 +36,8 @@ export const useProfileStore = defineStore("profile", () => {
   const lastLogin = ref("");
   const isOnline = ref(true);
   const avatarDataUrl = ref<string | null>(null);
+  const notifyEmail = ref(true);
+  const themePreference = ref<"system" | "light">("system");
   const activityStats = ref<ActivityStatModel[]>([]);
   const loadError = ref<string | null>(null);
 
@@ -87,6 +64,8 @@ export const useProfileStore = defineStore("profile", () => {
     lastLogin.value = d.lastLogin;
     isOnline.value = d.isOnline;
     activityStats.value = d.activityStats.map((x) => ({ ...x }));
+    notifyEmail.value = true;
+    themePreference.value = "system";
   }
 
   function applyServerProfile(
@@ -109,13 +88,13 @@ export const useProfileStore = defineStore("profile", () => {
     program.value = registry?.program ?? d.program;
     yearLevel.value = registry?.year_level ?? d.yearLevel;
     organization.value = row.organizations?.name ?? d.organization;
+    avatarDataUrl.value = getProfileAvatarPublicUrl(row.avatar_url);
 
-    const extras = readOfficeExtras(row.id);
-    if (extras) {
-      department.value = extras.department;
-      office.value = extras.office;
-      position.value = extras.position;
-    }
+    department.value = row.department ?? d.department;
+    office.value = row.office ?? d.office;
+    position.value = row.position ?? d.position;
+    notifyEmail.value = row.notify_email ?? true;
+    themePreference.value = row.theme_preference ?? "system";
 
     if (useAuthStore().role) {
       role.value = useAuthStore().role!;
@@ -188,6 +167,10 @@ export const useProfileStore = defineStore("profile", () => {
       department?: string;
       office?: string;
       position?: string;
+      notifyEmail?: boolean;
+      themePreference?: "system" | "light";
+      avatarFile?: File | null;
+      avatarPreviewUrl?: string | null;
     },
     routeRole: PortalRoleKey,
   ): Promise<void> {
@@ -200,10 +183,23 @@ export const useProfileStore = defineStore("profile", () => {
         emailToPersist !== undefined &&
         emailToPersist.trim() !== (email.value || "").trim();
 
+      let avatarUrl: string | null | undefined;
+      if (partial.avatarFile !== undefined) {
+        avatarUrl = partial.avatarFile
+          ? await uploadProfileAvatar(partial.avatarFile, auth.userId)
+          : null;
+      }
+
       await updateMyProfile(auth.userId, {
         displayName: partial.displayName,
         phone: partial.phone,
         email: emailToPersist,
+        department: partial.department,
+        office: partial.office,
+        position: partial.position,
+        notifyEmail: partial.notifyEmail,
+        themePreference: partial.themePreference,
+        avatarUrl,
       });
 
       if (emailChanged && emailToPersist?.trim()) {
@@ -220,22 +216,17 @@ export const useProfileStore = defineStore("profile", () => {
         auth.displayName = partial.displayName;
       }
 
-      if (
-        partial.department !== undefined ||
-        partial.office !== undefined ||
-        partial.position !== undefined
-      ) {
-        writeOfficeExtras(auth.userId, {
-          department: partial.department ?? department.value,
-          office: partial.office ?? office.value,
-          position: partial.position ?? position.value,
-        });
-      }
-
       patchPersonal({
         ...partial,
         email: emailToPersist,
       });
+      if (avatarUrl !== undefined) {
+        avatarDataUrl.value = getProfileAvatarPublicUrl(avatarUrl);
+      } else if (partial.avatarPreviewUrl !== undefined) {
+        avatarDataUrl.value = partial.avatarPreviewUrl;
+      }
+      if (partial.notifyEmail !== undefined) notifyEmail.value = partial.notifyEmail;
+      if (partial.themePreference !== undefined) themePreference.value = partial.themePreference;
       await ensureHydrated(routeRole);
       return;
     }
@@ -244,6 +235,11 @@ export const useProfileStore = defineStore("profile", () => {
       ...partial,
       email: emailToPersist,
     });
+    if (partial.avatarPreviewUrl !== undefined) {
+      avatarDataUrl.value = partial.avatarPreviewUrl;
+    }
+    if (partial.notifyEmail !== undefined) notifyEmail.value = partial.notifyEmail;
+    if (partial.themePreference !== undefined) themePreference.value = partial.themePreference;
     touchLogin();
   }
 
@@ -265,6 +261,9 @@ export const useProfileStore = defineStore("profile", () => {
     department?: string;
     office?: string;
     position?: string;
+    notifyEmail?: boolean;
+    themePreference?: "system" | "light";
+    avatarPreviewUrl?: string | null;
   }) {
     if (partial.displayName !== undefined) displayName.value = partial.displayName;
     if (partial.email !== undefined) email.value = partial.email;
@@ -277,6 +276,9 @@ export const useProfileStore = defineStore("profile", () => {
     if (partial.department !== undefined) department.value = partial.department;
     if (partial.office !== undefined) office.value = partial.office;
     if (partial.position !== undefined) position.value = partial.position;
+    if (partial.notifyEmail !== undefined) notifyEmail.value = partial.notifyEmail;
+    if (partial.themePreference !== undefined) themePreference.value = partial.themePreference;
+    if (partial.avatarPreviewUrl !== undefined) avatarDataUrl.value = partial.avatarPreviewUrl;
   }
 
   function setAvatarDataUrl(url: string | null) {
@@ -316,6 +318,8 @@ export const useProfileStore = defineStore("profile", () => {
     lastLogin,
     isOnline,
     avatarDataUrl,
+    notifyEmail,
+    themePreference,
     activityStats,
     loadError,
     setFromAuth,

@@ -7,7 +7,10 @@ const props = defineProps<{
   modelValue: string | null;
 }>();
 
-const emit = defineEmits<{ "update:modelValue": [v: string | null] }>();
+const emit = defineEmits<{
+  "update:modelValue": [v: string | null];
+  "select-file": [file: File | null];
+}>();
 
 const inputRef = ref<HTMLInputElement | null>(null);
 
@@ -22,6 +25,7 @@ function onFile(ev: Event) {
   const file = (ev.target as HTMLInputElement).files?.[0];
   (ev.target as HTMLInputElement).value = "";
   if (!file || !file.type.startsWith("image/")) return;
+  emit("select-file", file);
   const reader = new FileReader();
   reader.onload = () => {
     const r = reader.result;
@@ -32,6 +36,7 @@ function onFile(ev: Event) {
 
 function clearPhoto() {
   emit("update:modelValue", null);
+  emit("select-file", null);
 }
 </script>
 

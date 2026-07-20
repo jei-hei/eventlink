@@ -27,10 +27,9 @@ const standalone = computed(() => !!route.meta.profileStandalone);
 const loading = ref(true);
 const editMode = ref(false);
 const saving = ref(false);
-const themePref = ref<"system" | "light">("system");
-const notifyEmail = ref(true);
+const pendingAvatarFile = ref<File | null | undefined>(undefined);
 
-const { avatarDataUrl } = storeToRefs(profile);
+const { avatarDataUrl, notifyEmail, themePreference } = storeToRefs(profile);
 
 const draft = reactive({
   displayName: "",
@@ -99,7 +98,17 @@ const usesSupabaseProfile = computed(
 async function saveProfile() {
   saving.value = true;
   try {
-    await profile.persistPersonal({ ...draft }, portalRole.value);
+    await profile.persistPersonal(
+      {
+        ...draft,
+        notifyEmail: notifyEmail.value,
+        themePreference: themePreference.value,
+        avatarFile: pendingAvatarFile.value,
+        avatarPreviewUrl: avatarDataUrl.value,
+      },
+      portalRole.value,
+    );
+    pendingAvatarFile.value = undefined;
     editMode.value = false;
     syncDraftFromStore();
     ui.pushToast("Profile updated", "Your changes have been saved.", "success");
@@ -116,7 +125,12 @@ async function saveProfile() {
 
 function cancelEdit() {
   editMode.value = false;
+  pendingAvatarFile.value = undefined;
   syncDraftFromStore();
+}
+
+function onAvatarFileSelected(file: File | null) {
+  pendingAvatarFile.value = file;
 }
 
 async function onChangePassword() {
@@ -205,8 +219,12 @@ const compactProfileHeader = computed(
 
           <ProfileHeader :compact="compactProfileHeader" />
 
-          <ProfileSectionCard title="Photo" description="Optional — preview only until cloud upload is connected.">
-            <AvatarUpload v-model="avatarDataUrl" :display-name="profile.displayName" />
+          <ProfileSectionCard title="Photo" description="Upload a profile image to save it to your account.">
+            <AvatarUpload
+              v-model="avatarDataUrl"
+              :display-name="profile.displayName"
+              @select-file="onAvatarFileSelected"
+            />
           </ProfileSectionCard>
 
           <ProfileSectionCard title="Personal information" description="Keep your contact details current.">
@@ -280,7 +298,7 @@ const compactProfileHeader = computed(
               </div>
             </div>
             <p v-if="editMode && usesSupabaseProfile" class="mt-2 text-xs text-slate-500">
-              Office details are saved on this device for your account (not yet in the central database).
+              Office details are saved to your account in the backend.
             </p>
           </ProfileSectionCard>
 
@@ -344,13 +362,17 @@ const compactProfileHeader = computed(
                   <Bell class="h-4 w-4 text-emerald-700" />
                   Email notifications
                 </span>
-                <input v-model="notifyEmail" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-emerald-600" />
+                <input
+                  v-model="notifyEmail"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                />
               </label>
               <div>
                 <p class="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">Theme</p>
-                <select v-model="themePref" class="portal-input text-sm">
+                <select v-model="themePreference" class="portal-input text-sm">
                   <option value="system">System default</option>
-                  <option value="light">Light (placeholder)</option>
+                  <option value="light">Light</option>
                 </select>
               </div>
             </div>
