@@ -176,11 +176,17 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   }
 
   function approvedForRole(role: AppRole, userId: string): PortalEvent[] {
-    return filterApprovedForRole(rows.value, role, userId).map((r) => mapRowToPortalEvent(r));
+    const auth = useAuthStore();
+    return filterApprovedForRole(rows.value, role, userId, {
+      organizationId: auth.organizationId,
+    }).map((r) => mapRowToPortalEvent(r));
   }
 
   function declinedForRole(role: AppRole, userId: string): PortalEvent[] {
-    return filterDeclinedForRole(rows.value, role, userId).map((r) => mapRowToPortalEvent(r));
+    const auth = useAuthStore();
+    return filterDeclinedForRole(rows.value, role, userId, {
+      organizationId: auth.organizationId,
+    }).map((r) => mapRowToPortalEvent(r));
   }
 
   async function submit(input: CreateEventRequestInput) {

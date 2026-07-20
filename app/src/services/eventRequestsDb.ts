@@ -559,9 +559,27 @@ export function filterPendingForRole(
   scope?: { collegeId?: string | null; organizationId?: string | null },
 ): EventRequestRow[] {
   return rows.filter((r) => {
-    if (role === "student_officer" || role === "ssc") {
-      // Once request reaches EO publish step, treat it as approved queue (not "in review").
-      return r.submitted_by === userId && r.status === "pending" && r.current_step !== "eo_publish";
+    if (role === "student_officer") {
+      // Organization-scoped visibility for student officer requests.
+      if (scope?.organizationId) {
+        return (
+          r.request_type === "student_officer" &&
+          r.organization_id === scope.organizationId &&
+          r.status === "pending" &&
+          r.current_step !== "eo_publish"
+        );
+      }
+      // Fallback to own requests if organization is missing.
+      return (
+        r.request_type === "student_officer" &&
+        r.submitted_by === userId &&
+        r.status === "pending" &&
+        r.current_step !== "eo_publish"
+      );
+    }
+    if (role === "ssc") {
+      // SSC role is organization-level scope; show all SSC requests.
+      return r.request_type === "ssc" && r.status === "pending" && r.current_step !== "eo_publish";
     }
     if (r.status !== "pending" && r.status !== "approved") return false;
     if (role === "eo") {
@@ -598,11 +616,19 @@ export function filterApprovedForRole(
   rows: EventRequestRow[],
   role: AppRole,
   userId: string,
+  scope?: { organizationId?: string | null },
 ): EventRequestRow[] {
   return rows.filter((r) => {
-    if (role === "student_officer" || role === "ssc") {
+    if (role === "student_officer") {
+      const isApprovedLike =
+        r.status === "approved" || r.status === "posted" || (r.status === "pending" && r.current_step === "eo_publish");
+      if (!isApprovedLike || r.request_type !== "student_officer") return false;
+      if (scope?.organizationId) return r.organization_id === scope.organizationId;
+      return r.submitted_by === userId;
+    }
+    if (role === "ssc") {
       return (
-        r.submitted_by === userId &&
+        r.request_type === "ssc" &&
         (r.status === "approved" || r.status === "posted" || (r.status === "pending" && r.current_step === "eo_publish"))
       );
     }
@@ -615,9 +641,19 @@ export function filterDeclinedForRole(
   rows: EventRequestRow[],
   role: AppRole,
   userId: string,
+  scope?: { organizationId?: string | null },
 ): EventRequestRow[] {
-  if (role !== "student_officer" && role !== "ssc") return [];
-  return rows.filter((r) => r.submitted_by === userId && r.status === "declined");
+  if (role === "student_officer") {
+    return rows.filter((r) => {
+      if (r.request_type !== "student_officer" || r.status !== "declined") return false;
+      if (scope?.organizationId) return r.organization_id === scope.organizationId;
+      return r.submitted_by === userId;
+    });
+  }
+  if (role === "ssc") {
+    return rows.filter((r) => r.request_type === "ssc" && r.status === "declined");
+  }
+  return [];
 }
 
 export function filterPostedEvents(rows: EventRequestRow[]): EventRequestRow[] {
