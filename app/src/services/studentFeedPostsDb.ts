@@ -17,6 +17,10 @@ const FEED_SELECT_WITH_LETTER = `
 
 export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent {
   const posted = new Date(row.posted_at);
+  const imageUrls = (row.image_paths ?? [])
+    .map((p) => getEventPostImagePublicUrl(p))
+    .filter((u): u is string => !!u);
+  const firstImageUrl = imageUrls[0] ?? (row.image_path ? getEventPostImagePublicUrl(row.image_path) : null);
   return {
     id: row.id,
     title: row.event_title,
@@ -27,7 +31,8 @@ export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent
     time: row.event_time ?? "TBA",
     emoji: "📅",
     caption: row.caption,
-    imageUrl: row.image_path ? getEventPostImagePublicUrl(row.image_path) : null,
+    imageUrl: firstImageUrl,
+    imageUrls,
     postedAt: row.posted_at,
     requestId: row.request_id,
     letterPath: row.event_requests?.letter_path ?? null,
@@ -96,6 +101,11 @@ export async function createStudentFeedPost(
   const organizationId = await resolveOrganizationId(actorId, actorRole, input.organizationId);
   const postId = crypto.randomUUID();
   const supabase = getSupabase();
+  const files = input.imageFiles?.length
+    ? input.imageFiles
+    : input.imageFile
+      ? [input.imageFile]
+      : [];
 
   const { data: inserted, error: insertErr } = await supabase
     .from("student_feed_posts")
@@ -106,6 +116,7 @@ export async function createStudentFeedPost(
       request_id: input.requestId || null,
       caption,
       image_path: null,
+      image_paths: [],
       event_title: eventTitle,
       event_date: input.eventDate?.trim() || null,
       event_time: input.eventTime?.trim() || null,
@@ -115,12 +126,19 @@ export async function createStudentFeedPost(
     .single();
   if (insertErr) throw insertErr;
 
-  if (input.imageFile) {
+  if (files.length) {
     try {
-      const imagePath = await uploadEventPostImage(input.imageFile, actorId, postId);
+      const uploadedPaths: string[] = [];
+      for (const file of files) {
+        const imagePath = await uploadEventPostImage(file, actorId, postId);
+        uploadedPaths.push(imagePath);
+      }
       const { data: updated, error: updateErr } = await supabase
         .from("student_feed_posts")
-        .update({ image_path: imagePath })
+        .update({
+          image_path: uploadedPaths[0] ?? null,
+          image_paths: uploadedPaths,
+        })
         .eq("id", postId)
         .select(FEED_SELECT_WITH_LETTER)
         .single();

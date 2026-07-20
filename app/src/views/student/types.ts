@@ -10,6 +10,7 @@ export interface StudentEvent {
   day: number;
   caption?: string;
   imageUrl?: string | null;
+  imageUrls?: string[];
   postedAt?: string | null;
   requestId?: string | null;
   letterPath?: string | null;

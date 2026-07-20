@@ -23,7 +23,8 @@ const eventTime = ref("");
 const venue = ref("");
 const linkedRequestId = ref("");
 const imageFile = ref<File | null>(null);
-const imagePreview = ref<string | null>(null);
+const imageFiles = ref<File[]>([]);
+const imagePreviews = ref<string[]>([]);
 const imageError = ref("");
 
 function reset() {
@@ -34,8 +35,9 @@ function reset() {
   venue.value = "";
   linkedRequestId.value = "";
   imageFile.value = null;
-  if (imagePreview.value) URL.revokeObjectURL(imagePreview.value);
-  imagePreview.value = null;
+  imageFiles.value = [];
+  imagePreviews.value.forEach((url) => URL.revokeObjectURL(url));
+  imagePreviews.value = [];
   imageError.value = "";
 }
 
@@ -65,27 +67,44 @@ function applyLinkedEvent() {
 function onImageChange(ev: Event) {
   imageError.value = "";
   const input = ev.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-  if (!isPostImageFile(file)) {
-    imageError.value = "Use JPEG, PNG, WebP, or GIF.";
+  const picked = Array.from(input.files ?? []);
+  if (!picked.length) return;
+  if (picked.length > 10) {
+    imageError.value = "You can upload up to 10 images per post.";
     input.value = "";
     return;
   }
-  if (file.size > 5 * 1024 * 1024) {
-    imageError.value = "Image must be 5 MB or smaller.";
-    input.value = "";
-    return;
+  const valid: File[] = [];
+  for (const file of picked) {
+    if (!isPostImageFile(file)) {
+      imageError.value = "Use JPEG, PNG, WebP, or GIF.";
+      input.value = "";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      imageError.value = "Each image must be 5 MB or smaller.";
+      input.value = "";
+      return;
+    }
+    valid.push(file);
   }
-  if (imagePreview.value) URL.revokeObjectURL(imagePreview.value);
-  imageFile.value = file;
-  imagePreview.value = URL.createObjectURL(file);
+  imagePreviews.value.forEach((url) => URL.revokeObjectURL(url));
+  imageFile.value = valid[0] ?? null;
+  imageFiles.value = valid;
+  imagePreviews.value = valid.map((file) => URL.createObjectURL(file));
 }
 
-function removeImage() {
+function removeImage(index: number) {
+  if (index < 0 || index >= imageFiles.value.length) return;
+  const nextFiles = [...imageFiles.value];
+  const nextPreviews = [...imagePreviews.value];
+  const [removedPreview] = nextPreviews.splice(index, 1);
+  nextFiles.splice(index, 1);
+  if (removedPreview) URL.revokeObjectURL(removedPreview);
+  imageFiles.value = nextFiles;
+  imagePreviews.value = nextPreviews;
   imageFile.value = null;
-  if (imagePreview.value) URL.revokeObjectURL(imagePreview.value);
-  imagePreview.value = null;
+  imageFile.value = imageFiles.value[0] ?? null;
   imageError.value = "";
 }
 
@@ -109,6 +128,7 @@ function submit() {
     venue: venue.value.trim() || undefined,
     requestId: linkedRequestId.value || null,
     imageFile: imageFile.value,
+    imageFiles: imageFiles.value,
   });
 }
 </script>
@@ -238,16 +258,22 @@ function submit() {
             <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-600">
               Photo (optional)
             </label>
-            <div v-if="imagePreview" class="relative overflow-hidden rounded-lg border border-gray-200">
-              <img :src="imagePreview" alt="Post preview" class="max-h-56 w-full object-cover" />
-              <button
-                type="button"
-                class="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
-                aria-label="Remove image"
-                @click="removeImage"
+            <div v-if="imagePreviews.length" class="grid grid-cols-2 gap-2">
+              <div
+                v-for="(preview, idx) in imagePreviews"
+                :key="preview"
+                class="relative overflow-hidden rounded-lg border border-gray-200"
               >
-                <X :size="16" />
-              </button>
+                <img :src="preview" alt="Post preview" class="h-32 w-full object-cover" />
+                <button
+                  type="button"
+                  class="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                  aria-label="Remove image"
+                  @click="removeImage(idx)"
+                >
+                  <X :size="14" />
+                </button>
+              </div>
             </div>
             <label
               v-else
@@ -255,10 +281,11 @@ function submit() {
             >
               <ImagePlus :size="28" class="text-gray-400" />
               <span class="text-sm font-medium text-gray-700">Add a photo</span>
-              <span class="text-xs text-gray-500">JPEG, PNG, WebP, or GIF · max 5 MB</span>
+              <span class="text-xs text-gray-500">JPEG, PNG, WebP, or GIF · up to 10 images · max 5 MB each</span>
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
                 class="sr-only"
                 @change="onImageChange"
               />

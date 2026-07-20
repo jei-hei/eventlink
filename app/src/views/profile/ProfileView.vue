@@ -27,6 +27,7 @@ const standalone = computed(() => !!route.meta.profileStandalone);
 const loading = ref(true);
 const editMode = ref(false);
 const saving = ref(false);
+const avatarSaving = ref(false);
 const pendingAvatarFile = ref<File | null | undefined>(undefined);
 
 const { avatarDataUrl, notifyEmail, themePreference } = storeToRefs(profile);
@@ -129,8 +130,31 @@ function cancelEdit() {
   syncDraftFromStore();
 }
 
-function onAvatarFileSelected(file: File | null) {
+async function onAvatarFileSelected(file: File | null) {
   pendingAvatarFile.value = file;
+  if (!usesSupabaseProfile.value) return;
+  if (editMode.value) return; // when editing, avatar is saved together with other profile changes
+
+  avatarSaving.value = true;
+  try {
+    await profile.persistPersonal(
+      {
+        avatarFile: file,
+        avatarPreviewUrl: avatarDataUrl.value,
+      },
+      portalRole.value,
+    );
+    ui.pushToast("Photo updated", "Your profile photo was saved.", "success");
+    pendingAvatarFile.value = undefined;
+  } catch (e) {
+    ui.pushToast(
+      "Photo upload failed",
+      e instanceof Error ? e.message : "Could not upload profile photo.",
+      "error",
+    );
+  } finally {
+    avatarSaving.value = false;
+  }
 }
 
 async function onChangePassword() {
@@ -225,6 +249,7 @@ const compactProfileHeader = computed(
               :display-name="profile.displayName"
               @select-file="onAvatarFileSelected"
             />
+            <p v-if="avatarSaving" class="mt-2 text-xs text-slate-500">Uploading photo...</p>
           </ProfileSectionCard>
 
           <ProfileSectionCard title="Personal information" description="Keep your contact details current.">

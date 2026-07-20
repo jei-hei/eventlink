@@ -20,7 +20,7 @@ export async function uploadEventPostImage(
   }
 
   const safeName = file.name.replace(/[^\w.\-() ]+/g, "_").trim() || "post.jpg";
-  const path = `${userId}/${requestId}/${safeName}`;
+  const path = `${userId}/${requestId}/${Date.now()}_${safeName}`;
 
   const supabase = getSupabase();
   const { error } = await supabase.storage.from(BUCKET).upload(path, file, {

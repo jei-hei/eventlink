@@ -1,6 +1,7 @@
 export type CreateStudentFeedPostInput = {
   caption: string;
   imageFile?: File | null;
+  imageFiles?: File[];
   eventTitle: string;
   eventDate?: string;
   eventTime?: string;
@@ -20,6 +21,7 @@ export type StudentFeedPostRow = {
   request_id: string | null;
   caption: string;
   image_path: string | null;
+  image_paths: string[] | null;
   event_title: string;
   event_date: string | null;
   event_time: string | null;

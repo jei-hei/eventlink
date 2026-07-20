@@ -25,6 +25,29 @@ const selectedTime = ref("This Week");
 const selectedVenue = ref(VENUE_SHOW_ALL);
 const selectedSort = ref("Newest");
 const selectedEvent = ref<StudentEvent | null>(null);
+const previewImage = ref<{ images: string[]; index: number; title: string } | null>(null);
+function openImagePreview(images: string[], index: number, title: string) {
+  if (!images.length) return;
+  const safeIndex = Math.min(Math.max(0, index), images.length - 1);
+  previewImage.value = { images, index: safeIndex, title };
+}
+
+function previousPreviewImage() {
+  if (!previewImage.value || previewImage.value.index <= 0) return;
+  previewImage.value = {
+    ...previewImage.value,
+    index: previewImage.value.index - 1,
+  };
+}
+
+function nextPreviewImage() {
+  if (!previewImage.value || previewImage.value.index >= previewImage.value.images.length - 1) return;
+  previewImage.value = {
+    ...previewImage.value,
+    index: previewImage.value.index + 1,
+  };
+}
+
 
 const eventStore = useEventRequestsStore();
 
@@ -247,10 +270,60 @@ const filteredEvents = computed(() => {
           :key="event.id"
           :event="event"
           @select="selectedEvent = event"
+          @preview-image="openImagePreview"
         />
       </div>
     </main>
 
-    <EventModal v-if="selectedEvent" :event="selectedEvent" @close="selectedEvent = null" />
+    <EventModal
+      v-if="selectedEvent"
+      :event="selectedEvent"
+      @close="selectedEvent = null"
+      @preview-image="openImagePreview"
+    />
+
+    <div
+      v-if="previewImage"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Image preview"
+      @click.self="previewImage = null"
+    >
+      <button
+        type="button"
+        class="absolute right-4 top-4 rounded-full bg-black/60 px-3 py-1 text-2xl text-white hover:bg-black/75"
+        aria-label="Close image preview"
+        @click="previewImage = null"
+      >
+        ×
+      </button>
+      <img
+        :src="previewImage.images[previewImage.index]"
+        :alt="previewImage.title"
+        class="max-h-[90vh] max-w-[95vw] rounded-lg object-contain shadow-2xl"
+      />
+      <button
+        v-if="previewImage.index > 0"
+        type="button"
+        class="absolute left-4 rounded-full bg-black/60 px-4 py-2 text-2xl text-white hover:bg-black/75"
+        aria-label="Previous image"
+        @click.stop="previousPreviewImage"
+      >
+        ‹
+      </button>
+      <button
+        v-if="previewImage.index < previewImage.images.length - 1"
+        type="button"
+        class="absolute right-16 rounded-full bg-black/60 px-4 py-2 text-2xl text-white hover:bg-black/75"
+        aria-label="Next image"
+        @click.stop="nextPreviewImage"
+      >
+        ›
+      </button>
+      <p class="absolute bottom-4 rounded-full bg-black/60 px-3 py-1 text-xs text-white">
+        {{ previewImage.index + 1 }} / {{ previewImage.images.length }}
+      </p>
+    </div>
   </div>
 </template>

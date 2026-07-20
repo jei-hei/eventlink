@@ -7,7 +7,7 @@ defineProps<{
   event: StudentEvent;
 }>();
 
-const emit = defineEmits<{ select: [] }>();
+const emit = defineEmits<{ select: []; previewImage: [images: string[], index: number, title: string] }>();
 </script>
 
 <template>
@@ -59,12 +59,52 @@ const emit = defineEmits<{ select: [] }>();
       </p>
     </div>
 
-    <img
-      v-if="event.imageUrl"
-      :src="event.imageUrl"
-      :alt="event.title"
-      class="max-h-80 w-full border-y border-gray-100 object-cover"
-    />
+    <div v-if="event.imageUrls?.length" class="border-y border-gray-100">
+      <div
+        :class="[
+          'grid gap-0.5',
+          event.imageUrls.length === 1 ? 'grid-cols-1' : '',
+          event.imageUrls.length === 2 ? 'grid-cols-2' : '',
+          event.imageUrls.length === 3 ? 'grid-cols-2' : '',
+          event.imageUrls.length >= 4 ? 'grid-cols-2' : '',
+        ]"
+      >
+        <button
+          v-for="(url, idx) in event.imageUrls.slice(0, 4)"
+          :key="`${event.id}-${idx}`"
+          type="button"
+          class="relative"
+          :class="[
+            'overflow-hidden',
+            event.imageUrls!.length === 1 ? 'max-h-80' : 'h-40',
+            event.imageUrls!.length === 3 && idx === 0 ? 'row-span-2 h-[20.15rem]' : '',
+          ]"
+          :aria-label="`Preview image ${idx + 1}`"
+          @click.stop="emit('previewImage', event.imageUrls!, idx, event.title)"
+        >
+          <img :src="url" :alt="event.title" class="h-full w-full cursor-zoom-in object-cover" />
+          <span
+            v-if="idx === 3 && event.imageUrls.length > 4"
+            class="absolute inset-0 flex items-center justify-center bg-black/45 text-lg font-bold text-white"
+          >
+            +{{ event.imageUrls.length - 4 }}
+          </span>
+        </button>
+      </div>
+    </div>
+    <button
+      v-else-if="event.imageUrl"
+      type="button"
+      class="block w-full border-y border-gray-100"
+      @click.stop="emit('previewImage', [event.imageUrl], 0, event.title)"
+      aria-label="Preview post image"
+    >
+      <img
+        :src="event.imageUrl"
+        :alt="event.title"
+        class="max-h-80 w-full cursor-zoom-in object-cover"
+      />
+    </button>
 
     <div class="border-t border-gray-100 bg-gray-50/80 px-4 py-3">
       <p class="font-semibold text-gray-900">{{ event.title }}</p>

@@ -8,7 +8,7 @@ import FeedbackModal from "./FeedbackModal.vue";
 defineProps<{
   event: StudentEvent;
 }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; previewImage: [images: string[], index: number, title: string] }>();
 
 const feedbackOpen = ref(false);
 const feedbackThanks = ref(false);
@@ -63,12 +63,33 @@ function onFeedbackSubmitted() {
         <p v-if="event.caption" class="mt-4 whitespace-pre-wrap text-gray-800 leading-relaxed">{{ event.caption }}</p>
       </div>
 
-      <img
-        v-if="event.imageUrl"
-        :src="event.imageUrl"
-        :alt="event.title"
-        class="w-full max-h-72 object-cover border-b border-gray-200"
-      />
+      <div v-if="event.imageUrls?.length" class="border-b border-gray-200 p-3">
+        <div class="grid grid-cols-3 gap-2">
+          <button
+            v-for="(url, idx) in event.imageUrls"
+            :key="`${event.id}-modal-${idx}`"
+            type="button"
+            class="overflow-hidden rounded-md border border-gray-200"
+            :aria-label="`Preview image ${idx + 1}`"
+            @click="emit('previewImage', event.imageUrls!, idx, event.title)"
+          >
+            <img :src="url" :alt="event.title" class="h-24 w-full cursor-zoom-in object-cover" />
+          </button>
+        </div>
+      </div>
+      <button
+        v-else-if="event.imageUrl"
+        type="button"
+        class="block w-full border-b border-gray-200"
+        @click="emit('previewImage', [event.imageUrl], 0, event.title)"
+        aria-label="Preview post image"
+      >
+        <img
+          :src="event.imageUrl"
+          :alt="event.title"
+          class="max-h-72 w-full cursor-zoom-in object-cover"
+        />
+      </button>
 
       <div class="p-6 bg-gradient-to-br from-green-50 to-emerald-50 border-b border-gray-200">
         <h3 class="text-2xl font-bold text-gray-900">{{ event.title }}</h3>
