@@ -20,6 +20,7 @@ const validRoles = new Set([
 const singletonRoles = new Set(["osas", "eo", "gso"]);
 
 type CreateUserBody = {
+  userId?: string;
   role?: string;
   email?: string;
   password?: string;
@@ -90,6 +91,7 @@ Deno.serve(async (req) => {
   }
 
   const role = String(body.role ?? "").trim().toLowerCase();
+  const requestedUserId = String(body.userId ?? "").trim();
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
   const displayName = String(body.displayName ?? "").trim();
@@ -98,12 +100,6 @@ Deno.serve(async (req) => {
 
   if (!validRoles.has(role)) {
     return json(400, { error: "Invalid role selected." });
-  }
-  if (!email || !email.includes("@")) {
-    return json(400, { error: "A valid email is required." });
-  }
-  if (password.length < 8) {
-    return json(400, { error: "Password must be at least 8 characters." });
   }
   if (!displayName) {
     return json(400, { error: "Display name is required." });
@@ -140,11 +136,31 @@ Deno.serve(async (req) => {
     }
   }
 
-  const { data: usersPage, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  if (listErr) {
-    return json(500, { error: listErr.message });
+  let existing: { id: string; email?: string | null } | null = null;
+
+  if (requestedUserId) {
+    const { data: existingById, error: byIdErr } = await admin.auth.admin.getUserById(requestedUserId);
+    if (byIdErr) return json(500, { error: byIdErr.message });
+    if (!existingById.user) return json(404, { error: "Target user not found." });
+    existing = existingById.user;
+  } else {
+    if (!email || !email.includes("@")) {
+      return json(400, { error: "A valid email is required." });
+    }
+    const { data: usersPage, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (listErr) {
+      return json(500, { error: listErr.message });
+    }
+    existing = usersPage.users.find((u) => (u.email ?? "").toLowerCase() === email) ?? null;
   }
-  const existing = usersPage.users.find((u) => (u.email ?? "").toLowerCase() === email) ?? null;
+
+  if (!existing && password.length < 8) {
+    return json(400, { error: "Password must be at least 8 characters." });
+  }
+  if (existing && password && password.length < 8) {
+    return json(400, { error: "If provided, password must be at least 8 characters." });
+  }
+
   const existingUserId = existing?.id ?? null;
 
   if (singletonRoles.has(role)) {
@@ -174,15 +190,33 @@ Deno.serve(async (req) => {
     }
     userId = createData.user.id;
   } else {
-    const { error: updateErr } = await admin.auth.admin.updateUserById(existing.id, {
-      password,
+    const effectiveEmail = email || (existing.email ?? "").toLowerCase();
+    if (!effectiveEmail || !effectiveEmail.includes("@")) {
+      return json(400, { error: "User email is missing or invalid." });
+    }
+    const updatePayload: {
+      password?: string;
+      email?: string;
+      email_confirm: boolean;
+      user_metadata: { display_name: string; portal_role: string };
+    } = {
       email_confirm: true,
       user_metadata: { display_name: displayName, portal_role: role },
-    });
+    };
+    if (password) updatePayload.password = password;
+    if (email && email !== (existing.email ?? "").toLowerCase()) {
+      updatePayload.email = email;
+    }
+    const { error: updateErr } = await admin.auth.admin.updateUserById(existing.id, updatePayload);
     if (updateErr) {
       return json(500, { error: updateErr.message });
     }
     userId = existing.id;
+  }
+
+  const finalEmail = email || ((existing?.email ?? "").toLowerCase());
+  if (!finalEmail || !finalEmail.includes("@")) {
+    return json(400, { error: "User email is missing or invalid." });
   }
 
   const { error: roleUpsertErr } = await admin
@@ -196,7 +230,7 @@ Deno.serve(async (req) => {
     {
       id: userId,
       display_name: displayName,
-      email,
+      email: finalEmail,
       college_id: collegeId || null,
       organization_id: organizationId || null,
     },
@@ -209,6 +243,6 @@ Deno.serve(async (req) => {
   return json(200, {
     userId,
     role,
-    email,
+    email: finalEmail,
   });
 });

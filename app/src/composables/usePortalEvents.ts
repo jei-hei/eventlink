@@ -1,4 +1,4 @@
-import { computed, onMounted, ref, watch, type Ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch, type Ref } from "vue";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
 import { useEventRequestsStore } from "@/stores/eventRequests";
@@ -21,17 +21,64 @@ export function usePortalEvents(
   const auth = useAuthStore();
   const store = useEventRequestsStore();
   const useDb = computed(() => isSupabaseConfigured && !!auth.userId && !auth.useMock);
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let refreshing = false;
 
-  function refreshEvents() {
-    if (useDb.value) void store.load(true);
+  async function refreshEvents(force = true) {
+    if (!useDb.value || refreshing) return;
+    refreshing = true;
+    try {
+      let lastErr: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await store.load(force);
+          lastErr = null;
+          break;
+        } catch (e) {
+          lastErr = e;
+          await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+        }
+      }
+      if (lastErr) throw lastErr;
+    } finally {
+      refreshing = false;
+    }
   }
 
-  onMounted(refreshEvents);
+  function startPolling() {
+    if (pollTimer || !useDb.value) return;
+    pollTimer = setInterval(() => {
+      void refreshEvents(true);
+    }, 25000);
+  }
+
+  function stopPolling() {
+    if (!pollTimer) return;
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+
+  onMounted(() => {
+    void refreshEvents(true);
+    startPolling();
+  });
+  onUnmounted(stopPolling);
 
   watch(
     () => auth.userId,
     (id) => {
-      if (id && useDb.value) refreshEvents();
+      if (id && useDb.value) {
+        void refreshEvents(true);
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    },
+  );
+  watch(
+    () => [auth.appRole, auth.collegeId, auth.organizationId],
+    () => {
+      if (useDb.value) void refreshEvents(true);
     },
   );
 

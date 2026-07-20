@@ -66,15 +66,20 @@ const form = reactive({
 });
 
 const isSscForm = computed(() => props.requestType === "ssc");
+const isOfficerForm = computed(() => props.requestType === "student_officer");
 
 const orgScopeHint = computed(() =>
-  isSscForm.value ? "" : "Only organizations in your college are listed.",
+  isSscForm.value
+    ? ""
+    : isOfficerForm.value
+      ? "Organization is based on your registered account assignment."
+      : "Only organizations in your college are listed.",
 );
 
 const selectedSdgs = ref<number[]>([]);
 
 const useOrgSelect = computed(
-  () => !isSscForm.value && isSupabaseConfigured && organizations.value.length > 0,
+  () => !isSscForm.value && !isOfficerForm.value && isSupabaseConfigured && organizations.value.length > 0,
 );
 
 const selectedOrgName = computed(() => {
@@ -96,6 +101,8 @@ watch(
 onMounted(async () => {
   if (isSscForm.value) {
     form.organizationName = SSC_ORGANIZATION_NAME;
+  } else if (isOfficerForm.value && auth.organizationId) {
+    form.organizationId = auth.organizationId;
   }
 
   if (!isSupabaseConfigured) {
@@ -126,7 +133,13 @@ onMounted(async () => {
       if (uid) {
         organizations.value = await fetchOrganizationsForSubmit(uid, props.requestType);
       }
-      if (organizations.value.length === 1) {
+      if (isOfficerForm.value) {
+        if (auth.organizationId) {
+          form.organizationId = auth.organizationId;
+          const own = organizations.value.find((o) => o.id === auth.organizationId);
+          if (own?.name) form.organizationName = own.name;
+        }
+      } else if (organizations.value.length === 1) {
         form.organizationId = organizations.value[0]!.id;
       }
     }
@@ -167,7 +180,7 @@ function clearLetter() {
 }
 
 function resetForm() {
-  form.organizationId = "";
+  form.organizationId = isOfficerForm.value ? (auth.organizationId ?? "") : "";
   form.organizationName = isSscForm.value ? SSC_ORGANIZATION_NAME : "";
   form.activity = "";
   form.startDate = "";
@@ -199,6 +212,7 @@ function removeEquipmentRow(idx: number) {
 
 function handleSubmit() {
   const orgName = isSscForm.value ? SSC_ORGANIZATION_NAME : selectedOrgName.value.trim();
+  const resolvedOrganizationId = isOfficerForm.value ? (auth.organizationId ?? form.organizationId) : form.organizationId;
   if (isSscForm.value && !form.organizationId && isSupabaseConfigured) {
     window.alert(
       "SSC organization is not set up in the database yet. Ask admin to run the SSC seed in supabase/seed/03_ssc_organization.sql.",
@@ -207,6 +221,10 @@ function handleSubmit() {
   }
   if (useOrgSelect.value && !form.organizationId) {
     window.alert("Please select an organization.");
+    return;
+  }
+  if (isOfficerForm.value && !resolvedOrganizationId) {
+    window.alert("Your account has no assigned organization yet. Ask Admin to set your organization.");
     return;
   }
   if (!isSscForm.value && !useOrgSelect.value && !orgName) {
@@ -243,7 +261,7 @@ function handleSubmit() {
     }));
 
   emit("submit", {
-    organizationId: form.organizationId || null,
+    organizationId: resolvedOrganizationId || null,
     organizationName: orgName,
     activity: form.activity.trim(),
     startDate: form.startDate,
@@ -324,6 +342,12 @@ defineExpose({ resetForm });
         <option value="" disabled>{{ orgLoading ? "Loading…" : "Select organization" }}</option>
         <option v-for="org in organizations" :key="org.id" :value="org.id">{{ org.name }}</option>
       </select>
+      <div
+        v-else-if="isOfficerForm"
+        class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-900"
+      >
+        {{ selectedOrgName || "No organization assigned" }}
+      </div>
       <input
         v-else
         v-model="form.organizationName"

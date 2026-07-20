@@ -3,10 +3,12 @@ import { computed, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { Edit2, KeyRound, Plus, RefreshCw, Search } from "lucide-vue-next";
 import AddUserModal from "./components/AddUserModal.vue";
+import EditUserModal from "./components/EditUserModal.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useUiStore } from "@/stores/ui";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { adminRoleLabel, fetchAdminPortalUsers, type AdminPortalUserRow } from "@/services/adminUsersDb";
+import type { AppRole } from "@/types/appRole";
 
 type RoleFilter =
   | "All"
@@ -24,7 +26,7 @@ type UserRow = {
   userId: string;
   name: string;
   role: string;
-  appRole: string;
+  appRole: AppRole;
   college: string;
   program: string;
   email: string;
@@ -35,6 +37,8 @@ const selectedCollege = ref("All");
 const selectedProgram = ref("All");
 const searchQuery = ref("");
 const addUserOpen = ref(false);
+const editUserOpen = ref(false);
+const selectedUser = ref<UserRow | null>(null);
 const auth = useAuthStore();
 const ui = useUiStore();
 
@@ -65,7 +69,7 @@ function mapRow(r: AdminPortalUserRow): UserRow {
     userId: r.user_id,
     name,
     role: label,
-    appRole: r.app_role,
+    appRole: r.app_role as AppRole,
     college: r.college?.trim() || "—",
     program: r.program?.trim() || "—",
     email: r.email?.trim() || "—",
@@ -132,11 +136,8 @@ onMounted(() => {
 });
 
 function editUser(user: UserRow) {
-  ui.pushToast(
-    "Account details",
-    `${user.name} · ${user.role} · ${user.email}. User ID: ${user.userId}`,
-    "info",
-  );
+  selectedUser.value = { ...user };
+  editUserOpen.value = true;
 }
 
 async function resetUserPassword(user: UserRow) {
@@ -295,11 +296,14 @@ async function resetUserPassword(user: UserRow) {
       </table>
     </div>
 
-    <p class="text-xs text-slate-500">
-      To disable an account, use Supabase Dashboard → Authentication → Users. Role changes use SQL on
-      <code class="rounded bg-slate-100 px-1">public.user_roles</code> or your seed scripts.
-    </p>
+    <p class="text-xs text-slate-500">Use the edit button to update role/assignment details for staff accounts.</p>
 
     <AddUserModal :open="addUserOpen" @close="addUserOpen = false" @created="loadUsers()" />
+    <EditUserModal
+      :open="editUserOpen"
+      :user="selectedUser"
+      @close="editUserOpen = false"
+      @updated="loadUsers()"
+    />
   </div>
 </template>

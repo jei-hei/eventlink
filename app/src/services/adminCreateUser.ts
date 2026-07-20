@@ -9,27 +9,28 @@ export type CreatePortalUserInput = {
   organizationId?: string | null;
 };
 
+export type UpdatePortalUserInput = {
+  userId: string;
+  role: CreatePortalUserInput["role"];
+  email: string;
+  displayName: string;
+  password?: string;
+  collegeId?: string | null;
+  organizationId?: string | null;
+};
+
 export type CreatePortalUserResult = {
   userId: string;
   role: CreatePortalUserInput["role"];
   email: string;
 };
 
-export async function createPortalUser(input: CreatePortalUserInput): Promise<CreatePortalUserResult> {
+async function invokeAdminCreateUser(body: Record<string, unknown>): Promise<CreatePortalUserResult> {
   const supabase = getSupabase();
-  const { data, error } = await supabase.functions.invoke("admin-create-user", {
-    body: {
-      role: input.role,
-      email: input.email.trim(),
-      password: input.password,
-      displayName: input.displayName.trim(),
-      collegeId: input.collegeId ?? null,
-      organizationId: input.organizationId ?? null,
-    },
-  });
+  const { data, error } = await supabase.functions.invoke("admin-create-user", { body });
 
   if (error) {
-    const msg = error.message || "Could not create user account.";
+    const msg = error.message || "Could not save user account.";
     const lowered = msg.toLowerCase();
     if (
       lowered.includes("failed to send a request") ||
@@ -53,4 +54,27 @@ export async function createPortalUser(input: CreatePortalUserInput): Promise<Cr
     role: payload.role,
     email: payload.email,
   };
+}
+
+export async function createPortalUser(input: CreatePortalUserInput): Promise<CreatePortalUserResult> {
+  return invokeAdminCreateUser({
+    role: input.role,
+    email: input.email.trim(),
+    password: input.password,
+    displayName: input.displayName.trim(),
+    collegeId: input.collegeId ?? null,
+    organizationId: input.organizationId ?? null,
+  });
+}
+
+export async function updatePortalUser(input: UpdatePortalUserInput): Promise<CreatePortalUserResult> {
+  return invokeAdminCreateUser({
+    userId: input.userId,
+    role: input.role,
+    email: input.email.trim(),
+    password: input.password?.trim() || "",
+    displayName: input.displayName.trim(),
+    collegeId: input.collegeId ?? null,
+    organizationId: input.organizationId ?? null,
+  });
 }

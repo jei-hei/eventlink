@@ -53,13 +53,28 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     filterCalendarEvents(rows.value).map((r) => mapRowToPortalEvent(r)),
   );
 
+  async function withRetry<T>(task: () => Promise<T>, retries = 2): Promise<T> {
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        return await task();
+      } catch (e) {
+        lastErr = e;
+        if (attempt < retries) {
+          await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+        }
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  }
+
   async function load(force = false) {
     if (!isSupabaseConfigured) return;
     if (loaded.value && !force) return;
     loading.value = true;
     error.value = null;
     try {
-      rows.value = await fetchAllEventRequests();
+      rows.value = await withRetry(() => fetchAllEventRequests(), 2);
       loaded.value = true;
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
@@ -84,7 +99,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     feedLoading.value = true;
     feedError.value = null;
     try {
-      const page = await fetchStudentFeedPostsPage(0, 20);
+      const page = await withRetry(() => fetchStudentFeedPostsPage(0, 20), 2);
       feedPostRows.value = page.rows;
       studentFeedOffset.value = page.nextOffset;
       studentFeedHasMore.value = page.hasMore;
