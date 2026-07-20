@@ -6,8 +6,11 @@ import { useOsasPortal } from "./portalContext";
 import OsasEventDetailModal from "./components/OsasEventDetailModal.vue";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
+import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
+import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
 const { events, scheduledEvents, handleApprove, handleReject } = useOsasPortal();
+const eventsLoading = useEventsTableLoading();
 
 const selectedEvent = ref<OsasEvent | null>(null);
 
@@ -86,7 +89,9 @@ function onModalReject() {
                 </tr>
               </thead>
               <tbody>
+                <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="8" />
                 <tr
+                  v-else
                   v-for="event in pendingEvents"
                   :key="event.id"
                   :class="[
@@ -143,7 +148,7 @@ function onModalReject() {
                     </div>
                   </td>
                 </tr>
-                <tr v-if="pendingEvents.length === 0">
+                <tr v-else-if="pendingEvents.length === 0">
                   <td colspan="8" class="py-12 text-center text-gray-400 text-sm">No pending event requests</td>
                 </tr>
               </tbody>

@@ -5,7 +5,7 @@ import {
   approveEventRequest,
   createEventRequest,
   declineEventRequest,
-  fetchAllEventRequests,
+  fetchPortalEventRequestsForRole,
   fetchHistoryForRequest,
   filterApprovedForRole,
   filterCalendarEvents,
@@ -39,6 +39,14 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   const error = ref<string | null>(null);
   const feedError = ref<string | null>(null);
   const loaded = ref(false);
+  const lastLoadedAt = ref(0);
+  const loadScopeKey = ref("");
+  const STALE_MS = 10_000;
+
+  function currentScopeKey() {
+    const auth = useAuthStore();
+    return `${auth.appRole ?? ""}:${auth.collegeId ?? ""}:${auth.organizationId ?? ""}:${auth.userId ?? ""}`;
+  }
   const studentBoardLoaded = ref(false);
   const studentFeedOffset = ref(0);
   const studentFeedHasMore = ref(false);
@@ -72,12 +80,30 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
 
   async function load(force = false) {
     if (!isSupabaseConfigured) return;
-    if (loaded.value && !force) return;
+    const auth = useAuthStore();
+    if (!auth.userId || !auth.appRole) return;
+    const scopeKey = currentScopeKey();
+    if (scopeKey !== loadScopeKey.value) {
+      loadScopeKey.value = scopeKey;
+      loaded.value = false;
+      force = true;
+    }
+    if (loaded.value && !force && Date.now() - lastLoadedAt.value < STALE_MS) return;
     loading.value = true;
     error.value = null;
     try {
-      rows.value = await withRetry(() => fetchAllEventRequests(), 2);
+      rows.value = await withRetry(
+        () =>
+          fetchPortalEventRequestsForRole({
+            role: auth.appRole!,
+            userId: auth.userId!,
+            collegeId: auth.collegeId,
+            organizationId: auth.organizationId,
+          }),
+        2,
+      );
       loaded.value = true;
+      lastLoadedAt.value = Date.now();
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
       throw e;

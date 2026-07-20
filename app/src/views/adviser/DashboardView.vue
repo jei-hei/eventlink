@@ -6,8 +6,11 @@ import { useAdviserPortal } from "./portalContext";
 import AdviserEventDetailModal from "./components/AdviserEventDetailModal.vue";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
+import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
+import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
 const { events, scheduledEvents, handleApprove, handleReject } = useAdviserPortal();
+const eventsLoading = useEventsTableLoading();
 
 const selectedEvent = ref<AdviserEvent | null>(null);
 
@@ -74,7 +77,9 @@ const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.
                 </tr>
               </thead>
               <tbody>
+                <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="7" />
                 <tr
+                  v-else
                   v-for="event in events"
                   :key="event.id"
                   class="cursor-pointer border-b border-slate-100 transition hover:bg-emerald-50/50"
@@ -115,7 +120,7 @@ const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.
                     </div>
                   </td>
                 </tr>
-                <tr v-if="events.length === 0">
+                <tr v-else-if="events.length === 0">
                   <td colspan="7" class="py-10 text-center text-sm text-slate-400">No pending events</td>
                 </tr>
               </tbody>

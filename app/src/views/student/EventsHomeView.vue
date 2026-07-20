@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
+import { useDebouncedRef } from "@/composables/useDebounce";
 import { RefreshCw, Search, User } from "lucide-vue-next";
 import { RouterLink } from "vue-router";
 import type { StudentEvent } from "./types";
 import { studentEvents } from "./eventData";
 import EventCard from "./components/EventCard.vue";
+import PortalFeedSkeleton from "@/components/portal/PortalFeedSkeleton.vue";
 import EventModal from "./components/EventModal.vue";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useEventRequestsStore } from "@/stores/eventRequests";
@@ -20,6 +22,7 @@ const ALL_VENUES = "All Venues";
 const VENUE_SHOW_ALL = "Gymnasium";
 
 const searchQuery = ref("");
+const debouncedSearch = useDebouncedRef(searchQuery, 280);
 const selectedOrg = ref(ALL_ORGANIZATIONS);
 const selectedTime = ref("This Week");
 const selectedVenue = ref(VENUE_SHOW_ALL);
@@ -143,7 +146,7 @@ function matchesVenueFilter(event: StudentEvent, venue: string): boolean {
 }
 
 const filteredEvents = computed(() => {
-  const q = searchQuery.value.toLowerCase().trim();
+  const q = debouncedSearch.value.toLowerCase().trim();
   let list = displayEvents.value.filter((event) => {
     if (selectedOrg.value !== ALL_ORGANIZATIONS && event.organization !== selectedOrg.value) {
       return false;
@@ -257,9 +260,10 @@ const filteredEvents = computed(() => {
         </span>
       </p>
 
-      <p v-if="eventStore.feedLoading && !eventStore.studentBoardLoaded" class="py-16 text-center text-slate-500 text-sm">
-        Loading posts…
-      </p>
+      <PortalFeedSkeleton
+        v-if="eventStore.feedLoading && !eventStore.studentBoardLoaded"
+        :cards="3"
+      />
 
       <div
         v-else-if="!eventStore.feedLoading && filteredEvents.length === 0"

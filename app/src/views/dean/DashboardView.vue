@@ -6,8 +6,11 @@ import { useDeanPortal } from "./portalContext";
 import DeanEventDetailModal from "./components/DeanEventDetailModal.vue";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
+import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
+import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
 const { events, scheduledEvents, handleApprove, handleReject } = useDeanPortal();
+const eventsLoading = useEventsTableLoading();
 
 const selectedEvent = ref<DeanEvent | null>(null);
 
@@ -67,7 +70,13 @@ const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="event in events" :key="event.id" class="border-b border-gray-100 hover:bg-gray-50 transition">
+                <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="7" />
+                <tr
+                  v-else
+                  v-for="event in events"
+                  :key="event.id"
+                  class="border-b border-gray-100 hover:bg-gray-50 transition"
+                >
                   <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600 cursor-pointer" @click="selectedEvent = event">
                     {{ event.organization }}
                   </td>
@@ -110,7 +119,7 @@ const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.
                     </div>
                   </td>
                 </tr>
-                <tr v-if="events.length === 0">
+                <tr v-else-if="events.length === 0">
                   <td colspan="7" class="py-12 text-center text-gray-400 text-sm">No pending events</td>
                 </tr>
               </tbody>

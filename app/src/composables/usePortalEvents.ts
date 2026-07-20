@@ -1,4 +1,5 @@
 import { computed, onMounted, onUnmounted, ref, watch, type Ref } from "vue";
+import { usePageVisibility } from "@/composables/usePageVisibility";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
 import { useEventRequestsStore } from "@/stores/eventRequests";
@@ -20,36 +21,31 @@ export function usePortalEvents(
 ) {
   const auth = useAuthStore();
   const store = useEventRequestsStore();
+  const { visible: pageVisible } = usePageVisibility();
   const useDb = computed(() => isSupabaseConfigured && !!auth.userId && !auth.useMock);
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let refreshing = false;
+  const POLL_MS_VISIBLE = 50_000;
+  const POLL_MS_HIDDEN = 120_000;
 
-  async function refreshEvents(force = true) {
+  async function refreshEvents(force = false) {
     if (!useDb.value || refreshing) return;
     refreshing = true;
     try {
-      let lastErr: unknown = null;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          await store.load(force);
-          lastErr = null;
-          break;
-        } catch (e) {
-          lastErr = e;
-          await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
-        }
-      }
-      if (lastErr) throw lastErr;
+      await store.load(force);
     } finally {
       refreshing = false;
     }
   }
 
-  function startPolling() {
-    if (pollTimer || !useDb.value) return;
+  function schedulePoll() {
+    stopPolling();
+    if (!useDb.value) return;
+    const ms = pageVisible.value ? POLL_MS_VISIBLE : POLL_MS_HIDDEN;
     pollTimer = setInterval(() => {
-      void refreshEvents(true);
-    }, 25000);
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      void refreshEvents(false);
+    }, ms);
   }
 
   function stopPolling() {
@@ -60,16 +56,26 @@ export function usePortalEvents(
 
   onMounted(() => {
     void refreshEvents(true);
-    startPolling();
+    schedulePoll();
   });
   onUnmounted(stopPolling);
+
+  watch(pageVisible, (isVisible) => {
+    if (!useDb.value) return;
+    if (isVisible) {
+      void refreshEvents(false);
+      schedulePoll();
+    } else {
+      schedulePoll();
+    }
+  });
 
   watch(
     () => auth.userId,
     (id) => {
       if (id && useDb.value) {
         void refreshEvents(true);
-        startPolling();
+        schedulePoll();
       } else {
         stopPolling();
       }

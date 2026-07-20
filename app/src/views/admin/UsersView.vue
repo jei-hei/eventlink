@@ -9,6 +9,7 @@ import { useUiStore } from "@/stores/ui";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { adminRoleLabel, fetchAdminPortalUsers, type AdminPortalUserRow } from "@/services/adminUsersDb";
 import type { AppRole } from "@/types/appRole";
+import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
 type RoleFilter =
   | "All"
@@ -241,8 +242,7 @@ async function resetUserPassword(user: UserRow) {
     </div>
 
     <div class="dash-table-wrap">
-      <div v-if="loading" class="p-8 text-center text-sm text-slate-500">Loading users…</div>
-      <table v-else class="portal-table min-w-0">
+      <table class="portal-table min-w-0">
         <thead>
           <tr>
             <th>Name</th>
@@ -254,11 +254,13 @@ async function resetUserPassword(user: UserRow) {
           </tr>
         </thead>
         <tbody>
-          <tr v-if="filteredUsers.length === 0">
+          <PortalTableSkeleton v-if="loading" :rows="8" :columns="6" />
+          <tr v-else-if="!loading && filteredUsers.length === 0">
             <td colspan="6" class="py-10 text-center text-sm text-slate-500">
               No users match your filters, or the directory is empty.
             </td>
           </tr>
+          <template v-if="!loading">
           <tr v-for="user in filteredUsers" :key="user.userId">
             <td class="font-medium text-slate-900">{{ user.name }}</td>
             <td>
@@ -292,6 +294,7 @@ async function resetUserPassword(user: UserRow) {
               </div>
             </td>
           </tr>
+          </template>
         </tbody>
       </table>
     </div>

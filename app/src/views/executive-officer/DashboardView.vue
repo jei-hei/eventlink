@@ -11,6 +11,10 @@ import type { ScheduledCalendarEvent } from "@/components/ScheduledEventsCalenda
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import { canPostToCalendar } from "@/composables/eventPublish";
+import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
+import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
+
+const eventsLoading = useEventsTableLoading();
 
 const {
   events,
@@ -153,7 +157,9 @@ async function onEditSave(id: string, input: UpdateEventRequestInput) {
                 </tr>
               </thead>
               <tbody>
+                <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="7" />
                 <tr
+                  v-else
                   v-for="event in events"
                   :key="event.id"
                   :class="[
@@ -199,7 +205,7 @@ async function onEditSave(id: string, input: UpdateEventRequestInput) {
                     </div>
                   </td>
                 </tr>
-                <tr v-if="events.length === 0">
+                <tr v-else-if="events.length === 0">
                   <td colspan="7" class="py-12 text-center text-gray-400 text-sm">No pending events</td>
                 </tr>
               </tbody>

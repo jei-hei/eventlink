@@ -7,8 +7,11 @@ import GsoEventDetailModal from "./components/GsoEventDetailModal.vue";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { createEquipment, fetchActiveEquipment, updateEquipment } from "@/services/equipmentDb";
+import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
+import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
 const { events, scheduledEvents, handleApprove, handleReject, useDb } = useGsoPortal();
+const eventsLoading = useEventsTableLoading();
 
 const selectedEvent = ref<GsoEvent | null>(null);
 const inventoryOpen = ref(false);
@@ -262,7 +265,9 @@ onMounted(() => {
                 </tr>
               </thead>
               <tbody>
+                <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="6" />
                 <tr
+                  v-else
                   v-for="event in gsoEvents"
                   :key="event.id"
                   :class="[
@@ -307,7 +312,7 @@ onMounted(() => {
                     </div>
                   </td>
                 </tr>
-                <tr v-if="gsoEvents.length === 0">
+                <tr v-else-if="gsoEvents.length === 0">
                   <td colspan="6" class="py-12 text-center text-sm text-slate-400">No events requiring venue or equipment</td>
                 </tr>
               </tbody>

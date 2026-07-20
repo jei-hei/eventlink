@@ -142,4 +142,25 @@
     background: linear-gradient(168deg, #022c22 0%, #064e3b 38%, #0f172a 96%);
   }
 
+  .perf-feed-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 420px;
+  }
+
+}
+
+@layer utilities {
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }

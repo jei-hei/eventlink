@@ -208,25 +208,114 @@ export async function fetchPostedEventRequests(): Promise<EventRequestRow[]> {
   return (data ?? []) as EventRequestRow[];
 }
 
+const EVENT_REQUEST_LIST_SELECT = `
+  *,
+  organizations ( id, name, college_id ),
+  profiles!event_requests_submitted_by_fkey ( display_name ),
+  event_request_equipment ( quantity_requested, equipment ( id, name ) )
+`;
+
+const EVENT_REQUEST_LIST_SELECT_INNER_ORG = `
+  *,
+  organizations!inner ( id, name, college_id ),
+  profiles!event_requests_submitted_by_fkey ( display_name ),
+  event_request_equipment ( quantity_requested, equipment ( id, name ) )
+`;
+
+const PORTAL_LIST_LIMIT = 400;
+
+export type PortalEventLoadScope = {
+  role: AppRole;
+  userId: string;
+  collegeId?: string | null;
+  organizationId?: string | null;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function runEventRequestListQuery(select: string, apply: (q: any) => any): Promise<EventRequestRow[]> {
+  const supabase = getSupabase();
+  const base = supabase
+    .from("event_requests")
+    .select(select)
+    .order("created_at", { ascending: false })
+    .limit(PORTAL_LIST_LIMIT);
+  const { data, error } = await apply(base);
+  if (error) {
+    const fallback = await supabase
+      .from("event_requests")
+      .select(`*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
+      .order("created_at", { ascending: false })
+      .limit(PORTAL_LIST_LIMIT);
+    if (fallback.error) throw fallback.error;
+    return (fallback.data ?? []) as EventRequestRow[];
+  }
+  return (data ?? []) as EventRequestRow[];
+}
+
+/** Role-scoped fetch — avoids loading the full event_requests table on every portal view. */
+export async function fetchPortalEventRequestsForRole(
+  scope: PortalEventLoadScope,
+): Promise<EventRequestRow[]> {
+  const { role, userId, collegeId, organizationId } = scope;
+
+  switch (role) {
+    case "student_officer": {
+      if (organizationId) {
+        return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
+          q.eq("request_type", "student_officer").eq("organization_id", organizationId),
+        );
+      }
+      return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
+        q.eq("request_type", "student_officer").eq("submitted_by", userId),
+      );
+    }
+    case "ssc":
+      return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) => q.eq("request_type", "ssc"));
+    case "adviser": {
+      if (!organizationId) return [];
+      return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
+        q.eq("organization_id", organizationId),
+      );
+    }
+    case "dean": {
+      if (!collegeId) return [];
+      return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT_INNER_ORG, (q) =>
+        q.eq("organizations.college_id", collegeId),
+      );
+    }
+    case "gso":
+      return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
+        q.or("and(status.eq.pending,current_step.eq.gso),status.in.(approved,posted)"),
+      );
+    case "osas":
+      return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
+        q.or("and(status.eq.pending,current_step.eq.osas),status.in.(approved,posted)"),
+      );
+    case "eo":
+      return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
+        q.or(
+          "current_step.in.(eo_schedule,eo_publish),calendar_posted_at.not.is.null,status.in.(approved,posted)",
+        ),
+      );
+    default:
+      return fetchAllEventRequests();
+  }
+}
+
 export async function fetchAllEventRequests(): Promise<EventRequestRow[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("event_requests")
-    .select(
-      `
-      *,
-      organizations ( id, name, college_id ),
-      profiles!event_requests_submitted_by_fkey ( display_name ),
-      event_request_equipment ( quantity_requested, equipment ( id, name ) )
-    `,
-    )
-    .order("created_at", { ascending: false });
+    .select(EVENT_REQUEST_LIST_SELECT)
+    .order("created_at", { ascending: false })
+    .limit(PORTAL_LIST_LIMIT);
 
   if (error) {
     const fallback = await supabase
       .from("event_requests")
       .select(`*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(PORTAL_LIST_LIMIT);
     if (fallback.error) throw fallback.error;
     return (fallback.data ?? []) as EventRequestRow[];
   }

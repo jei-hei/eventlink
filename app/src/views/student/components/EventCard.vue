@@ -12,7 +12,7 @@ const emit = defineEmits<{ select: []; previewImage: [images: string[], index: n
 
 <template>
   <article
-    class="overflow-hidden rounded-lg border border-gray-300 bg-white transition-shadow duration-200 hover:shadow-md cursor-pointer"
+    class="perf-feed-card overflow-hidden rounded-lg border border-gray-300 bg-white transition-shadow duration-200 hover:shadow-md cursor-pointer"
     role="button"
     tabindex="0"
     @click="emit('select')"
@@ -82,7 +82,13 @@ const emit = defineEmits<{ select: []; previewImage: [images: string[], index: n
           :aria-label="`Preview image ${idx + 1}`"
           @click.stop="emit('previewImage', event.imageUrls!, idx, event.title)"
         >
-          <img :src="url" :alt="event.title" class="h-full w-full cursor-zoom-in object-cover" />
+          <img
+            :src="url"
+            :alt="event.title"
+            class="h-full w-full cursor-zoom-in object-cover"
+            loading="lazy"
+            decoding="async"
+          />
           <span
             v-if="idx === 3 && event.imageUrls.length > 4"
             class="absolute inset-0 flex items-center justify-center bg-black/45 text-lg font-bold text-white"
@@ -103,6 +109,8 @@ const emit = defineEmits<{ select: []; previewImage: [images: string[], index: n
         :src="event.imageUrl"
         :alt="event.title"
         class="max-h-80 w-full cursor-zoom-in object-cover"
+        loading="lazy"
+        decoding="async"
       />
     </button>
 

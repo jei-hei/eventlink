@@ -11,8 +11,11 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { publishStatusLabel } from "@/composables/eventPublish";
 import { mergeMyPortalEvents } from "@/composables/mergeMyPortalEvents";
 import { useAuthStore } from "@/stores/auth";
+import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
+import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
 const { events, approvedEvents, scheduledEvents, handleCreateFeedPost, pushToast } = useSscPortal();
+const eventsLoading = useEventsTableLoading();
 const auth = useAuthStore();
 
 const selectedEvent = ref<SscEvent | null>(null);
@@ -113,7 +116,9 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
                 </tr>
               </thead>
               <tbody>
+                <PortalTableSkeleton v-if="eventsLoading" :rows="4" :columns="2" />
                 <tr
+                  v-else
                   v-for="event in events"
                   :key="event.id"
                   class="border-b border-gray-100 hover:bg-gray-50 transition cursor-pointer"
@@ -128,7 +133,7 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
                     </span>
                   </td>
                 </tr>
-                <tr v-if="events.length === 0">
+                <tr v-else-if="events.length === 0">
                   <td colspan="2" class="py-12 text-center text-gray-400 text-sm">
                     No requests waiting for approval.
                   </td>

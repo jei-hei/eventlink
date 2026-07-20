@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import { Users, UserCheck, Clock3, Building2 } from "lucide-vue-next";
 import { fetchAdminRecentActivity, fetchAdminStatsSnapshot, type AdminActivityItem } from "@/services/adminDashboardDb";
+import PortalListSkeleton from "@/components/portal/PortalListSkeleton.vue";
+import PortalStatSkeleton from "@/components/portal/PortalStatSkeleton.vue";
 
 const loading = ref(false);
 const loadError = ref<string | null>(null);
@@ -53,7 +55,8 @@ onMounted(() => {
       {{ loadError }}
     </p>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <PortalStatSkeleton v-if="loading" class="mb-8" />
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       <div
         v-for="stat in stats"
         :key="stat.label"
@@ -73,9 +76,9 @@ onMounted(() => {
       <div class="px-6 py-4 border-b border-gray-200">
         <h2 class="text-lg font-semibold text-gray-900">Recent Activity</h2>
       </div>
-      <div v-if="loading" class="px-6 py-8 text-sm text-gray-500">Loading activity…</div>
+      <PortalListSkeleton v-if="loading" :rows="6" />
       <div v-else-if="!recentActivity.length" class="px-6 py-8 text-sm text-gray-500">No recent activity yet.</div>
-      <div class="divide-y divide-gray-200">
+      <div v-else class="divide-y divide-gray-200">
         <div
           v-for="(activity, index) in recentActivity"
           :key="index"
