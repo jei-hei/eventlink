@@ -92,6 +92,11 @@ export function usePortalEvents(
     return store.approvedForRole(role, auth.userId);
   });
 
+  const declinedEvents = computed(() => {
+    if (!useDb.value || !auth.userId) return [];
+    return store.declinedForRole(role, auth.userId);
+  });
+
   /** All approved/posted events for the shared schedule calendar (not scoped to submitter). */
   const scheduledEvents = computed(() => {
     if (!useDb.value) return mock.approvedEvents.value;
@@ -221,9 +226,17 @@ export function usePortalEvents(
     });
   }
 
+  async function handleResubmitDeclined(id: string, input: UpdateEventRequestInput) {
+    if (useDb.value) {
+      await runAction(() => store.resubmitDeclined(id, input));
+      return;
+    }
+  }
+
   return {
     events,
     approvedEvents,
+    declinedEvents,
     scheduledEvents,
     handleApprove,
     handleReject,
@@ -231,6 +244,7 @@ export function usePortalEvents(
     handlePostEvent,
     handleCreateFeedPost,
     handleUpdateEvent,
+    handleResubmitDeclined,
     submitRequest,
     useDb,
     busy,

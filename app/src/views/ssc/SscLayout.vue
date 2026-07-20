@@ -17,12 +17,14 @@ const portal = usePortalEvents("ssc", { events: mockPending, approvedEvents: moc
 const {
   events,
   approvedEvents,
+  declinedEvents,
   scheduledEvents,
   handleApprove,
   handleReject,
   handleCreateEvent,
   handlePostEvent,
   handleCreateFeedPost,
+  handleResubmitDeclined,
 } = portal;
 
 const toast = ref<{
@@ -45,12 +47,14 @@ provide(studentPostPublishKey, handleCreateFeedPost);
 provide(sscPortalKey, {
   events,
   approvedEvents,
+  declinedEvents,
   scheduledEvents,
   handleApprove,
   handleReject,
   handleCreateEvent,
   handlePostEvent,
   handleCreateFeedPost,
+  handleResubmitDeclined,
   submitRequest: portal.submitRequest,
   useDb: portal.useDb,
   pushToast,

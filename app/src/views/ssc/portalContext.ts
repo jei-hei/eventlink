@@ -2,17 +2,20 @@ import type { InjectionKey, Ref } from "vue";
 import { inject } from "vue";
 import type { CreateEventRequestInput } from "@/types/eventRequest";
 import type { CreateStudentFeedPostInput } from "@/types/studentPost";
+import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import type { SscEvent } from "./types";
 
 export interface SscPortalContext {
   events: Ref<SscEvent[]>;
   approvedEvents: Ref<SscEvent[]>;
+  declinedEvents: Ref<SscEvent[]>;
   scheduledEvents: Ref<SscEvent[]>;
   handleApprove: (id: string) => void;
   handleReject: (id: string) => void;
   handleCreateEvent: (e: SscEvent) => void;
   handlePostEvent: (id: string) => void;
   handleCreateFeedPost: (input: CreateStudentFeedPostInput) => Promise<void>;
+  handleResubmitDeclined: (id: string, input: UpdateEventRequestInput) => Promise<void>;
   submitRequest?: (input: CreateEventRequestInput) => Promise<void>;
   useDb?: Ref<boolean>;
   pushToast: (title: string, description?: string, variant?: "success" | "error") => void;

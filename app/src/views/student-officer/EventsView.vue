@@ -4,16 +4,20 @@ import { CheckCircle, Search, X } from "lucide-vue-next";
 import type { OfficerEvent } from "./types";
 import { useOfficerPortal } from "./portalContext";
 import EventLetterDownloadButton from "@/components/portal/EventLetterDownloadButton.vue";
+import DeclinedResubmitModal from "@/components/portal/DeclinedResubmitModal.vue";
 import { useAuthStore } from "@/stores/auth";
+import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 
-const { approvedEvents } = useOfficerPortal();
+const { approvedEvents, declinedEvents, handleResubmitDeclined } = useOfficerPortal();
 const auth = useAuthStore();
 
-const requestEvents = computed(() =>
+const approvedRequestEvents = computed(() =>
   approvedEvents.value.filter((e) => e.awaitingPublish || e.status === "Approved" || e.posted),
 );
+const declinedRequestEvents = computed(() => declinedEvents.value);
+const activeTab = ref<"approved" | "declined">("approved");
 const reminderToken = computed(() =>
-  requestEvents.value
+  approvedRequestEvents.value
     .map((e) => `${e.id}:${e.status}:${e.awaitingPublish ? 1 : 0}:${e.posted ? 1 : 0}`)
     .sort()
     .join("|"),
@@ -36,17 +40,33 @@ watch(reminderToken, () => {
 
 const searchQuery = ref("");
 const selectedEvent = ref<OfficerEvent | null>(null);
+const resubmitEvent = ref<OfficerEvent | null>(null);
+const resubmitting = ref(false);
 
 const filteredRequests = computed(() => {
   const q = searchQuery.value.toLowerCase().trim();
-  if (!q) return requestEvents.value;
-  return requestEvents.value.filter(
+  const source = activeTab.value === "declined" ? declinedRequestEvents.value : approvedRequestEvents.value;
+  if (!q) return source;
+  return source.filter(
     (e) =>
       e.name.toLowerCase().includes(q) ||
       (e.description && e.description.toLowerCase().includes(q)) ||
-      e.venue.toLowerCase().includes(q),
+      e.venue.toLowerCase().includes(q) ||
+      (e.declineReason ?? "").toLowerCase().includes(q),
   );
 });
+
+async function onResubmit(id: string, input: UpdateEventRequestInput) {
+  if (resubmitting.value) return;
+  resubmitting.value = true;
+  try {
+    await handleResubmitDeclined(id, input);
+    resubmitEvent.value = null;
+    selectedEvent.value = null;
+  } finally {
+    resubmitting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -76,8 +96,27 @@ const filteredRequests = computed(() => {
           <CheckCircle :size="16" class="text-[#16A34A]" />
           My event requests
         </h2>
-        <div class="bg-[#DCFCE7] text-[#16A34A] text-xs font-bold px-2.5 py-1 rounded-full">
-          {{ requestEvents.length }} approved
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            :class="[
+              'rounded-full px-2.5 py-1 text-xs font-bold',
+              activeTab === 'approved' ? 'bg-[#DCFCE7] text-[#16A34A]' : 'bg-gray-100 text-gray-600',
+            ]"
+            @click="activeTab = 'approved'"
+          >
+            {{ approvedRequestEvents.length }} approved
+          </button>
+          <button
+            type="button"
+            :class="[
+              'rounded-full px-2.5 py-1 text-xs font-bold',
+              activeTab === 'declined' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600',
+            ]"
+            @click="activeTab = 'declined'"
+          >
+            {{ declinedRequestEvents.length }} declined
+          </button>
         </div>
       </div>
 
@@ -93,16 +132,24 @@ const filteredRequests = computed(() => {
               </th>
               <th class="px-6 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider border-b border-gray-200">Date</th>
               <th
+                v-if="activeTab === 'declined'"
+                class="px-6 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider border-b border-gray-200"
+              >
+                Decline reason
+              </th>
+              <th
                 class="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider border-b border-gray-200"
               >
-                Request letter
+                {{ activeTab === "declined" ? "Actions" : "Request letter" }}
               </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
             <tr v-if="filteredRequests.length === 0">
-              <td colspan="4" class="py-12 text-center text-gray-400">
-                <p class="text-sm">No approved event requests yet.</p>
+              <td :colspan="activeTab === 'declined' ? 5 : 4" class="py-12 text-center text-gray-400">
+                <p class="text-sm">
+                  {{ activeTab === "declined" ? "No declined requests yet." : "No approved event requests yet." }}
+                </p>
               </td>
             </tr>
             <tr
@@ -118,8 +165,19 @@ const filteredRequests = computed(() => {
               <td class="px-6 py-4 whitespace-nowrap">
                 <span class="bg-[#DCFCE7] text-[#16A34A] px-2.5 py-1 rounded text-xs font-bold">{{ event.date }}</span>
               </td>
+              <td v-if="activeTab === 'declined'" class="px-6 py-4 text-sm text-red-700">
+                {{ event.declineReason || "No reason provided." }}
+              </td>
               <td class="px-6 py-4 whitespace-nowrap text-right" @click.stop>
-                <EventLetterDownloadButton :event="event" />
+                <button
+                  v-if="activeTab === 'declined'"
+                  type="button"
+                  class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                  @click="resubmitEvent = event"
+                >
+                  Edit & resend
+                </button>
+                <EventLetterDownloadButton v-else :event="event" />
               </td>
             </tr>
           </tbody>
@@ -142,11 +200,22 @@ const filteredRequests = computed(() => {
         <div class="p-5 space-y-3 text-sm">
           <p><span class="text-gray-500">Date:</span> {{ selectedEvent.date }}</p>
           <p><span class="text-gray-500">Venue:</span> {{ selectedEvent.venue }}</p>
+          <p v-if="selectedEvent.declineReason">
+            <span class="text-gray-500">Decline reason:</span>
+            <span class="font-medium text-red-700">{{ selectedEvent.declineReason }}</span>
+          </p>
           <div class="pt-2">
             <EventLetterDownloadButton :event="selectedEvent" />
           </div>
         </div>
       </div>
     </div>
+
+    <DeclinedResubmitModal
+      :event="resubmitEvent"
+      :submitting="resubmitting"
+      @close="resubmitEvent = null"
+      @submit="onResubmit"
+    />
   </div>
 </template>

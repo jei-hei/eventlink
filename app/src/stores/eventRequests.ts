@@ -9,10 +9,12 @@ import {
   fetchHistoryForRequest,
   filterApprovedForRole,
   filterCalendarEvents,
+  filterDeclinedForRole,
   filterPendingForRole,
   filterPostedEvents,
   mapRowToPortalEvent,
   postEventToStaffCalendar,
+  resubmitDeclinedEventRequest,
   updateEventRequest,
 } from "@/services/eventRequestsDb";
 import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
@@ -177,6 +179,10 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     return filterApprovedForRole(rows.value, role, userId).map((r) => mapRowToPortalEvent(r));
   }
 
+  function declinedForRole(role: AppRole, userId: string): PortalEvent[] {
+    return filterDeclinedForRole(rows.value, role, userId).map((r) => mapRowToPortalEvent(r));
+  }
+
   async function submit(input: CreateEventRequestInput) {
     const auth = useAuthStore();
     if (!auth.userId) throw new Error("You must be signed in.");
@@ -212,6 +218,16 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     await load(true);
   }
 
+  async function resubmitDeclined(id: string, input: UpdateEventRequestInput) {
+    const auth = useAuthStore();
+    if (!auth.userId || !auth.appRole) throw new Error("You must be signed in.");
+    if (auth.appRole !== "student_officer" && auth.appRole !== "ssc") {
+      throw new Error("Only Student Officer or SSC can resubmit declined requests.");
+    }
+    await resubmitDeclinedEventRequest(id, input, auth.userId, auth.appRole);
+    await load(true);
+  }
+
   async function getPortalEvent(id: string): Promise<PortalEvent | null> {
     const row = rows.value.find((r) => r.id === id);
     if (!row) return null;
@@ -239,11 +255,13 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     studentBoardLoaded,
     pendingForRole,
     approvedForRole,
+    declinedForRole,
     submit,
     approve,
     decline,
     postToCalendar,
     update,
+    resubmitDeclined,
     getPortalEvent,
   };
 });

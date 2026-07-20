@@ -611,6 +611,15 @@ export function filterApprovedForRole(
   });
 }
 
+export function filterDeclinedForRole(
+  rows: EventRequestRow[],
+  role: AppRole,
+  userId: string,
+): EventRequestRow[] {
+  if (role !== "student_officer" && role !== "ssc") return [];
+  return rows.filter((r) => r.submitted_by === userId && r.status === "declined");
+}
+
 export function filterPostedEvents(rows: EventRequestRow[]): EventRequestRow[] {
   return rows.filter((r) => r.status === "posted");
 }
@@ -666,5 +675,61 @@ export async function updateEventRequest(
     action: "updated",
     step: "eo_publish",
     comment: "Schedule details updated by Executive Officer",
+  });
+}
+
+export async function resubmitDeclinedEventRequest(
+  id: string,
+  input: UpdateEventRequestInput,
+  actorId: string,
+  actorRole: AppRole,
+): Promise<void> {
+  const row = await getRow(id);
+  if (row.status !== "declined") {
+    throw new Error("Only declined requests can be edited and resubmitted.");
+  }
+  if (row.submitted_by !== actorId) {
+    throw new Error("You can only resubmit your own declined requests.");
+  }
+  if (actorRole === "student_officer" && row.request_type !== "student_officer") {
+    throw new Error("This request is not a Student Officer request.");
+  }
+  if (actorRole === "ssc" && row.request_type !== "ssc") {
+    throw new Error("This request is not an SSC request.");
+  }
+
+  const available = await checkVenueAvailable(input.venue, input.startDate, input.endDate, id);
+  if (!available) {
+    throw new Error("This venue is already booked for the selected date range.");
+  }
+
+  const initialStep = getInitialStep(row.request_type);
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("event_requests")
+    .update({
+      activity: input.activity.trim(),
+      start_date: input.startDate,
+      end_date: input.endDate,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      venue: input.venue.trim(),
+      number_of_participants: input.numberOfParticipants,
+      sdgs: input.sdgs?.trim() ?? "",
+      purpose: input.purpose?.trim() ?? "",
+      status: "pending",
+      current_step: initialStep,
+      decline_reason: null,
+      declined_at_step: null,
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  await supabase.from("event_request_history").insert({
+    request_id: id,
+    actor_id: actorId,
+    action: "resubmitted",
+    step: initialStep,
+    comment: "Declined request edited and resubmitted",
   });
 }

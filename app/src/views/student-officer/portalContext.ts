@@ -2,17 +2,20 @@ import type { InjectionKey, Ref } from "vue";
 import { inject } from "vue";
 import type { CreateEventRequestInput } from "@/types/eventRequest";
 import type { CreateStudentFeedPostInput } from "@/types/studentPost";
+import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import type { OfficerEvent } from "./types";
 
 export interface OfficerPortalContext {
   events: Ref<OfficerEvent[]>;
   approvedEvents: Ref<OfficerEvent[]>;
+  declinedEvents: Ref<OfficerEvent[]>;
   scheduledEvents: Ref<OfficerEvent[]>;
   handleApprove: (id: string) => void;
   handleReject: (id: string) => void;
   handleCreateEvent: (e: OfficerEvent) => void;
   handlePostEvent: (id: string) => void;
   handleCreateFeedPost: (input: CreateStudentFeedPostInput) => Promise<void>;
+  handleResubmitDeclined: (id: string, input: UpdateEventRequestInput) => Promise<void>;
   pushToast?: (title: string, description?: string, variant?: "success" | "error") => void;
   submitRequest?: (input: CreateEventRequestInput) => Promise<void>;
   useDb?: Ref<boolean>;
