@@ -425,6 +425,11 @@ export const useAuthStore = defineStore("auth", () => {
       appRole.value = null;
       collegeId.value = null;
       organizationId.value = null;
+      try {
+        useNotificationsStore().clear();
+      } catch {
+        // ignore store lifecycle timing issues
+      }
       return;
     }
     userId.value = session.user.id;
@@ -432,6 +437,11 @@ export const useAuthStore = defineStore("auth", () => {
     await repairProfileIfMissing();
     await loadRole(session.user.id);
     await loadProfile(session.user.id);
+    try {
+      await useNotificationsStore().hydrate(true);
+    } catch {
+      // best effort: login should not fail due to notification hydration
+    }
     loadSessionPreference();
     loadLastActivityAt();
     startInactivityMonitor();

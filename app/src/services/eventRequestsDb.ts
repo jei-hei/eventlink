@@ -1,6 +1,7 @@
 import { getSupabase } from "@/lib/supabase";
 import { uploadEventLetter } from "@/services/eventLetterStorage";
 import { getEventPostImagePublicUrl, uploadEventPostImage } from "@/services/eventPostImageStorage";
+import { sendNotificationEmail } from "@/services/notificationEmail";
 import type { PublishStudentPostInput } from "@/types/studentPost";
 import type { AppRole } from "@/types/appRole";
 import type {
@@ -39,6 +40,47 @@ function formatShortDate(iso: string): string {
 function formatDateRange(start: string, end: string): string {
   if (start === end) return formatShortDate(start);
   return `${formatShortDate(start)} – ${formatShortDate(end)}`;
+}
+
+type NotificationPayload = {
+  userId: string;
+  title: string;
+  body: string;
+  category: "approval" | "calendar" | "system" | "security" | "other";
+  emailSubject?: string;
+  emailText?: string;
+};
+
+async function notifyUser(payload: NotificationPayload): Promise<void> {
+  const supabase = getSupabase();
+  const { error: insertErr } = await supabase.from("notifications").insert({
+    user_id: payload.userId,
+    title: payload.title,
+    body: payload.body,
+    category: payload.category,
+  });
+  if (insertErr) return;
+
+  const { data: profile, error: profileErr } = await supabase
+    .from("profiles")
+    .select("email, notify_email")
+    .eq("id", payload.userId)
+    .maybeSingle();
+  if (profileErr) return;
+  const canEmail = (profile?.notify_email ?? true) && !!profile?.email && String(profile.email).includes("@");
+  if (!canEmail) return;
+
+  const subject = payload.emailSubject ?? payload.title;
+  const text = payload.emailText ?? payload.body;
+  try {
+    await sendNotificationEmail({
+      to: String(profile?.email ?? ""),
+      subject,
+      text,
+    });
+  } catch {
+    // best effort only; in-app notification is primary channel
+  }
 }
 
 function mapStatus(row: EventRequestRow): PortalEvent["status"] {
@@ -312,6 +354,15 @@ export async function createEventRequest(
     comment: "Event request submitted",
   });
 
+  await notifyUser({
+    userId: submittedBy,
+    title: "Request submitted",
+    body: `${input.activity.trim()} was submitted and is now awaiting ${stepLabel(initialStep)}.`,
+    category: "approval",
+    emailSubject: "EventLink: Request submitted",
+    emailText: `Your event request "${input.activity.trim()}" was submitted successfully and is awaiting ${stepLabel(initialStep)}.`,
+  });
+
   return requestId;
 }
 
@@ -431,6 +482,16 @@ export async function approveEventRequest(
     step: row.current_step,
     comment: `Approved at ${stepLabel(row.current_step)}`,
   });
+
+  const nextLabel = next ? stepLabel(next) : "final processing";
+  await notifyUser({
+    userId: row.submitted_by,
+    title: "Request approved",
+    body: `${row.activity} was approved at ${stepLabel(row.current_step)}. Next: ${nextLabel}.`,
+    category: "approval",
+    emailSubject: "EventLink: Request approved",
+    emailText: `Your request "${row.activity}" was approved at ${stepLabel(row.current_step)}. Next step: ${nextLabel}.`,
+  });
 }
 
 export async function declineEventRequest(
@@ -462,6 +523,16 @@ export async function declineEventRequest(
     action: "declined",
     step: row.current_step,
     comment: reason.trim() || "Declined",
+  });
+
+  const cleanReason = reason.trim() || "No reason provided.";
+  await notifyUser({
+    userId: row.submitted_by,
+    title: "Request declined",
+    body: `${row.activity} was declined at ${stepLabel(row.current_step)}. Reason: ${cleanReason}`,
+    category: "approval",
+    emailSubject: "EventLink: Request declined",
+    emailText: `Your request "${row.activity}" was declined at ${stepLabel(row.current_step)}.\nReason: ${cleanReason}\n\nYou can edit and resend your request from the Events page.`,
   });
 }
 
@@ -524,6 +595,15 @@ export async function postEventToStudents(
     step: "eo_publish",
     comment: `Published to student dashboard (${actorRole === "ssc" ? "SSC" : "Student organization"})`,
   });
+
+  await notifyUser({
+    userId: row.submitted_by,
+    title: "Published to student feed",
+    body: `${row.activity} is now live on the student dashboard.`,
+    category: "system",
+    emailSubject: "EventLink: Posted to students",
+    emailText: `Your event "${row.activity}" is now published on the student dashboard feed.`,
+  });
 }
 
 /** Executive Officer — staff schedule calendar only (not /student). */
@@ -549,6 +629,15 @@ export async function postEventToStaffCalendar(id: string, actorId: string): Pro
     action: "calendar_posted",
     step: "eo_publish",
     comment: "Published to staff schedule calendar",
+  });
+
+  await notifyUser({
+    userId: row.submitted_by,
+    title: "Published to staff calendar",
+    body: `${row.activity} was posted to the staff schedule calendar by EO.`,
+    category: "calendar",
+    emailSubject: "EventLink: Posted to staff calendar",
+    emailText: `Your event "${row.activity}" was posted to the staff schedule calendar.`,
   });
 }
 
@@ -767,5 +856,14 @@ export async function resubmitDeclinedEventRequest(
     action: "resubmitted",
     step: initialStep,
     comment: "Declined request edited and resubmitted",
+  });
+
+  await notifyUser({
+    userId: row.submitted_by,
+    title: "Request resubmitted",
+    body: `${input.activity.trim()} was edited and resubmitted. It is now awaiting ${stepLabel(initialStep)}.`,
+    category: "approval",
+    emailSubject: "EventLink: Request resubmitted",
+    emailText: `Your request "${input.activity.trim()}" was edited and resubmitted. It is now awaiting ${stepLabel(initialStep)}.`,
   });
 }
