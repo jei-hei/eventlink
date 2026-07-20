@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
+import { optimizeImageForUpload } from "@/services/imageUploadOptimize";
 
 const BUCKET = "profile-avatars";
 
@@ -15,13 +16,14 @@ export async function uploadProfileAvatar(file: File, userId: string): Promise<s
     throw new Error("Please upload a JPEG, PNG, WebP, or GIF image.");
   }
 
-  const safeName = file.name.replace(/[^\w.\-() ]+/g, "_").trim() || "avatar.jpg";
+  const optimized = await optimizeImageForUpload(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.86 });
+  const safeName = optimized.name.replace(/[^\w.\-() ]+/g, "_").trim() || "avatar.webp";
   const path = `${userId}/${Date.now()}_${safeName}`;
 
   const supabase = getSupabase();
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+  const { error } = await supabase.storage.from(BUCKET).upload(path, optimized, {
     upsert: true,
-    contentType: file.type || undefined,
+    contentType: optimized.type || undefined,
   });
   if (error) throw error;
   return path;

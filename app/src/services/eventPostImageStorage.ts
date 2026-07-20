@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
+import { optimizeImageForUpload } from "@/services/imageUploadOptimize";
 
 const BUCKET = "event-post-images";
 
@@ -19,13 +20,14 @@ export async function uploadEventPostImage(
     throw new Error("Please upload a JPEG, PNG, WebP, or GIF image.");
   }
 
-  const safeName = file.name.replace(/[^\w.\-() ]+/g, "_").trim() || "post.jpg";
+  const optimized = await optimizeImageForUpload(file, { maxWidth: 1920, maxHeight: 1920, quality: 0.85 });
+  const safeName = optimized.name.replace(/[^\w.\-() ]+/g, "_").trim() || "post.webp";
   const path = `${userId}/${requestId}/${Date.now()}_${safeName}`;
 
   const supabase = getSupabase();
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+  const { error } = await supabase.storage.from(BUCKET).upload(path, optimized, {
     upsert: true,
-    contentType: file.type || undefined,
+    contentType: optimized.type || undefined,
   });
   if (error) throw error;
   return path;

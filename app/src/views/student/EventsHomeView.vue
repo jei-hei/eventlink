@@ -83,6 +83,14 @@ async function loadFeed() {
   }
 }
 
+async function loadMoreFeed() {
+  try {
+    await eventStore.loadMoreForStudentDashboard();
+  } catch {
+    /* feedError set in store */
+  }
+}
+
 const displayEvents = computed(() =>
   useLiveFeed.value && eventStore.studentBoardLoaded
     ? eventStore.studentFeedEvents
@@ -272,6 +280,15 @@ const filteredEvents = computed(() => {
           @select="selectedEvent = event"
           @preview-image="openImagePreview"
         />
+        <button
+          v-if="useLiveFeed && eventStore.studentFeedHasMore && !searchQuery.trim() && selectedOrg === ALL_ORGANIZATIONS"
+          type="button"
+          class="portal-btn-secondary mt-2 w-full py-2.5"
+          :disabled="eventStore.feedLoading"
+          @click="loadMoreFeed"
+        >
+          {{ eventStore.feedLoading ? "Loading…" : "Load more posts" }}
+        </button>
       </div>
     </main>
 

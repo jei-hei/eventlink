@@ -15,6 +15,12 @@ const FEED_SELECT_WITH_LETTER = `
   event_requests ( letter_path )
 `;
 
+export type StudentFeedPostsPage = {
+  rows: StudentFeedPostRow[];
+  hasMore: boolean;
+  nextOffset: number;
+};
+
 export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent {
   const posted = new Date(row.posted_at);
   const imageUrls = (row.image_paths ?? [])
@@ -40,13 +46,32 @@ export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent
 }
 
 export async function fetchStudentFeedPosts(): Promise<StudentFeedPostRow[]> {
+  const page = await fetchStudentFeedPostsPage(0, 20);
+  return page.rows;
+}
+
+export async function fetchStudentFeedPostsPage(
+  offset = 0,
+  limit = 20,
+): Promise<StudentFeedPostsPage> {
   const supabase = getSupabase();
+  const start = Math.max(0, offset);
+  const sliceSize = Math.max(1, Math.min(100, limit));
+  const end = start + sliceSize;
   const { data, error } = await supabase
     .from("student_feed_posts")
     .select(FEED_SELECT)
-    .order("posted_at", { ascending: false });
+    .order("posted_at", { ascending: false })
+    .range(start, end);
   if (error) throw error;
-  return (data ?? []) as StudentFeedPostRow[];
+  const fetched = (data ?? []) as StudentFeedPostRow[];
+  const hasMore = fetched.length > sliceSize;
+  const rows = hasMore ? fetched.slice(0, sliceSize) : fetched;
+  return {
+    rows,
+    hasMore,
+    nextOffset: start + rows.length,
+  };
 }
 
 export async function fetchFeedPostsBySubmitter(userId: string): Promise<StudentFeedPostRow[]> {

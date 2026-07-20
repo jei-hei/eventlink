@@ -19,8 +19,8 @@ import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import type { CreateEventRequestInput } from "@/types/eventRequest";
 import {
   createStudentFeedPost,
+  fetchStudentFeedPostsPage,
   fetchFeedPostsBySubmitter,
-  fetchStudentFeedPosts,
   mapFeedPostToStudentEvent,
 } from "@/services/studentFeedPostsDb";
 import type { CreateStudentFeedPostInput, StudentFeedPostRow } from "@/types/studentPost";
@@ -38,6 +38,8 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   const feedError = ref<string | null>(null);
   const loaded = ref(false);
   const studentBoardLoaded = ref(false);
+  const studentFeedOffset = ref(0);
+  const studentFeedHasMore = ref(false);
   const feedPostRows = ref<StudentFeedPostRow[]>([]);
   const myFeedPostRows = ref<StudentFeedPostRow[]>([]);
 
@@ -82,7 +84,33 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     feedLoading.value = true;
     feedError.value = null;
     try {
-      feedPostRows.value = await fetchStudentFeedPosts();
+      const page = await fetchStudentFeedPostsPage(0, 20);
+      feedPostRows.value = page.rows;
+      studentFeedOffset.value = page.nextOffset;
+      studentFeedHasMore.value = page.hasMore;
+      studentBoardLoaded.value = true;
+    } catch (e) {
+      feedError.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      feedLoading.value = false;
+    }
+  }
+
+  async function loadMoreForStudentDashboard() {
+    if (!isSupabaseConfigured || feedLoading.value || !studentFeedHasMore.value) return;
+    feedLoading.value = true;
+    feedError.value = null;
+    try {
+      const page = await fetchStudentFeedPostsPage(studentFeedOffset.value, 20);
+      const existing = new Set(feedPostRows.value.map((r) => r.id));
+      const merged = [...feedPostRows.value];
+      for (const row of page.rows) {
+        if (!existing.has(row.id)) merged.push(row);
+      }
+      feedPostRows.value = merged;
+      studentFeedOffset.value = page.nextOffset;
+      studentFeedHasMore.value = page.hasMore;
       studentBoardLoaded.value = true;
     } catch (e) {
       feedError.value = e instanceof Error ? e.message : String(e);
@@ -103,6 +131,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     const without = feedPostRows.value.filter((r) => r.id !== row.id);
     feedPostRows.value = [row, ...without];
     studentBoardLoaded.value = true;
+    studentFeedOffset.value += 1;
 
     const auth = useAuthStore();
     if (auth.userId && row.submitted_by === auth.userId) {
@@ -185,9 +214,11 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     postedEvents,
     studentFeedEvents,
     myFeedPosts,
+    studentFeedHasMore,
     scheduledEvents,
     load,
     loadForStudentDashboard,
+    loadMoreForStudentDashboard,
     loadMyFeedPosts,
     createFeedPost,
     studentBoardLoaded,
