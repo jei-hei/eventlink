@@ -24,8 +24,12 @@ const eventStatusData = ref([
 const organizationData = ref([
   { org: "No data yet", events: 0 },
 ]);
+const collegeData = ref([
+  { college: "No data yet", events: 0 },
+]);
 
 const maxOrgEvents = computed(() => Math.max(...organizationData.value.map((o) => o.events), 1));
+const maxCollegeEvents = computed(() => Math.max(...collegeData.value.map((c) => c.events), 1));
 
 const recentActivity = ref<ActivityItem[]>([]);
 
@@ -47,6 +51,7 @@ async function loadAnalytics() {
     eventStatusData.value = data.eventStatusData;
     recentActivity.value = data.recentActivity;
     organizationData.value = data.organizationData;
+    collegeData.value = data.collegeData;
     totals.value = {
       totalThisYear: data.totals.totalThisYear,
       approvedThisMonth: data.totals.approvedThisMonth,
@@ -282,7 +287,8 @@ const pieGradient = computed(() => {
       </div>
     </div>
 
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
         <div class="mb-4">
           <h3 class="font-bold text-gray-800 text-sm">Events by Organization</h3>
           <p class="text-gray-400 text-xs">All time · Top {{ organizationData.length || 0 }} organizations</p>
@@ -301,6 +307,27 @@ const pieGradient = computed(() => {
             </div>
           </div>
         </div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <div class="mb-4">
+          <h3 class="font-bold text-gray-800 text-sm">Events by College</h3>
+          <p class="text-gray-400 text-xs">All time · Top {{ collegeData.length || 0 }} colleges</p>
+        </div>
+        <div class="space-y-3">
+          <div v-for="row in collegeData" :key="row.college">
+            <div class="flex justify-between text-xs text-gray-600 mb-1">
+              <span class="font-semibold text-gray-800 truncate pr-2">{{ row.college }}</span>
+              <span>{{ row.events }}</span>
+            </div>
+            <div class="h-6 bg-gray-100 rounded overflow-hidden">
+              <div
+                class="h-full bg-[#059669] rounded-r transition-all"
+                :style="{ width: `${(row.events / maxCollegeEvents) * 100}%` }"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">

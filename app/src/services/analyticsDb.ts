@@ -9,7 +9,10 @@ type RequestRow = {
   status: "pending" | "approved" | "declined" | "posted";
   current_step: string | null;
   created_at: string;
-  organizations?: { name: string | null }[] | { name: string | null } | null;
+  organizations?:
+    | { name: string | null; college_id?: string | null }[]
+    | { name: string | null; college_id?: string | null }
+    | null;
 };
 
 export type MonthlyPoint = {
@@ -45,12 +48,14 @@ export type StatTotals = {
 };
 
 export type OrganizationPoint = { org: string; events: number };
+export type CollegePoint = { college: string; events: number };
 
 export type AnalyticsOverview = {
   monthlyEvents: MonthlyPoint[];
   eventStatusData: StatusSlice[];
   recentActivity: ActivityItem[];
   organizationData: OrganizationPoint[];
+  collegeData: CollegePoint[];
   totals: StatTotals;
   peakMonthLabel: string;
 };
@@ -109,6 +114,7 @@ function emptyOverview(): AnalyticsOverview {
     ],
     recentActivity: [],
     organizationData: [],
+    collegeData: [],
     totals: {
       totalThisYear: 0,
       approvedThisMonth: 0,
@@ -127,7 +133,7 @@ export async function fetchAnalyticsOverview(scope: AnalyticsScope): Promise<Ana
   const supabase = getSupabase();
   let query = supabase
     .from("event_requests")
-    .select("id, activity, request_type, status, current_step, created_at, organizations(name)")
+    .select("id, activity, request_type, status, current_step, created_at, organizations(name, college_id)")
     .order("created_at", { ascending: false });
 
   if (scope === "ssc" || scope === "student_officer") {
@@ -137,6 +143,12 @@ export async function fetchAnalyticsOverview(scope: AnalyticsScope): Promise<Ana
   const { data, error } = await query;
   if (error) throw error;
   const rows = (data ?? []) as unknown as RequestRow[];
+
+  const { data: collegeRows } = await supabase.from("colleges").select("id, name");
+  const collegeNameById = new Map<string, string>(
+    ((collegeRows ?? []) as Array<{ id: string; name: string | null }>).map((c) => [c.id, c.name?.trim() || "College"]),
+  );
+
   if (!rows.length) return emptyOverview();
 
   const now = new Date();
@@ -155,6 +167,7 @@ export async function fetchAnalyticsOverview(scope: AnalyticsScope): Promise<Ana
   });
 
   const orgMap = new Map<string, number>();
+  const collegeMap = new Map<string, number>();
   let approved = 0;
   let pending = 0;
   let rejected = 0;
@@ -194,6 +207,10 @@ export async function fetchAnalyticsOverview(scope: AnalyticsScope): Promise<Ana
 
     const orgName = organizationName(row);
     orgMap.set(orgName, (orgMap.get(orgName) ?? 0) + 1);
+
+    const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations;
+    const collegeName = org?.college_id ? (collegeNameById.get(org.college_id) ?? "Unassigned College") : "Unassigned College";
+    collegeMap.set(collegeName, (collegeMap.get(collegeName) ?? 0) + 1);
   });
 
   const monthlyEvents = Array.from(monthMap.values());
@@ -216,6 +233,10 @@ export async function fetchAnalyticsOverview(scope: AnalyticsScope): Promise<Ana
     .map(([org, events]) => ({ org, events }))
     .sort((a, b) => b.events - a.events)
     .slice(0, 6);
+  const collegeData = Array.from(collegeMap.entries())
+    .map(([college, events]) => ({ college, events }))
+    .sort((a, b) => b.events - a.events)
+    .slice(0, 8);
 
   return {
     monthlyEvents,
@@ -226,6 +247,7 @@ export async function fetchAnalyticsOverview(scope: AnalyticsScope): Promise<Ana
     ],
     recentActivity,
     organizationData,
+    collegeData,
     totals: {
       totalThisYear,
       approvedThisMonth,

@@ -64,10 +64,16 @@ export const useAuthStore = defineStore("auth", () => {
   let singleSessionTimer: ReturnType<typeof setInterval> | null = null;
   let inactivityListenersBound = false;
   let currentSessionMarker: string | null = null;
+  let lastActivityAt = 0;
 
   function sessionPreferenceKey() {
     if (!userId.value || !appRole.value) return null;
     return `eventlink:stay-online:${userId.value}:${appRole.value}`;
+  }
+
+  function lastActivityKey() {
+    if (!userId.value) return null;
+    return `eventlink:last-activity:${userId.value}`;
   }
 
   function loadSessionPreference() {
@@ -107,6 +113,38 @@ export const useAuthStore = defineStore("auth", () => {
       clearInterval(singleSessionTimer);
       singleSessionTimer = null;
     }
+  }
+
+  function loadLastActivityAt() {
+    if (typeof window === "undefined") return;
+    const key = lastActivityKey();
+    if (!key) {
+      lastActivityAt = 0;
+      return;
+    }
+    const raw = Number(window.localStorage.getItem(key) ?? "0");
+    lastActivityAt = Number.isFinite(raw) && raw > 0 ? raw : 0;
+  }
+
+  function persistLastActivityAt(ts: number) {
+    if (typeof window === "undefined") return;
+    const key = lastActivityKey();
+    if (!key) return;
+    window.localStorage.setItem(key, String(ts));
+  }
+
+  function clearLastActivityAt() {
+    lastActivityAt = 0;
+    if (typeof window === "undefined") return;
+    const key = lastActivityKey();
+    if (!key) return;
+    window.localStorage.removeItem(key);
+  }
+
+  function touchActivity() {
+    const now = Date.now();
+    lastActivityAt = now;
+    persistLastActivityAt(now);
   }
 
   function isSecurityExemptEmail(mail: string | null | undefined): boolean {
@@ -258,23 +296,59 @@ export const useAuthStore = defineStore("auth", () => {
     await signOut();
   }
 
+  async function enforceInactivityNow() {
+    if (!isAuthenticated.value) {
+      clearInactivityTimer();
+      return;
+    }
+
+    if (!lastActivityAt) {
+      loadLastActivityAt();
+      if (!lastActivityAt) touchActivity();
+    }
+
+    const elapsed = Date.now() - lastActivityAt;
+    if (elapsed >= inactivityLogoutMs.value) {
+      await signOutDueToInactivity();
+      return;
+    }
+    resetInactivityTimer();
+  }
+
   function resetInactivityTimer() {
     if (typeof window === "undefined") return;
     if (!isAuthenticated.value) {
       clearInactivityTimer();
       return;
     }
+    if (!lastActivityAt) touchActivity();
     clearInactivityTimer();
+    const elapsed = Date.now() - lastActivityAt;
+    const remaining = Math.max(0, inactivityLogoutMs.value - elapsed);
     inactivityTimer = setTimeout(() => {
-      void signOutDueToInactivity();
-    }, inactivityLogoutMs.value);
+      void enforceInactivityNow();
+    }, remaining);
   }
 
   function bindInactivityListeners() {
     if (typeof window === "undefined" || inactivityListenersBound) return;
-    const onActivity = () => resetInactivityTimer();
+    const onActivity = () => {
+      touchActivity();
+      resetInactivityTimer();
+    };
     ACTIVITY_EVENTS.forEach((eventName) => {
       window.addEventListener(eventName, onActivity, { passive: true });
+    });
+    window.addEventListener("focus", () => {
+      void enforceInactivityNow();
+    });
+    window.addEventListener("pageshow", () => {
+      void enforceInactivityNow();
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        void enforceInactivityNow();
+      }
     });
     inactivityListenersBound = true;
   }
@@ -343,6 +417,7 @@ export const useAuthStore = defineStore("auth", () => {
       clearInactivityTimer();
       clearSingleSessionTimer();
       currentSessionMarker = null;
+      clearLastActivityAt();
       stayOnlineEnabled.value = false;
       userId.value = null;
       email.value = null;
@@ -358,7 +433,9 @@ export const useAuthStore = defineStore("auth", () => {
     await loadRole(session.user.id);
     await loadProfile(session.user.id);
     loadSessionPreference();
+    loadLastActivityAt();
     startInactivityMonitor();
+    await enforceInactivityNow();
     if (isSecurityExemptEmail(session.user.email ?? email.value)) {
       clearSingleSessionTimer();
       currentSessionMarker = null;
@@ -552,16 +629,19 @@ export const useAuthStore = defineStore("auth", () => {
     clearInactivityTimer();
     clearSingleSessionTimer();
     currentSessionMarker = null;
+    clearLastActivityAt();
     if (useMock.value) {
       logout();
       return;
     }
     const supabase = getSupabase();
-    await supabase.auth.signOut();
-    userId.value = null;
-    email.value = null;
-    displayName.value = null;
-    appRole.value = null;
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Still clear local auth state so idle/session security remains reliable.
+    } finally {
+      logout();
+    }
   }
 
   /** Local-only fallback when Supabase env vars are missing. */
@@ -591,6 +671,7 @@ export const useAuthStore = defineStore("auth", () => {
     clearInactivityTimer();
     clearSingleSessionTimer();
     currentSessionMarker = null;
+    clearLastActivityAt();
     stayOnlineEnabled.value = false;
     email.value = null;
     displayName.value = null;
