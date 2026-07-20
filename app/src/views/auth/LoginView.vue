@@ -176,12 +176,27 @@ async function onSubmit() {
       auth.appRole !== "student" &&
       !isTestEmailAddress(email.value);
     if (requiresEmailOtp) {
-      await auth.sendEmailOtp(email.value.trim());
-      await auth.signOut();
-      otpRequired.value = true;
-      otpEmail.value = email.value.trim();
-      otpCode.value = "";
-      ui.pushToast("OTP sent", `Enter the code sent to ${otpEmail.value}.`, "info");
+      try {
+        await auth.sendEmailOtp(email.value.trim());
+        otpRequired.value = true;
+        otpEmail.value = email.value.trim();
+        otpCode.value = "";
+        ui.pushToast("OTP sent", `Enter the code sent to ${otpEmail.value}.`, "info");
+      } catch (otpErr) {
+        const otpMsg = formatAuthError(otpErr);
+        if (otpMsg.toLowerCase().includes("rate")) {
+          error.value = "Email rate limit reached. Please wait a few minutes, then try again.";
+        } else {
+          error.value = otpMsg;
+        }
+      } finally {
+        // Never keep a provisional password session active for OTP-required users.
+        try {
+          await auth.signOut();
+        } catch {
+          // Ignore sign-out errors here; user must still verify OTP before access.
+        }
+      }
       return;
     }
     if (!auth.useMock && auth.appRole !== "student" && isTestEmailAddress(email.value)) {
