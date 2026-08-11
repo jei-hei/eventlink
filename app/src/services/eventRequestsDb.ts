@@ -11,14 +11,18 @@ import type {
 } from "@/types/eventRequest";
 import type { PortalEvent } from "@/types/portalEvent";
 import {
+  appRoleToResourceOffice,
   buildWorkflowHistory,
   getInitialStep,
   getNextStep,
   roleMatchesStep,
   stepLabel,
+  workflowStatusForResourceOffices,
   workflowStatusForStep,
 } from "@/services/eventRequestWorkflow";
 import type { DbWorkflowStep } from "@/types/eventRequest";
+import type { ResourceAssignmentInput, ResourceOffice } from "@/types/resourceOffice";
+import { resourceOfficeLabel } from "@/types/resourceOffice";
 
 function formatTime(t: string): string {
   if (!t) return "";
@@ -128,16 +132,24 @@ export function mapRowToPortalEvent(
       at: new Date(h.created_at).toLocaleString(),
     }));
 
+  const pendingOffices = (row.event_request_resource_assignments ?? [])
+    .filter((a) => a.status === "pending")
+    .map((a) => a.assigned_office as ResourceOffice);
+
   const wfStatus =
     row.status === "declined"
       ? "Rejected"
-      : row.status === "posted"
+      : row.status === "posted" || (row.status === "approved" && row.calendar_posted_at)
         ? "Approved"
-        : row.current_step === "eo_publish"
-          ? "Pending EO"
-          : row.status === "approved"
-            ? "Approved"
-            : (workflowStatusForStep(row.current_step) as PortalEvent["workflowStatus"]);
+        : row.current_step === "resource_offices"
+          ? (workflowStatusForResourceOffices(pendingOffices) as PortalEvent["workflowStatus"])
+          : row.current_step === "eo_publish"
+            ? "Pending EO"
+            : row.current_step === "eo_schedule"
+              ? "Pending EO Review"
+              : row.status === "approved"
+                ? "Approved"
+                : (workflowStatusForStep(row.current_step) as PortalEvent["workflowStatus"]);
 
   return {
     id: row.id,
@@ -147,6 +159,7 @@ export function mapRowToPortalEvent(
     startDate: row.start_date,
     endDate: row.end_date,
     venue: row.venue,
+    venueId: row.venue_id ?? null,
     status: mapStatus(row),
     workflowStatus: wfStatus,
     organization: orgName,
@@ -154,6 +167,11 @@ export function mapRowToPortalEvent(
     description: parsedPurpose.cleanPurpose,
     purpose: parsedPurpose.cleanPurpose,
     itemsEquipment: equipmentSummary(row),
+    equipmentLines: (row.event_request_equipment ?? []).map((line) => ({
+      equipmentId: line.equipment?.id ?? "",
+      name: line.equipment?.name?.trim() || "Equipment",
+      quantity: Math.max(1, Number(line.quantity_requested ?? 1)),
+    })),
     startTime: formatTime(row.start_time),
     endTime: formatTime(row.end_time),
     participants: row.number_of_participants,
@@ -164,6 +182,18 @@ export function mapRowToPortalEvent(
     calendarPosted: row.calendar_posted_at != null,
     awaitingPublish: row.current_step === "eo_publish" && row.status !== "posted",
     awaitingCalendarPost: row.current_step === "eo_publish" && !row.calendar_posted_at,
+    awaitingResourceAssignment: row.current_step === "eo_schedule" && row.status === "pending",
+    resourceAssignments: (row.event_request_resource_assignments ?? []).map((a) => ({
+      id: a.id,
+      resourceKind: a.resource_kind,
+      venueId: a.venue_id,
+      equipmentId: a.equipment_id,
+      resourceName: a.resource_name,
+      quantity: a.quantity,
+      assignedOffice: a.assigned_office as ResourceOffice,
+      status: a.status,
+      declineReason: a.decline_reason,
+    })),
     declineReason: row.decline_reason ?? undefined,
     letterPath: row.letter_path,
     studentPostCaption: row.student_post_caption,
@@ -212,14 +242,22 @@ const EVENT_REQUEST_LIST_SELECT = `
   *,
   organizations ( id, name, college_id ),
   profiles!event_requests_submitted_by_fkey ( display_name ),
-  event_request_equipment ( quantity_requested, equipment ( id, name ) )
+  event_request_equipment ( quantity_requested, equipment ( id, name ) ),
+  event_request_resource_assignments (
+    id, resource_kind, venue_id, equipment_id, resource_name, quantity,
+    assigned_office, status, decline_reason
+  )
 `;
 
 const EVENT_REQUEST_LIST_SELECT_INNER_ORG = `
   *,
   organizations!inner ( id, name, college_id ),
   profiles!event_requests_submitted_by_fkey ( display_name ),
-  event_request_equipment ( quantity_requested, equipment ( id, name ) )
+  event_request_equipment ( quantity_requested, equipment ( id, name ) ),
+  event_request_resource_assignments (
+    id, resource_kind, venue_id, equipment_id, resource_name, quantity,
+    assigned_office, status, decline_reason
+  )
 `;
 
 const PORTAL_LIST_LIMIT = 400;
@@ -270,7 +308,12 @@ export async function fetchPortalEventRequestsForRole(
       );
     }
     case "ssc":
-      return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) => q.eq("request_type", "ssc"));
+      // SSC-created requests plus any request with SSC resource assignments / scheduled
+      return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
+        q.or(
+          "request_type.eq.ssc,and(status.eq.pending,current_step.eq.resource_offices),status.in.(approved,posted),calendar_posted_at.not.is.null",
+        ),
+      );
     case "adviser": {
       if (!organizationId) return [];
       return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
@@ -284,8 +327,12 @@ export async function fetchPortalEventRequestsForRole(
       );
     }
     case "gso":
+    case "it_infrastructure":
+    case "sports_office":
       return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
-        q.or("and(status.eq.pending,current_step.eq.gso),status.in.(approved,posted)"),
+        q.or(
+          "and(status.eq.pending,current_step.in.(gso,resource_offices)),status.in.(approved,posted),calendar_posted_at.not.is.null",
+        ),
       );
     case "osas":
       return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
@@ -294,7 +341,7 @@ export async function fetchPortalEventRequestsForRole(
     case "eo":
       return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
         q.or(
-          "current_step.in.(eo_schedule,eo_publish),calendar_posted_at.not.is.null,status.in.(approved,posted)",
+          "current_step.in.(eo_schedule,eo_publish,resource_offices),calendar_posted_at.not.is.null,status.in.(approved,posted)",
         ),
       );
     default:
@@ -383,6 +430,7 @@ export async function createEventRequest(
       start_time: input.startTime,
       end_time: input.endTime,
       venue: input.venue.trim(),
+      venue_id: input.venueId ?? null,
       number_of_participants: input.numberOfParticipants,
       sdgs: input.sdgs?.trim() ?? "",
       purpose: input.purpose?.trim() ?? "",
@@ -459,7 +507,9 @@ async function getRow(id: string): Promise<EventRequestRow> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("event_requests")
-    .select(`*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
+    .select(
+      `*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) ), event_request_resource_assignments ( id, resource_kind, venue_id, equipment_id, resource_name, quantity, assigned_office, status, decline_reason )`,
+    )
     .eq("id", id)
     .single();
   if (error) throw error;
@@ -541,6 +591,12 @@ export async function approveEventRequest(
   if (row.current_step === "eo_publish") {
     throw new Error("Use Post to calendar (EO) or Post to students (organization) for this step.");
   }
+  if (row.current_step === "eo_schedule" && actorRole === "eo") {
+    throw new Error("Use Approve & Forward to assign resources to responsible offices.");
+  }
+  if (row.current_step === "resource_offices") {
+    throw new Error("Use resource-office approval for assigned resources.");
+  }
   if (row.status !== "pending") {
     throw new Error("Only pending requests can be approved.");
   }
@@ -556,7 +612,6 @@ export async function approveEventRequest(
   const patch: Partial<EventRequestRow> = {
     current_step: next,
   };
-  // Workflow complete without a publish step (unusual); otherwise stay pending until EO posts.
   if (!next) {
     patch.status = "approved";
   }
@@ -580,6 +635,241 @@ export async function approveEventRequest(
     category: "approval",
     emailSubject: "EventLink: Request approved",
     emailText: `Your request "${row.activity}" was approved at ${stepLabel(row.current_step)}. Next step: ${nextLabel}.`,
+  });
+}
+
+/**
+ * EO assigns each requested resource to a responsible office and forwards.
+ * Does not schedule — resource offices complete the workflow.
+ */
+export async function approveAndForwardEventRequest(
+  id: string,
+  actorId: string,
+  assignments: ResourceAssignmentInput[],
+): Promise<void> {
+  const row = await getRow(id);
+  if (row.status !== "pending" || row.current_step !== "eo_schedule") {
+    throw new Error("Only requests pending EO review can be forwarded to resource offices.");
+  }
+  if (!assignments.length) {
+    throw new Error("Assign a responsible office to every requested resource before forwarding.");
+  }
+  for (const a of assignments) {
+    if (!a.assignedOffice) {
+      throw new Error(`Missing responsible office for ${a.resourceName}.`);
+    }
+    if (!a.resourceName.trim()) {
+      throw new Error("Each resource assignment needs a name.");
+    }
+  }
+
+  const supabase = getSupabase();
+  await supabase.from("event_request_resource_assignments").delete().eq("request_id", id);
+
+  const rows = assignments.map((a) => ({
+    request_id: id,
+    resource_kind: a.resourceKind,
+    venue_id: a.venueId ?? null,
+    equipment_id: a.equipmentId ?? null,
+    resource_name: a.resourceName.trim(),
+    quantity: Math.max(1, Math.floor(a.quantity || 1)),
+    assigned_office: a.assignedOffice,
+    status: "pending" as const,
+    assigned_by: actorId,
+    assigned_at: new Date().toISOString(),
+  }));
+
+  const { error: insertErr } = await supabase.from("event_request_resource_assignments").insert(rows);
+  if (insertErr) throw insertErr;
+
+  const { error } = await supabase
+    .from("event_requests")
+    .update({ current_step: "resource_offices", needs_gso: true })
+    .eq("id", id);
+  if (error) throw error;
+
+  const officeList = [...new Set(assignments.map((a) => resourceOfficeLabel(a.assignedOffice)))].join(", ");
+  await supabase.from("event_request_history").insert({
+    request_id: id,
+    actor_id: actorId,
+    action: "forwarded",
+    step: "eo_schedule",
+    comment: `EO assigned resources to: ${officeList}`,
+  });
+
+  await notifyUser({
+    userId: row.submitted_by,
+    title: "Sent to resource offices",
+    body: `${row.activity} was forwarded by EO to: ${officeList}.`,
+    category: "approval",
+    emailSubject: "EventLink: Sent to resource offices",
+    emailText: `Your request "${row.activity}" was forwarded to: ${officeList}.`,
+  });
+}
+
+async function autoScheduleAfterResourceApprovals(requestId: string, actorId: string): Promise<void> {
+  const row = await getRow(requestId);
+  const assignments = row.event_request_resource_assignments ?? [];
+  if (!assignments.length) return;
+  if (assignments.some((a) => a.status !== "approved")) return;
+
+  const supabase = getSupabase();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("event_requests")
+    .update({
+      status: "approved",
+      current_step: null,
+      calendar_posted_at: now,
+    })
+    .eq("id", requestId);
+  if (error) throw error;
+
+  await supabase.from("event_request_history").insert({
+    request_id: requestId,
+    actor_id: actorId,
+    action: "scheduled",
+    step: "resource_offices",
+    comment: "All resource offices approved — event automatically scheduled",
+  });
+
+  await notifyUser({
+    userId: row.submitted_by,
+    title: "Event scheduled",
+    body: `${row.activity} was automatically scheduled after all resource offices approved.`,
+    category: "calendar",
+    emailSubject: "EventLink: Event scheduled",
+    emailText: `Your event "${row.activity}" is now scheduled on the staff calendar.`,
+  });
+}
+
+export async function approveResourceAssignment(
+  requestId: string,
+  actorId: string,
+  actorRole: AppRole,
+): Promise<void> {
+  const office = appRoleToResourceOffice(actorRole);
+  if (!office) throw new Error("This role cannot approve resource assignments.");
+
+  const row = await getRow(requestId);
+  if (row.status !== "pending" || row.current_step !== "resource_offices") {
+    throw new Error("This request is not awaiting resource-office approval.");
+  }
+
+  const mine = (row.event_request_resource_assignments ?? []).filter(
+    (a) => a.assigned_office === office && a.status === "pending",
+  );
+  if (!mine.length) {
+    throw new Error("No pending resources are assigned to your office for this request.");
+  }
+
+  const supabase = getSupabase();
+  const now = new Date().toISOString();
+  for (const a of mine) {
+    const { error } = await supabase
+      .from("event_request_resource_assignments")
+      .update({
+        status: "approved",
+        decided_by: actorId,
+        decided_at: now,
+        decline_reason: null,
+      })
+      .eq("id", a.id);
+    if (error) throw error;
+
+    if (a.resource_kind === "equipment" && a.equipment_id) {
+      const qty = Math.max(1, Number(a.quantity ?? 1));
+      const { data: eqRow, error: eqFetchError } = await supabase
+        .from("equipment")
+        .select("id, quantity_available")
+        .eq("id", a.equipment_id)
+        .single();
+      if (!eqFetchError && eqRow) {
+        const current = Math.max(0, Number(eqRow.quantity_available ?? 0));
+        await supabase
+          .from("equipment")
+          .update({ quantity_available: Math.max(0, current - qty) })
+          .eq("id", a.equipment_id);
+      }
+    }
+  }
+
+  await supabase.from("event_request_history").insert({
+    request_id: requestId,
+    actor_id: actorId,
+    action: "approved",
+    step: "resource_offices",
+    comment: `${resourceOfficeLabel(office)} approved assigned resources`,
+  });
+
+  await autoScheduleAfterResourceApprovals(requestId, actorId);
+}
+
+export async function declineResourceAssignment(
+  requestId: string,
+  actorId: string,
+  actorRole: AppRole,
+  reason: string,
+): Promise<void> {
+  const office = appRoleToResourceOffice(actorRole);
+  if (!office) throw new Error("This role cannot decline resource assignments.");
+
+  const cleanReason = reason.trim();
+  if (!cleanReason) throw new Error("A decline reason is required.");
+
+  const row = await getRow(requestId);
+  if (row.status !== "pending" || row.current_step !== "resource_offices") {
+    throw new Error("This request is not awaiting resource-office approval.");
+  }
+
+  const mine = (row.event_request_resource_assignments ?? []).filter(
+    (a) => a.assigned_office === office && a.status === "pending",
+  );
+  if (!mine.length) {
+    throw new Error("No pending resources are assigned to your office for this request.");
+  }
+
+  const supabase = getSupabase();
+  const now = new Date().toISOString();
+  for (const a of mine) {
+    const { error } = await supabase
+      .from("event_request_resource_assignments")
+      .update({
+        status: "declined",
+        decided_by: actorId,
+        decided_at: now,
+        decline_reason: cleanReason,
+      })
+      .eq("id", a.id);
+    if (error) throw error;
+  }
+
+  const { error } = await supabase
+    .from("event_requests")
+    .update({
+      status: "declined",
+      decline_reason: `${resourceOfficeLabel(office)}: ${cleanReason}`,
+      declined_at_step: "resource_offices",
+      current_step: null,
+    })
+    .eq("id", requestId);
+  if (error) throw error;
+
+  await supabase.from("event_request_history").insert({
+    request_id: requestId,
+    actor_id: actorId,
+    action: "declined",
+    step: "resource_offices",
+    comment: `${resourceOfficeLabel(office)} declined: ${cleanReason}`,
+  });
+
+  await notifyUser({
+    userId: row.submitted_by,
+    title: "Request declined by resource office",
+    body: `${row.activity} was declined by ${resourceOfficeLabel(office)}. Reason: ${cleanReason}`,
+    category: "approval",
+    emailSubject: "EventLink: Resource office declined",
+    emailText: `Your request "${row.activity}" was declined by ${resourceOfficeLabel(office)}.\nReason: ${cleanReason}\n\nYou can edit and resubmit from the Events page.`,
   });
 }
 
@@ -736,9 +1026,10 @@ export function filterPendingForRole(
   userId: string,
   scope?: { collegeId?: string | null; organizationId?: string | null },
 ): EventRequestRow[] {
+  const office = appRoleToResourceOffice(role);
+
   return rows.filter((r) => {
     if (role === "student_officer") {
-      // Organization-scoped visibility for student officer requests.
       if (scope?.organizationId) {
         return (
           r.request_type === "student_officer" &&
@@ -747,7 +1038,6 @@ export function filterPendingForRole(
           r.current_step !== "eo_publish"
         );
       }
-      // Fallback to own requests if organization is missing.
       return (
         r.request_type === "student_officer" &&
         r.submitted_by === userId &&
@@ -756,8 +1046,14 @@ export function filterPendingForRole(
       );
     }
     if (role === "ssc") {
-      // SSC role is organization-level scope; show all SSC requests.
-      return r.request_type === "ssc" && r.status === "pending" && r.current_step !== "eo_publish";
+      // SSC event requests they submitted (org workflow) — exclude resource_offices assigned-to-SSC
+      // which appear on the Venue requests page via filterResourceOfficePending.
+      return (
+        r.request_type === "ssc" &&
+        r.status === "pending" &&
+        r.current_step !== "eo_publish" &&
+        r.current_step !== "resource_offices"
+      );
     }
     if (r.status !== "pending" && r.status !== "approved") return false;
     if (role === "eo") {
@@ -767,8 +1063,8 @@ export function filterPendingForRole(
       }
       return false;
     }
-    if (role === "gso") {
-      return r.status === "pending" && r.current_step === "gso";
+    if (office && (role === "gso" || role === "it_infrastructure" || role === "sports_office")) {
+      return hasPendingAssignmentForOffice(r, office);
     }
     if (role === "adviser") {
       if (!scope?.organizationId) return false;
@@ -788,6 +1084,24 @@ export function filterPendingForRole(
     }
     return r.status === "pending" && roleMatchesStep(role, r.current_step);
   });
+}
+
+function hasPendingAssignmentForOffice(row: EventRequestRow, office: ResourceOffice): boolean {
+  if (row.status !== "pending") return false;
+  // Legacy GSO step without assignments
+  if (office === "gso" && row.current_step === "gso") return true;
+  if (row.current_step !== "resource_offices") return false;
+  return (row.event_request_resource_assignments ?? []).some(
+    (a) => a.assigned_office === office && a.status === "pending",
+  );
+}
+
+/** Pending resource requests assigned by EO to a specific office (incl. SSC venue manager). */
+export function filterResourceOfficePending(
+  rows: EventRequestRow[],
+  office: ResourceOffice,
+): EventRequestRow[] {
+  return rows.filter((r) => hasPendingAssignmentForOffice(r, office));
 }
 
 export function filterApprovedForRole(

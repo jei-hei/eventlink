@@ -21,6 +21,8 @@ type RoleFilter =
   | "OSAS"
   | "EO"
   | "GSO"
+  | "IT Infrastructure"
+  | "Sports Office"
   | "Admin";
 
 type UserRow = {
@@ -57,6 +59,8 @@ const roles: RoleFilter[] = [
   "OSAS",
   "EO",
   "GSO",
+  "IT Infrastructure",
+  "Sports Office",
   "Admin",
 ];
 

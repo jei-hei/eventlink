@@ -40,5 +40,17 @@
     "email": "gso@eventlink.local",
     "password": "EventLinkTest123!",
     "displayName": "GSO Staff"
+  },
+  {
+    "role": "it_infrastructure",
+    "email": "it@eventlink.local",
+    "password": "EventLinkTest123!",
+    "displayName": "IT Infrastructure Officer"
+  },
+  {
+    "role": "sports_office",
+    "email": "sports@eventlink.local",
+    "password": "EventLinkTest123!",
+    "displayName": "Sports Office Staff"
   }
 ]

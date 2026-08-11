@@ -133,7 +133,7 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
                     </span>
                   </td>
                 </tr>
-                <tr v-else-if="events.length === 0">
+                <tr v-if="!eventsLoading && events.length === 0">
                   <td colspan="2" class="py-12 text-center text-gray-400 text-sm">
                     No requests waiting for approval.
                   </td>

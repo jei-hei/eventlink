@@ -187,7 +187,7 @@ async function onLogout() {
 }
 
 const idLabel = computed(() =>
-  ["admin", "adviser", "dean", "osas", "eo", "gso"].includes(portalRole.value) ? "Employee ID" : "Student ID",
+  ["admin", "adviser", "dean", "osas", "eo", "gso", "it-infrastructure", "sports-office"].includes(portalRole.value) ? "Employee ID" : "Student ID",
 );
 
 const idEditable = computed(() => editMode.value && portalRole.value !== "student");

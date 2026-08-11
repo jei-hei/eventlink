@@ -19,7 +19,15 @@ const addEquipmentOpen = ref(false);
 const editingEquipmentId = ref<string | null>(null);
 
 const gsoEvents = computed(() =>
-  events.value.filter((e) => e.status === "Pending" && (e.venue || e.itemsEquipment)),
+  events.value.filter((e) => {
+    if (e.status !== "Pending") return false;
+    const assigned = (e.resourceAssignments ?? []).filter(
+      (a) => a.assignedOffice === "gso" && a.status === "pending",
+    );
+    if (assigned.length) return true;
+    // Legacy GSO step without EO resource assignments
+    return !e.resourceAssignments?.length && (e.venue || e.itemsEquipment);
+  }),
 );
 
 const pendingCount = computed(() => gsoEvents.value.length);
@@ -312,7 +320,7 @@ onMounted(() => {
                     </div>
                   </td>
                 </tr>
-                <tr v-else-if="gsoEvents.length === 0">
+                <tr v-if="!eventsLoading && gsoEvents.length === 0">
                   <td colspan="6" class="py-12 text-center text-sm text-slate-400">No events requiring venue or equipment</td>
                 </tr>
               </tbody>

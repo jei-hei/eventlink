@@ -118,25 +118,26 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
               </thead>
               <tbody>
                 <PortalTableSkeleton v-if="eventsLoading" :rows="4" :columns="2" />
-                <tr
-                  v-else
-                  v-for="event in events"
-                  :key="event.id"
-                  class="border-b border-gray-100 hover:bg-gray-50 transition cursor-pointer"
-                  @click="selectedEvent = event"
-                >
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm font-medium text-gray-800">{{ event.name }}</td>
-                  <td class="px-3 py-2.5">
-                    <span :class="['px-2 py-1 rounded text-xs font-semibold', workflowRowClass(event)]">
-                      {{ publishStatusLabel(event) }}
-                    </span>
-                  </td>
-                </tr>
                 <tr v-else-if="events.length === 0">
                   <td colspan="2" class="py-12 text-center text-gray-400 text-sm">
                     No requests waiting for approval.
                   </td>
                 </tr>
+                <template v-else>
+                  <tr
+                    v-for="event in events"
+                    :key="event.id"
+                    class="border-b border-gray-100 hover:bg-gray-50 transition cursor-pointer"
+                    @click="selectedEvent = event"
+                  >
+                    <td class="px-3 py-2.5 border-r border-gray-100 text-sm font-medium text-gray-800">{{ event.name }}</td>
+                    <td class="px-3 py-2.5">
+                      <span :class="['px-2 py-1 rounded text-xs font-semibold', workflowRowClass(event)]">
+                        {{ publishStatusLabel(event) }}
+                      </span>
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>

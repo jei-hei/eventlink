@@ -11,7 +11,18 @@ const emit = defineEmits<{ close: []; created: [] }>();
 
 const ui = useUiStore();
 
-type RoleValue = "" | "student_officer" | "ssc" | "adviser" | "dean" | "osas" | "eo" | "gso" | "admin";
+type RoleValue =
+  | ""
+  | "student_officer"
+  | "ssc"
+  | "adviser"
+  | "dean"
+  | "osas"
+  | "eo"
+  | "gso"
+  | "it_infrastructure"
+  | "sports_office"
+  | "admin";
 
 const role = ref<RoleValue>("");
 const name = ref("");
@@ -31,6 +42,8 @@ const roleOptions: Array<{ label: string; value: Exclude<RoleValue, ""> }> = [
   { label: "OSAS", value: "osas" },
   { label: "EO", value: "eo" },
   { label: "GSO", value: "gso" },
+  { label: "IT Infrastructure", value: "it_infrastructure" },
+  { label: "Sports Office", value: "sports_office" },
   { label: "Admin", value: "admin" },
 ];
 

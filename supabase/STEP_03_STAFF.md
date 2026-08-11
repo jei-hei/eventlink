@@ -21,6 +21,8 @@ This reads `supabase/seed/staff_accounts.json` and creates:
 | osas | osas@eventlink.local | /osas |
 | eo | eo@eventlink.local | /executive-officer |
 | gso | gso@eventlink.local | /gso |
+| it_infrastructure | it@eventlink.local | /it-infrastructure |
+| sports_office | sports@eventlink.local | /sports-office |
 
 **Password (all):** `EventLinkTest123!`
 
@@ -36,7 +38,7 @@ After seeding staff, open **Admin → Users** to see everyone with a portal role
 node --env-file=.env.seed scripts/create-portal-user.mjs eo eo@eventlink.local EventLinkTest123! "Executive Officer"
 ```
 
-Roles: `student_officer`, `ssc`, `adviser`, `dean`, `osas`, `eo`, `gso`, `admin`
+Roles: `student_officer`, `ssc`, `adviser`, `dean`, `osas`, `eo`, `gso`, `it_infrastructure`, `sports_office`, `admin`
 
 ## Verify Step 3
 

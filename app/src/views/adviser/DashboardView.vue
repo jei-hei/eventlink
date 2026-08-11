@@ -120,7 +120,7 @@ const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.
                     </div>
                   </td>
                 </tr>
-                <tr v-else-if="events.length === 0">
+                <tr v-if="!eventsLoading && events.length === 0">
                   <td colspan="7" class="py-10 text-center text-sm text-slate-400">No pending events</td>
                 </tr>
               </tbody>

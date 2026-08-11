@@ -225,14 +225,45 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   async function approve(id: string) {
     const auth = useAuthStore();
     if (!auth.userId || !auth.appRole) throw new Error("You must be signed in.");
-    await approveEventRequest(id, auth.userId, auth.appRole);
+    const office = auth.appRole === "gso" || auth.appRole === "it_infrastructure" || auth.appRole === "sports_office" || auth.appRole === "ssc"
+      ? auth.appRole === "ssc"
+        ? "ssc"
+        : auth.appRole
+      : null;
+    const row = rows.value.find((r) => r.id === id);
+    if (office && row?.current_step === "resource_offices") {
+      const { approveResourceAssignment } = await import("@/services/eventRequestsDb");
+      await approveResourceAssignment(id, auth.userId, auth.appRole);
+    } else {
+      await approveEventRequest(id, auth.userId, auth.appRole);
+    }
     await load(true);
   }
 
   async function decline(id: string, reason = "Declined") {
     const auth = useAuthStore();
     if (!auth.userId || !auth.appRole) throw new Error("You must be signed in.");
-    await declineEventRequest(id, auth.userId, auth.appRole, reason);
+    const row = rows.value.find((r) => r.id === id);
+    if (
+      row?.current_step === "resource_offices" &&
+      (auth.appRole === "gso" ||
+        auth.appRole === "it_infrastructure" ||
+        auth.appRole === "sports_office" ||
+        auth.appRole === "ssc")
+    ) {
+      const { declineResourceAssignment } = await import("@/services/eventRequestsDb");
+      await declineResourceAssignment(id, auth.userId, auth.appRole, reason);
+    } else {
+      await declineEventRequest(id, auth.userId, auth.appRole, reason);
+    }
+    await load(true);
+  }
+
+  async function approveAndForward(id: string, assignments: import("@/types/resourceOffice").ResourceAssignmentInput[]) {
+    const auth = useAuthStore();
+    if (!auth.userId) throw new Error("You must be signed in.");
+    const { approveAndForwardEventRequest } = await import("@/services/eventRequestsDb");
+    await approveAndForwardEventRequest(id, auth.userId, assignments);
     await load(true);
   }
 
@@ -291,6 +322,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     submit,
     approve,
     decline,
+    approveAndForward,
     postToCalendar,
     update,
     resubmitDeclined,

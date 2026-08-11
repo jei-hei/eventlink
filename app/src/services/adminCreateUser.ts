@@ -1,7 +1,17 @@
 import { getSupabase } from "@/lib/supabase";
 
 export type CreatePortalUserInput = {
-  role: "student_officer" | "ssc" | "adviser" | "dean" | "osas" | "eo" | "gso" | "admin";
+  role:
+    | "student_officer"
+    | "ssc"
+    | "adviser"
+    | "dean"
+    | "osas"
+    | "eo"
+    | "gso"
+    | "it_infrastructure"
+    | "sports_office"
+    | "admin";
   email: string;
   password: string;
   displayName: string;

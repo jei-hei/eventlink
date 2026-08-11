@@ -25,6 +25,7 @@ export type EventRequestFormPayload = {
   startTime: string;
   endTime: string;
   venue: string;
+  venueId: string | null;
   numberOfParticipants: number;
   sdgs: string;
   needsGso: boolean;
@@ -60,7 +61,7 @@ const form = reactive({
   endDate: "",
   startTime: "08:00",
   endTime: "17:00",
-  venue: "",
+  venueId: "",
   numberOfParticipants: 50,
   needsGso: true,
 });
@@ -87,12 +88,16 @@ const selectedOrgName = computed(() => {
   return organizations.value.find((o) => o.id === form.organizationId)?.name ?? form.organizationName;
 });
 
+const selectedVenueName = computed(
+  () => venues.value.find((v) => v.id === form.venueId)?.name ?? "",
+);
+
 const selectedEquipmentIds = computed(() =>
   new Set(equipmentRows.value.map((r) => r.equipmentId).filter(Boolean)),
 );
 
 watch(
-  () => form.venue,
+  () => form.venueId,
   (v) => {
     if (v) form.needsGso = true;
   },
@@ -107,17 +112,83 @@ onMounted(async () => {
 
   if (!isSupabaseConfigured) {
     venues.value = [
-      { id: "1", name: "Gymnasium", active: true },
-      { id: "2", name: "Devenecia", active: true },
-      { id: "3", name: "Open Gymnasium", active: true },
+      {
+        id: "1",
+        name: "Gymnasium",
+        description: "",
+        location: "",
+        capacity: null,
+        responsible_office: "gso",
+        availability: "available",
+        status: "active",
+        active: true,
+      },
+      {
+        id: "2",
+        name: "Devenecia",
+        description: "",
+        location: "",
+        capacity: null,
+        responsible_office: "gso",
+        availability: "available",
+        status: "active",
+        active: true,
+      },
+      {
+        id: "3",
+        name: "Open Gymnasium",
+        description: "",
+        location: "",
+        capacity: null,
+        responsible_office: "gso",
+        availability: "available",
+        status: "active",
+        active: true,
+      },
     ];
     equipment.value = [
-      { id: "eq-1", name: "Chairs", quantity_available: 150, active: true },
-      { id: "eq-2", name: "Tables", quantity_available: 20, active: true },
-      { id: "eq-3", name: "Projector", quantity_available: 1, active: true },
-      { id: "eq-4", name: "Sound system", quantity_available: 1, active: true },
+      {
+        id: "eq-1",
+        name: "Chairs",
+        description: "",
+        quantity_available: 150,
+        responsible_office: "gso",
+        availability: "available",
+        status: "active",
+        active: true,
+      },
+      {
+        id: "eq-2",
+        name: "Tables",
+        description: "",
+        quantity_available: 20,
+        responsible_office: "gso",
+        availability: "available",
+        status: "active",
+        active: true,
+      },
+      {
+        id: "eq-3",
+        name: "Projector",
+        description: "",
+        quantity_available: 1,
+        responsible_office: "gso",
+        availability: "available",
+        status: "active",
+        active: true,
+      },
+      {
+        id: "eq-4",
+        name: "Sound system",
+        description: "",
+        quantity_available: 1,
+        responsible_office: "gso",
+        availability: "available",
+        status: "active",
+        active: true,
+      },
     ];
-    form.venue = "Gymnasium";
+    form.venueId = "1";
     return;
   }
   orgLoading.value = true;
@@ -146,7 +217,7 @@ onMounted(async () => {
     venues.value = await fetchActiveVenues();
     equipment.value = await fetchActiveEquipment();
     if (venues.value.length) {
-      form.venue = venues.value[0]!.name;
+      form.venueId = venues.value[0]!.id;
     }
   } catch {
     organizations.value = [];
@@ -187,7 +258,7 @@ function resetForm() {
   form.endDate = "";
   form.startTime = "08:00";
   form.endTime = "17:00";
-  form.venue = venues.value[0]?.name ?? "";
+  form.venueId = venues.value[0]?.id ?? "";
   form.numberOfParticipants = 50;
   selectedSdgs.value = [];
   form.needsGso = true;
@@ -243,6 +314,10 @@ function handleSubmit() {
     window.alert("Please upload your Word letter (.doc or .docx).");
     return;
   }
+  if (!form.venueId || !selectedVenueName.value) {
+    window.alert("Please select a venue.");
+    return;
+  }
   if (form.numberOfParticipants < 1) {
     window.alert("Number of participants must be at least 1.");
     return;
@@ -268,7 +343,8 @@ function handleSubmit() {
     endDate: form.endDate || form.startDate,
     startTime: parseTimeInput(form.startTime),
     endTime: parseTimeInput(form.endTime),
-    venue: form.venue,
+    venue: selectedVenueName.value,
+    venueId: form.venueId || null,
     numberOfParticipants: form.numberOfParticipants,
     sdgs: formatSdgsForStorage(selectedSdgs.value),
     needsGso: form.needsGso,
@@ -409,11 +485,11 @@ defineExpose({ resetForm });
       <div>
         <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Venue *</label>
         <select
-          v-model="form.venue"
+          v-model="form.venueId"
           class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
         >
-          <option v-if="!venues.length" value="" disabled>No venues — ask GSO to add venues</option>
-          <option v-for="v in venues" :key="v.id" :value="v.name">{{ v.name }}</option>
+          <option v-if="!venues.length" value="" disabled>No venues — ask offices to add venues</option>
+          <option v-for="v in venues" :key="v.id" :value="v.id">{{ v.name }}</option>
         </select>
       </div>
       <div>

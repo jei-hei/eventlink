@@ -10,6 +10,10 @@ export interface ExecutivePortalContext {
   scheduledEvents: Ref<EoEvent[]>;
   handleApprove: (id: string) => void;
   handleReject: (id: string) => void;
+  handleApproveAndForward: (
+    id: string,
+    assignments: import("@/types/resourceOffice").ResourceAssignmentInput[],
+  ) => Promise<void>;
   handlePostEvent: (id: string) => void;
   handleCreateEvent: (e: EoEvent) => void;
   handleUpdateEvent: (id: string, input: UpdateEventRequestInput) => Promise<void>;

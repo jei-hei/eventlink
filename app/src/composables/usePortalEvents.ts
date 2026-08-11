@@ -136,8 +136,23 @@ export function usePortalEvents(
 
   function handleReject(id: string) {
     if (useDb.value) {
-      const reason = window.prompt("Reason for decline (optional):") ?? "Declined";
-      void runAction(() => store.decline(id, reason));
+      const reason = window.prompt("Reason for decline (required):") ?? "";
+      if (!reason.trim()) {
+        window.alert("A decline reason is required.");
+        return;
+      }
+      void runAction(() => store.decline(id, reason.trim()));
+      return;
+    }
+    mock.events.value = mock.events.value.filter((e) => e.id !== id);
+  }
+
+  async function handleApproveAndForward(
+    id: string,
+    assignments: import("@/types/resourceOffice").ResourceAssignmentInput[],
+  ) {
+    if (useDb.value) {
+      await runAction(() => store.approveAndForward(id, assignments));
       return;
     }
     mock.events.value = mock.events.value.filter((e) => e.id !== id);
@@ -246,6 +261,7 @@ export function usePortalEvents(
     scheduledEvents,
     handleApprove,
     handleReject,
+    handleApproveAndForward,
     handleCreateEvent,
     handlePostEvent,
     handleCreateFeedPost,

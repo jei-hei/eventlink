@@ -7,7 +7,17 @@ import { fetchCollegesWithOrganizations, type CollegeWithOrgs } from "@/services
 import type { AppRole } from "@/types/appRole";
 import { adminRoleLabel } from "@/services/adminUsersDb";
 
-type EditableRole = "student_officer" | "ssc" | "adviser" | "dean" | "osas" | "eo" | "gso" | "admin";
+type EditableRole =
+  | "student_officer"
+  | "ssc"
+  | "adviser"
+  | "dean"
+  | "osas"
+  | "eo"
+  | "gso"
+  | "it_infrastructure"
+  | "sports_office"
+  | "admin";
 
 type EditableUser = {
   userId: string;
@@ -43,6 +53,8 @@ const roleOptions: Array<{ label: string; value: EditableRole }> = [
   { label: "OSAS", value: "osas" },
   { label: "EO", value: "eo" },
   { label: "GSO", value: "gso" },
+  { label: "IT Infrastructure", value: "it_infrastructure" },
+  { label: "Sports Office", value: "sports_office" },
   { label: "Admin", value: "admin" },
 ];
 

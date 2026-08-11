@@ -20,6 +20,8 @@ const ROLE_LABEL: Record<AppRole, string> = {
   osas: "OSAS",
   eo: "EO",
   gso: "GSO",
+  it_infrastructure: "IT Infrastructure",
+  sports_office: "Sports Office",
   admin: "Admin",
 };
 

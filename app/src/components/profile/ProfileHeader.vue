@@ -80,7 +80,7 @@ const badgeTone = computed(() => roleToBadgeTone(portalRole.value));
       </div>
       <p class="mt-0.5 line-clamp-1 text-xs text-slate-600 sm:text-sm">{{ roleDescription }}</p>
       <p class="mt-1 truncate font-mono text-xs font-semibold text-slate-800 sm:text-sm">
-        {{ portalRole === "admin" || portalRole === "adviser" || portalRole === "dean" || portalRole === "osas" || portalRole === "eo" || portalRole === "gso" ? "Employee ID" : "Student ID" }}:
+        {{ portalRole === "admin" || portalRole === "adviser" || portalRole === "dean" || portalRole === "osas" || portalRole === "eo" || portalRole === "gso" || portalRole === "it-infrastructure" || portalRole === "sports-office" ? "Employee ID" : "Student ID" }}:
         {{ studentOrEmployeeId }}
       </p>
       <div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 sm:text-xs">
@@ -128,7 +128,7 @@ const badgeTone = computed(() => roleToBadgeTone(portalRole.value));
         </div>
         <p class="mt-1 text-sm text-slate-600 sm:text-base">{{ roleDescription }}</p>
         <p class="mt-3 font-mono text-sm font-semibold text-slate-800">
-          {{ portalRole === "admin" || portalRole === "adviser" || portalRole === "dean" || portalRole === "osas" || portalRole === "eo" || portalRole === "gso" ? "Employee ID" : "Student ID" }}:
+          {{ portalRole === "admin" || portalRole === "adviser" || portalRole === "dean" || portalRole === "osas" || portalRole === "eo" || portalRole === "gso" || portalRole === "it-infrastructure" || portalRole === "sports-office" ? "Employee ID" : "Student ID" }}:
           {{ studentOrEmployeeId }}
         </p>
         <div class="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-slate-600 sm:justify-start sm:text-sm">

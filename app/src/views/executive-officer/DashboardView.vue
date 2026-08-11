@@ -21,6 +21,7 @@ const {
   scheduledEvents,
   handleApprove,
   handleReject,
+  handleApproveAndForward,
   handleCreateEvent,
   handlePostEvent,
   handleUpdateEvent,
@@ -30,6 +31,23 @@ const {
 
 function isReadyForCalendarPost(event: EoEvent) {
   return canPostToCalendar(event);
+}
+
+function isReadyForForward(event: EoEvent) {
+  return !!event.awaitingResourceAssignment;
+}
+
+async function onApproveAndForward(
+  id: string,
+  assignments: import("@/types/resourceOffice").ResourceAssignmentInput[],
+) {
+  await handleApproveAndForward(id, assignments);
+  selectedEvent.value = null;
+}
+
+function onDetailReject(id: string) {
+  handleReject(id);
+  selectedEvent.value = null;
 }
 
 const selectedEvent = ref<EoEvent | null>(null);
@@ -158,56 +176,66 @@ async function onEditSave(id: string, input: UpdateEventRequestInput) {
               </thead>
               <tbody>
                 <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="7" />
-                <tr
-                  v-else
-                  v-for="event in events"
-                  :key="event.id"
-                  :class="[
-                    'border-b border-gray-100 hover:bg-gray-50 transition cursor-pointer',
-                    event.status === 'Conflict' ? 'bg-amber-50' : '',
-                  ]"
-                  @click="selectedEvent = event"
-                >
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.organization }}</td>
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm font-medium text-gray-800">{{ event.name }}</td>
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.date }}</td>
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.venue }}</td>
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.participants ?? "—" }}</td>
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.sdgs ?? "—" }}</td>
-                  <td class="px-3 py-2.5">
-                    <div class="flex gap-1.5">
-                      <button
-                        v-if="isReadyForCalendarPost(event)"
-                        type="button"
-                        class="bg-[#16A34A] hover:bg-[#15803D] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
-                        @click.stop="handlePostEvent(event.id)"
-                      >
-                        <CheckCircle :size="12" />
-                        Post to calendar
-                      </button>
-                      <button
-                        v-else
-                        type="button"
-                        class="bg-[#4ADE80] hover:bg-[#3BC56D] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
-                        @click.stop="handleApprove(event.id)"
-                      >
-                        <CheckCircle :size="12" />
-                        APPROVE
-                      </button>
-                      <button
-                        type="button"
-                        class="bg-[#DC2626] hover:bg-[#B91C1C] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
-                        @click.stop="handleReject(event.id)"
-                      >
-                        <XCircle :size="12" />
-                        REJECT
-                      </button>
-                    </div>
-                  </td>
-                </tr>
                 <tr v-else-if="events.length === 0">
                   <td colspan="7" class="py-12 text-center text-gray-400 text-sm">No pending events</td>
                 </tr>
+                <template v-else>
+                  <tr
+                    v-for="event in events"
+                    :key="event.id"
+                    :class="[
+                      'border-b border-gray-100 hover:bg-gray-50 transition cursor-pointer',
+                      event.status === 'Conflict' ? 'bg-amber-50' : '',
+                    ]"
+                    @click="selectedEvent = event"
+                  >
+                    <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.organization }}</td>
+                    <td class="px-3 py-2.5 border-r border-gray-100 text-sm font-medium text-gray-800">{{ event.name }}</td>
+                    <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.date }}</td>
+                    <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.venue }}</td>
+                    <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.participants ?? "—" }}</td>
+                    <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.sdgs ?? "—" }}</td>
+                    <td class="px-3 py-2.5">
+                      <div class="flex gap-1.5">
+                        <button
+                          v-if="isReadyForCalendarPost(event)"
+                          type="button"
+                          class="bg-[#16A34A] hover:bg-[#15803D] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
+                          @click.stop="handlePostEvent(event.id)"
+                        >
+                          <CheckCircle :size="12" />
+                          Post to calendar
+                        </button>
+                        <button
+                          v-else-if="isReadyForForward(event)"
+                          type="button"
+                          class="bg-[#16A34A] hover:bg-[#15803D] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
+                          @click.stop="selectedEvent = event"
+                        >
+                          <CheckCircle :size="12" />
+                          Assign &amp; Forward
+                        </button>
+                        <button
+                          v-else
+                          type="button"
+                          class="bg-[#4ADE80] hover:bg-[#3BC56D] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
+                          @click.stop="handleApprove(event.id)"
+                        >
+                          <CheckCircle :size="12" />
+                          APPROVE
+                        </button>
+                        <button
+                          type="button"
+                          class="bg-[#DC2626] hover:bg-[#B91C1C] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
+                          @click.stop="handleReject(event.id)"
+                        >
+                          <XCircle :size="12" />
+                          REJECT
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>
@@ -228,6 +256,12 @@ async function onEditSave(id: string, input: UpdateEventRequestInput) {
 
     <EoCreateSscEventModal v-model:open="createOpen" @submit="onCreateSubmit" />
     <EoEditScheduledEventModal :event="editEvent" @close="editEvent = null" @save="onEditSave" />
-    <EoEventDetailModal v-if="selectedEvent" :event="selectedEvent" @close="selectedEvent = null" />
+    <EoEventDetailModal
+      v-if="selectedEvent"
+      :event="selectedEvent"
+      @close="selectedEvent = null"
+      @approve-and-forward="onApproveAndForward"
+      @reject="onDetailReject"
+    />
   </div>
 </template>

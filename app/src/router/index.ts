@@ -85,6 +85,7 @@ const router = createRouter({
       children: [
         { path: "", name: "gso-dashboard", component: () => import("@/views/gso/DashboardView.vue") },
         { path: "venues", name: "gso-venues", component: () => import("@/views/gso/VenuesView.vue") },
+        { path: "equipment", name: "gso-equipment", component: () => import("@/views/gso/EquipmentView.vue") },
         { path: "analytics", name: "gso-analytics", component: () => import("@/views/gso/AnalyticsView.vue") },
         {
           path: "settings",
@@ -95,6 +96,68 @@ const router = createRouter({
           path: "profile",
           name: "gso-profile",
           meta: { portalRole: "gso" },
+          component: () => import("@/views/profile/ProfileView.vue"),
+        },
+      ],
+    },
+    {
+      path: "/it-infrastructure",
+      meta: { allowedRoles: ["it_infrastructure"] as AppRole[] },
+      component: () => import("@/views/it-infrastructure/ItLayout.vue"),
+      children: [
+        { path: "", name: "it-dashboard", component: () => import("@/views/it-infrastructure/DashboardView.vue") },
+        {
+          path: "equipment",
+          name: "it-equipment",
+          component: () => import("@/views/it-infrastructure/EquipmentView.vue"),
+        },
+        {
+          path: "requests",
+          name: "it-requests",
+          component: () => import("@/views/it-infrastructure/RequestsView.vue"),
+        },
+        {
+          path: "analytics",
+          name: "it-analytics",
+          component: () => import("@/views/it-infrastructure/AnalyticsView.vue"),
+        },
+        {
+          path: "profile",
+          name: "it-profile",
+          meta: { portalRole: "it-infrastructure" },
+          component: () => import("@/views/profile/ProfileView.vue"),
+        },
+      ],
+    },
+    {
+      path: "/sports-office",
+      meta: { allowedRoles: ["sports_office"] as AppRole[] },
+      component: () => import("@/views/sports-office/SportsLayout.vue"),
+      children: [
+        {
+          path: "",
+          name: "sports-dashboard",
+          component: () => import("@/views/sports-office/DashboardView.vue"),
+        },
+        {
+          path: "venues",
+          name: "sports-venues",
+          component: () => import("@/views/sports-office/VenuesView.vue"),
+        },
+        {
+          path: "requests",
+          name: "sports-requests",
+          component: () => import("@/views/sports-office/RequestsView.vue"),
+        },
+        {
+          path: "analytics",
+          name: "sports-analytics",
+          component: () => import("@/views/sports-office/AnalyticsView.vue"),
+        },
+        {
+          path: "profile",
+          name: "sports-profile",
+          meta: { portalRole: "sports-office" },
           component: () => import("@/views/profile/ProfileView.vue"),
         },
       ],
@@ -157,6 +220,8 @@ const router = createRouter({
         { path: "", name: "ssc-dashboard", component: () => import("@/views/ssc/DashboardView.vue") },
         { path: "events", name: "ssc-events", component: () => import("@/views/ssc/EventsView.vue") },
         { path: "analytics", name: "ssc-analytics", component: () => import("@/views/ssc/AnalyticsView.vue") },
+        { path: "venues", name: "ssc-venues", component: () => import("@/views/ssc/VenuesView.vue") },
+        { path: "equipment", name: "ssc-equipment", component: () => import("@/views/ssc/EquipmentView.vue") },
         {
           path: "profile",
           name: "ssc-profile",

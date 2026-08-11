@@ -148,7 +148,7 @@ function onModalReject() {
                     </div>
                   </td>
                 </tr>
-                <tr v-else-if="pendingEvents.length === 0">
+                <tr v-if="!eventsLoading && pendingEvents.length === 0">
                   <td colspan="8" class="py-12 text-center text-gray-400 text-sm">No pending event requests</td>
                 </tr>
               </tbody>

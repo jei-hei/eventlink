@@ -16,7 +16,7 @@ const formRef = ref<InstanceType<typeof EventRequestCreateForm> | null>(null);
 const submitting = ref(false);
 
 const workflowHint =
-  "Adviser → Dean → OSAS → EO (confirm date) → GSO (if needed) → EO (publish to calendar)";
+  "Adviser → Dean → OSAS → EO (assign resource offices) → Resource Office(s) → Auto-scheduled";
 
 watch(
   () => props.open,
@@ -42,6 +42,7 @@ async function onSubmit(payload: EventRequestFormPayload) {
         startTime: payload.startTime,
         endTime: payload.endTime,
         venue: payload.venue,
+        venueId: payload.venueId,
         numberOfParticipants: payload.numberOfParticipants,
         sdgs: payload.sdgs,
         needsGso: payload.needsGso,

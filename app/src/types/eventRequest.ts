@@ -1,7 +1,14 @@
 /** Postgres enums (public schema). */
 export type DbRequestType = "student_officer" | "ssc" | "eo_direct";
 export type DbRequestStatus = "pending" | "declined" | "approved" | "posted";
-export type DbWorkflowStep = "adviser" | "dean" | "osas" | "eo_schedule" | "gso" | "eo_publish";
+export type DbWorkflowStep =
+  | "adviser"
+  | "dean"
+  | "osas"
+  | "eo_schedule"
+  | "gso"
+  | "eo_publish"
+  | "resource_offices";
 
 export type EventRequestRow = {
   id: string;
@@ -16,6 +23,7 @@ export type EventRequestRow = {
   start_time: string;
   end_time: string;
   venue: string;
+  venue_id?: string | null;
   number_of_participants: number;
   sdgs: string;
   purpose: string;
@@ -34,6 +42,17 @@ export type EventRequestRow = {
   event_request_equipment?: Array<{
     quantity_requested: number;
     equipment?: { id: string; name: string } | null;
+  }> | null;
+  event_request_resource_assignments?: Array<{
+    id: string;
+    resource_kind: "venue" | "equipment";
+    venue_id: string | null;
+    equipment_id: string | null;
+    resource_name: string;
+    quantity: number;
+    assigned_office: string;
+    status: "pending" | "approved" | "declined";
+    decline_reason: string | null;
   }> | null;
 };
 
@@ -57,6 +76,7 @@ export type CreateEventRequestInput = {
   startTime: string;
   endTime: string;
   venue: string;
+  venueId?: string | null;
   numberOfParticipants: number;
   sdgs?: string;
   purpose?: string;

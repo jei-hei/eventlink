@@ -8,6 +8,8 @@ export const VALID_ROLES = [
   "osas",
   "eo",
   "gso",
+  "it_infrastructure",
+  "sports_office",
   "admin",
 ];
 
@@ -19,6 +21,8 @@ export const ROLE_HOME = {
   osas: "/osas",
   eo: "/executive-officer",
   gso: "/gso",
+  it_infrastructure: "/it-infrastructure",
+  sports_office: "/sports-office",
   admin: "/admin",
 };
 

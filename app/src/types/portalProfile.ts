@@ -7,6 +7,8 @@ export type PortalRoleKey =
   | "osas"
   | "eo"
   | "gso"
+  | "it-infrastructure"
+  | "sports-office"
   | "admin";
 
 export type RoleBadgeTone = "green" | "blue" | "purple" | "orange" | "red" | "teal" | "slate";

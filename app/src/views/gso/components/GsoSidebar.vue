@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterLink, useRoute } from "vue-router";
-import { LayoutDashboard, BarChart2, MapPin, X, ChevronRight, UserCircle, Settings } from "lucide-vue-next";
+import { LayoutDashboard, BarChart2, MapPin, Package, X, ChevronRight, UserCircle, Settings } from "lucide-vue-next";
 import PortalSidebarFooter from "@/components/portal/PortalSidebarFooter.vue";
 
 defineProps<{ open: boolean }>();
@@ -11,6 +11,7 @@ const route = useRoute();
 const navItems = [
   { label: "Dashboard", to: "/gso", name: "gso-dashboard", icon: LayoutDashboard },
   { label: "Venues", to: "/gso/venues", name: "gso-venues", icon: MapPin },
+  { label: "Equipment", to: "/gso/equipment", name: "gso-equipment", icon: Package },
   { label: "Analytics", to: "/gso/analytics", name: "gso-analytics", icon: BarChart2 },
   { label: "Settings", to: "/gso/settings", name: "gso-settings", icon: Settings },
   { label: "Profile", to: "/gso/profile", name: "gso-profile", icon: UserCircle },

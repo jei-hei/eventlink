@@ -140,6 +140,28 @@ export function getProfileDefaults(role: PortalRoleKey): PortalProfileDefaults {
       position: "GSO Supervisor",
       activityStats: statsApprover(),
     },
+    "it-infrastructure": {
+      ...common,
+      portalRole: "it-infrastructure",
+      roleLabel: "IT Infrastructure",
+      roleDescription: "IT equipment availability and approvals for campus events.",
+      studentOrEmployeeId: "EMP-IT-001",
+      department: "IT Infrastructure",
+      office: "IT Services",
+      position: "IT Officer",
+      activityStats: statsApprover(),
+    },
+    "sports-office": {
+      ...common,
+      portalRole: "sports-office",
+      roleLabel: "Sports Office",
+      roleDescription: "Sports facilities and venue approvals for campus events.",
+      studentOrEmployeeId: "EMP-SP-001",
+      department: "Sports Office",
+      office: "Sports Complex",
+      position: "Sports Officer",
+      activityStats: statsApprover(),
+    },
     admin: {
       ...common,
       portalRole: "admin",
@@ -166,6 +188,8 @@ export function roleToBadgeTone(role: PortalRoleKey) {
     osas: "blue",
     eo: "orange",
     gso: "slate",
+    "it-infrastructure": "teal",
+    "sports-office": "blue",
     admin: "red",
   };
   return tones[role];
