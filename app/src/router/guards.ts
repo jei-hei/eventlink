@@ -38,5 +38,5 @@ export function installRouterGuards(router: Router) {
 }
 
 export function roleHome(role: AppRole): string {
-  return ROLE_HOME_PATH[role];
+  return ROLE_HOME_PATH[role] ?? "/login";
 }

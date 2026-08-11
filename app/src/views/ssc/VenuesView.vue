@@ -13,7 +13,7 @@ const { handleApprove, handleReject, scheduledEvents, useDb } = useSscPortal();
 const store = useEventRequestsStore();
 
 const resourceEvents = computed<PortalEvent[]>(() => {
-  if (!isSupabaseConfigured || !useDb.value) return [];
+  if (!isSupabaseConfigured || !useDb?.value) return [];
   return filterResourceOfficePending(store.rows, "ssc").map((r) => mapRowToPortalEvent(r));
 });
 </script>

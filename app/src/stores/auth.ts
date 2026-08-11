@@ -52,7 +52,7 @@ export const useAuthStore = defineStore("auth", () => {
   );
 
   const homePath = computed(() => {
-    if (appRole.value) return ROLE_HOME_PATH[appRole.value];
+    if (appRole.value) return ROLE_HOME_PATH[appRole.value] ?? "/login";
     return "/student";
   });
 
@@ -670,6 +670,10 @@ export const useAuthStore = defineStore("auth", () => {
       osas: "osas",
       eo: "eo",
       gso: "gso",
+      it_infrastructure: "it_infrastructure",
+      "it-infrastructure": "it_infrastructure",
+      sports_office: "sports_office",
+      "sports-office": "sports_office",
     };
     appRole.value = roleMap[r] ?? "student";
     userId.value = "mock-user";

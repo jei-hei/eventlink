@@ -13,16 +13,7 @@ interface ImportMeta {
 
 declare module "vue-router" {
   interface RouteMeta {
-    portalRole?:
-      | "student"
-      | "student-officer"
-      | "ssc"
-      | "adviser"
-      | "dean"
-      | "osas"
-      | "eo"
-      | "gso"
-      | "admin";
+    portalRole?: import("@/types/portalProfile").PortalRoleKey;
     profileStandalone?: boolean;
     allowedRoles?: import("@/types/appRole").AppRole[];
   }
