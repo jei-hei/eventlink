@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterLink, useRoute } from "vue-router";
-import { LayoutDashboard, BarChart2, X, ChevronRight, UserCircle, Settings } from "lucide-vue-next";
+import { LayoutDashboard, BarChart2, X, ChevronRight, UserCircle, Settings, Radar } from "lucide-vue-next";
 import PortalSidebarFooter from "@/components/portal/PortalSidebarFooter.vue";
 
 defineProps<{ open: boolean }>();
@@ -10,6 +10,7 @@ const route = useRoute();
 
 const navItems = [
   { label: "Dashboard", to: "/osas", name: "osas-dashboard", icon: LayoutDashboard },
+  { label: "Event Monitoring", to: "/osas/monitoring", name: "osas-monitoring", icon: Radar },
   { label: "Analytics", to: "/osas/analytics", name: "osas-analytics", icon: BarChart2 },
   { label: "Settings", to: "/osas/settings", name: "osas-settings", icon: Settings },
   { label: "Profile", to: "/osas/profile", name: "osas-profile", icon: UserCircle },

@@ -197,6 +197,13 @@ const filteredEvents = computed(() => {
           />
         </div>
 
+        <RouterLink
+          v-if="auth.isAuthenticated && auth.appRole === 'student'"
+          to="/student/monitoring"
+          class="portal-topbar-btn inline-flex shrink-0 items-center gap-2 px-3 py-2 text-sm"
+        >
+          Event Monitoring
+        </RouterLink>
         <button
           v-if="useLiveFeed"
           type="button"

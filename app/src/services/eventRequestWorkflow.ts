@@ -68,7 +68,7 @@ export function workflowStatusForStep(step: DbWorkflowStep | null): string {
 /** Build a pending status label from currently pending assigned offices. */
 export function workflowStatusForResourceOffices(offices: ResourceOffice[]): string {
   const unique = [...new Set(offices)];
-  if (unique.length === 0) return "Pending Resource Offices";
+  if (unique.length === 0) return "Pending Resource Approval";
   if (unique.length === 1) {
     const o = unique[0]!;
     if (o === "gso") return "Pending GSO Approval";
@@ -76,7 +76,7 @@ export function workflowStatusForResourceOffices(offices: ResourceOffice[]): str
     if (o === "it_infrastructure") return "Pending IT Infrastructure Approval";
     if (o === "ssc") return "Pending SSC Venue Approval";
   }
-  return `Pending ${unique.map(resourceOfficeLabel).join(" / ")}`;
+  return "Pending Resource Approval";
 }
 
 export function roleMatchesStep(role: string, step: DbWorkflowStep | null): boolean {
@@ -107,12 +107,19 @@ export function buildWorkflowHistory(
   historyApprovals: { step: DbWorkflowStep; approver: string; at: string }[],
 ): { name: string; status: "completed" | "current" | "pending"; timestamp?: string; approver?: string }[] {
   const chain = getWorkflowChain(requestType);
-  return chain.map((step) => {
+  const currentIdx = currentStep ? chain.indexOf(currentStep) : -1;
+  const allDone = currentStep == null && historyApprovals.length > 0;
+  return chain.map((step, idx) => {
     const done = historyApprovals.find((h) => h.step === step);
     const isCurrent = step === currentStep;
+    const inferredDone =
+      !!done ||
+      allDone ||
+      (!isCurrent && currentIdx >= 0 && idx < currentIdx) ||
+      (!isCurrent && currentIdx < 0 && currentStep == null);
     return {
       name: STEP_LABEL[step],
-      status: done ? "completed" : isCurrent ? "current" : "pending",
+      status: inferredDone ? "completed" : isCurrent ? "current" : "pending",
       timestamp: done?.at,
       approver: done?.approver,
     };

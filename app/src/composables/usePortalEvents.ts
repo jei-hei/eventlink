@@ -30,11 +30,11 @@ export function usePortalEvents(
   const POLL_MS_VISIBLE = 50_000;
   const POLL_MS_HIDDEN = 120_000;
 
-  async function refreshEvents(force = false) {
-    if (!useDb.value || refreshing) return;
+  async function refreshEvents(force = false): Promise<boolean> {
+    if (!useDb.value || refreshing) return false;
     refreshing = true;
     try {
-      await store.load(force);
+      return await store.load(force);
     } finally {
       refreshing = false;
     }
@@ -65,8 +65,13 @@ export function usePortalEvents(
   watch(pageVisible, (isVisible) => {
     if (!useDb.value) return;
     if (isVisible) {
-      void refreshEvents(false);
-      schedulePoll();
+      void (async () => {
+        const updated = await refreshEvents(true);
+        if (updated) {
+          ui.pushToast("Data updated.", "Latest data loaded.", "info");
+        }
+        schedulePoll();
+      })();
     } else {
       schedulePoll();
     }
@@ -162,8 +167,8 @@ export function usePortalEvents(
   ) {
     if (useDb.value) {
       await runAction(() => store.approveAndForward(id, assignments), {
-        title: "Request approved successfully.",
-        description: "Resources were forwarded to the responsible offices.",
+        title: "Event forwarded successfully.",
+        description: "Resources were assigned to the responsible offices.",
       });
       return;
     }
@@ -203,7 +208,10 @@ export function usePortalEvents(
   function handlePostEvent(id: string) {
     if (useDb.value) {
       if (canPostToCalendar.value) {
-        void runAction(() => store.postToCalendar(id));
+      void runAction(() => store.postToCalendar(id), {
+          title: "Event scheduled successfully.",
+          description: "The event was posted to the staff calendar.",
+        });
         return;
       }
       return;
@@ -264,6 +272,16 @@ export function usePortalEvents(
     });
   }
 
+  async function handleCancelScheduled(id: string, reason: string) {
+    if (useDb.value) {
+      await runAction(() => store.cancelScheduled(id, reason), {
+        title: "Event cancelled successfully.",
+        description: "The scheduled event was cancelled.",
+      });
+      return;
+    }
+  }
+
   async function handleResubmitDeclined(id: string, input: UpdateEventRequestInput) {
     if (useDb.value) {
       await runAction(() => store.resubmitDeclined(id, input));
@@ -283,6 +301,7 @@ export function usePortalEvents(
     handlePostEvent,
     handleCreateFeedPost,
     handleUpdateEvent,
+    handleCancelScheduled,
     handleResubmitDeclined,
     submitRequest,
     useDb,

@@ -10,12 +10,14 @@ import {
   filterApprovedForRole,
   filterCalendarEvents,
   filterDeclinedForRole,
+  filterMonitoringForRole,
   filterPendingForRole,
   filterPostedEvents,
   mapRowToPortalEvent,
   postEventToStaffCalendar,
   resubmitDeclinedEventRequest,
   updateEventRequest,
+  cancelScheduledEventRequest,
 } from "@/services/eventRequestsDb";
 import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import type { CreateEventRequestInput } from "@/types/eventRequest";
@@ -78,17 +80,17 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   }
 
-  async function load(force = false) {
-    if (!isSupabaseConfigured) return;
+  async function load(force = false): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
     const auth = useAuthStore();
-    if (!auth.userId || !auth.appRole) return;
+    if (!auth.userId || !auth.appRole) return false;
     const scopeKey = currentScopeKey();
     if (scopeKey !== loadScopeKey.value) {
       loadScopeKey.value = scopeKey;
       loaded.value = false;
       force = true;
     }
-    if (loaded.value && !force && Date.now() - lastLoadedAt.value < STALE_MS) return;
+    if (loaded.value && !force && Date.now() - lastLoadedAt.value < STALE_MS) return false;
     loading.value = true;
     error.value = null;
     try {
@@ -104,6 +106,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
       );
       loaded.value = true;
       lastLoadedAt.value = Date.now();
+      return true;
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
       throw e;
@@ -281,6 +284,24 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     await load(true);
   }
 
+  async function cancelScheduled(id: string, reason: string) {
+    const auth = useAuthStore();
+    if (!auth.userId) throw new Error("You must be signed in.");
+    if (auth.appRole !== "eo" && auth.appRole !== "admin") {
+      throw new Error("Only the Executive Officer can cancel scheduled events.");
+    }
+    await cancelScheduledEventRequest(id, auth.userId, reason);
+    await load(true);
+  }
+
+  function monitoringForRole(role: AppRole, userId: string): PortalEvent[] {
+    const auth = useAuthStore();
+    return filterMonitoringForRole(rows.value, role, userId, {
+      collegeId: auth.collegeId,
+      organizationId: auth.organizationId,
+    }).map((r) => mapRowToPortalEvent(r));
+  }
+
   async function resubmitDeclined(id: string, input: UpdateEventRequestInput) {
     const auth = useAuthStore();
     if (!auth.userId || !auth.appRole) throw new Error("You must be signed in.");
@@ -305,6 +326,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     error,
     feedError,
     loaded,
+    lastLoadedAt,
     postedEvents,
     studentFeedEvents,
     myFeedPosts,
@@ -319,12 +341,14 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     pendingForRole,
     approvedForRole,
     declinedForRole,
+    monitoringForRole,
     submit,
     approve,
     decline,
     approveAndForward,
     postToCalendar,
     update,
+    cancelScheduled,
     resubmitDeclined,
     getPortalEvent,
   };

@@ -88,6 +88,7 @@ async function notifyUser(payload: NotificationPayload): Promise<void> {
 }
 
 function mapStatus(row: EventRequestRow): PortalEvent["status"] {
+  if (row.status === "cancelled") return "Cancelled";
   if (row.status === "declined") return "Pending";
   if (row.status === "posted") return "Approved";
   if (row.status === "approved" && row.current_step === "eo_publish") return "Pending";
@@ -137,10 +138,12 @@ export function mapRowToPortalEvent(
     .map((a) => a.assigned_office as ResourceOffice);
 
   const wfStatus =
-    row.status === "declined"
+    row.status === "cancelled"
+      ? "Cancelled"
+      : row.status === "declined"
       ? "Rejected"
       : row.status === "posted" || (row.status === "approved" && row.calendar_posted_at)
-        ? "Approved"
+        ? "Scheduled"
         : row.current_step === "resource_offices"
           ? (workflowStatusForResourceOffices(pendingOffices) as PortalEvent["workflowStatus"])
           : row.current_step === "eo_publish"
@@ -179,7 +182,7 @@ export function mapRowToPortalEvent(
     requesterName: submitter,
     needsGSO: row.needs_gso,
     posted: row.status === "posted",
-    calendarPosted: row.calendar_posted_at != null,
+    calendarPosted: row.calendar_posted_at != null && row.status !== "cancelled",
     awaitingPublish: row.current_step === "eo_publish" && row.status !== "posted",
     awaitingCalendarPost: row.current_step === "eo_publish" && !row.calendar_posted_at,
     awaitingResourceAssignment: row.current_step === "eo_schedule" && row.status === "pending",
@@ -195,8 +198,21 @@ export function mapRowToPortalEvent(
       declineReason: a.decline_reason,
     })),
     declineReason: row.decline_reason ?? undefined,
+    cancellationReason: row.cancellation_reason ?? undefined,
+    cancelledAt: row.cancelled_at ?? null,
     letterPath: row.letter_path,
+    originalLetterPath: row.original_letter_path ?? row.letter_path ?? null,
+    letterHistory: (row.event_request_letters ?? [])
+      .slice()
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      .map((l) => ({
+        id: l.id,
+        letterPath: l.letter_path,
+        label: l.label,
+        createdAt: l.created_at,
+      })),
     studentPostCaption: row.student_post_caption,
+    updatedAt: row.updated_at ?? null,
     studentPostImagePath: row.student_post_image_path,
     studentPostImageUrl: row.student_post_image_path
       ? getEventPostImagePublicUrl(row.student_post_image_path)
@@ -246,7 +262,8 @@ const EVENT_REQUEST_LIST_SELECT = `
   event_request_resource_assignments (
     id, resource_kind, venue_id, equipment_id, resource_name, quantity,
     assigned_office, status, decline_reason
-  )
+  ),
+  event_request_letters ( id, letter_path, label, created_at )
 `;
 
 const EVENT_REQUEST_LIST_SELECT_INNER_ORG = `
@@ -257,7 +274,8 @@ const EVENT_REQUEST_LIST_SELECT_INNER_ORG = `
   event_request_resource_assignments (
     id, resource_kind, venue_id, equipment_id, resource_name, quantity,
     assigned_office, status, decline_reason
-  )
+  ),
+  event_request_letters ( id, letter_path, label, created_at )
 `;
 
 const PORTAL_LIST_LIMIT = 400;
@@ -404,12 +422,20 @@ export async function fetchPortalEventRequestsForRole(
       );
     case "osas":
       return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
-        q.or("and(status.eq.pending,current_step.eq.osas),status.in.(approved,posted)"),
+        q.or(
+          "status.in.(pending,approved,posted,declined,cancelled),calendar_posted_at.not.is.null",
+        ),
       );
     case "eo":
       return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
         q.or(
-          "current_step.in.(eo_schedule,eo_publish,resource_offices),calendar_posted_at.not.is.null,status.in.(approved,posted)",
+          "current_step.in.(eo_schedule,eo_publish,resource_offices),calendar_posted_at.not.is.null,status.in.(approved,posted,cancelled)",
+        ),
+      );
+    case "student":
+      return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
+        q.or(
+          "status.in.(posted,cancelled),and(status.eq.approved,calendar_posted_at.not.is.null)",
         ),
       );
     default:
@@ -526,9 +552,15 @@ export async function createEventRequest(
       const letterPath = await uploadEventLetter(input.letterFile, submittedBy, requestId);
       const { error: letterErr } = await supabase
         .from("event_requests")
-        .update({ letter_path: letterPath })
+        .update({ letter_path: letterPath, original_letter_path: letterPath })
         .eq("id", requestId);
       if (letterErr) throw letterErr;
+      await supabase.from("event_request_letters").insert({
+        request_id: requestId,
+        letter_path: letterPath,
+        label: "Original proposal",
+        created_by: submittedBy,
+      });
     } catch (letterErr) {
       const msg = letterErr instanceof Error ? letterErr.message : String(letterErr);
       if (msg.toLowerCase().includes("row-level security") || msg.toLowerCase().includes("policy")) {
@@ -756,7 +788,10 @@ export async function approveAndForwardEventRequest(
 
   const { error } = await supabase
     .from("event_requests")
-    .update({ current_step: "resource_offices", needs_gso: true })
+    .update({
+      current_step: "resource_offices",
+      needs_gso: assignments.some((a) => a.assignedOffice === "gso"),
+    })
     .eq("id", id);
   if (error) throw error;
 
@@ -1126,13 +1161,12 @@ export function filterPendingForRole(
       );
     }
     if (role === "ssc") {
-      // SSC event requests they submitted (org workflow) — exclude resource_offices assigned-to-SSC
-      // which appear on the Venue requests page via filterResourceOfficePending.
+      // Keep SSC-submitted requests visible through resource-office approval.
+      // Venue-assignment inbox stays separate via filterResourceOfficePending.
       return (
         r.request_type === "ssc" &&
         r.status === "pending" &&
-        r.current_step !== "eo_publish" &&
-        r.current_step !== "resource_offices"
+        r.current_step !== "eo_publish"
       );
     }
     if (r.status !== "pending" && r.status !== "approved") return false;
@@ -1242,9 +1276,97 @@ export function filterPostedEvents(rows: EventRequestRow[]): EventRequestRow[] {
   return rows.filter((r) => r.status === "posted");
 }
 
-/** Staff schedule calendar (EO publishes here). */
+/** Staff schedule calendar (EO publishes here). Cancelled events stay in history but leave the calendar. */
 export function filterCalendarEvents(rows: EventRequestRow[]): EventRequestRow[] {
-  return rows.filter((r) => r.calendar_posted_at != null);
+  return rows.filter((r) => r.calendar_posted_at != null && r.status !== "cancelled");
+}
+
+/**
+ * Cancel a scheduled event (EO). Does not delete the row — status becomes cancelled.
+ */
+export async function cancelScheduledEventRequest(
+  id: string,
+  actorId: string,
+  reason: string,
+): Promise<void> {
+  const cleanReason = reason.trim();
+  if (!cleanReason) throw new Error("A cancellation note is required.");
+
+  const row = await getRow(id);
+  if (row.status === "cancelled") {
+    throw new Error("This event is already cancelled.");
+  }
+  if (!row.calendar_posted_at || (row.status !== "approved" && row.status !== "posted")) {
+    throw new Error("Only scheduled events can be cancelled from the calendar.");
+  }
+
+  const supabase = getSupabase();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("event_requests")
+    .update({
+      status: "cancelled",
+      cancellation_reason: cleanReason,
+      cancelled_at: now,
+      cancelled_by: actorId,
+      current_step: null,
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  await supabase.from("event_request_history").insert({
+    request_id: id,
+    actor_id: actorId,
+    action: "cancelled",
+    step: null,
+    comment: cleanReason,
+  });
+
+  await notifyUser({
+    userId: row.submitted_by,
+    title: "Event cancelled",
+    body: `${row.activity} was cancelled by the Executive Officer. Reason: ${cleanReason}`,
+    category: "system",
+    emailSubject: "EventLink: Event cancelled",
+    emailText: `Your event "${row.activity}" was cancelled. Reason: ${cleanReason}`,
+  });
+}
+
+/** Events visible in Event Monitoring for eligible roles. */
+export function filterMonitoringForRole(
+  rows: EventRequestRow[],
+  role: AppRole,
+  userId: string,
+  scope?: { collegeId?: string | null; organizationId?: string | null },
+): EventRequestRow[] {
+  return rows.filter((r) => {
+    if (role === "admin" || role === "osas") return true;
+    if (role === "student") {
+      return (
+        r.status === "posted" ||
+        r.status === "cancelled" ||
+        (r.status === "approved" && !!r.calendar_posted_at)
+      );
+    }
+    if (role === "adviser") {
+      if (!scope?.organizationId) return false;
+      return r.organization_id === scope.organizationId;
+    }
+    if (role === "dean") {
+      if (!scope?.collegeId) return false;
+      return (r.organizations?.college_id ?? null) === scope.collegeId;
+    }
+    if (role === "student_officer") {
+      if (scope?.organizationId) {
+        return r.request_type === "student_officer" && r.organization_id === scope.organizationId;
+      }
+      return r.request_type === "student_officer" && r.submitted_by === userId;
+    }
+    if (role === "ssc") {
+      return r.request_type === "ssc" || r.submitted_by === userId;
+    }
+    return false;
+  });
 }
 
 export type UpdateEventRequestInput = {

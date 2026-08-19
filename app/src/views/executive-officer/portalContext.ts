@@ -17,6 +17,7 @@ export interface ExecutivePortalContext {
   handlePostEvent: (id: string) => void;
   handleCreateEvent: (e: EoEvent) => void;
   handleUpdateEvent: (id: string, input: UpdateEventRequestInput) => Promise<void>;
+  handleCancelScheduled: (id: string, reason: string) => Promise<void>;
   submitRequest: (input: CreateEventRequestInput) => Promise<void>;
   useDb: Ref<boolean>;
 }

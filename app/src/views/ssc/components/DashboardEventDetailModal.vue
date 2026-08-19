@@ -110,7 +110,16 @@ const emit = defineEmits<{ close: [] }>();
           </p>
         </div>
 
-        <EventLetterLink v-if="event.letterPath" :letter-path="event.letterPath" />
+        <EventLetterLink v-if="event.letterPath" :letter-path="event.letterPath" label="Current letter / document" />
+        <div v-if="event.letterHistory && event.letterHistory.length > 1" class="space-y-2">
+          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider">Document history</label>
+          <EventLetterLink
+            v-for="doc in event.letterHistory"
+            :key="doc.id"
+            :letter-path="doc.letterPath"
+            :label="doc.label"
+          />
+        </div>
         <div v-else-if="event.letterContent">
           <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
             Full Event Letter Content

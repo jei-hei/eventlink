@@ -14,6 +14,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   save: [id: string, input: UpdateEventRequestInput];
+  cancelEvent: [id: string, reason: string];
 }>();
 
 const store = useEventRequestsStore();
@@ -31,8 +32,22 @@ const form = ref({
 
 const selectedSdgs = ref<number[]>([]);
 const saving = ref(false);
+const cancelOpen = ref(false);
+const cancelReason = ref("");
+const cancelling = ref(false);
 
 const venueOptions = ["Gymnasium", "Devenecia", "Open Gymnasium", "Auditorium", "Other"];
+
+const canCancel = computed(() => {
+  const ev = props.event;
+  if (!ev) return false;
+  return (
+    ev.status === "Approved" ||
+    !!ev.calendarPosted ||
+    ev.workflowStatus === "Scheduled" ||
+    ev.workflowStatus === "Approved"
+  );
+});
 
 function toTimeInput(value: string | undefined): string {
   if (!value) return "08:00";
@@ -60,6 +75,8 @@ function resetForm() {
     purpose: ev.purpose ?? ev.description ?? "",
   };
   selectedSdgs.value = parseSdgsFromStorage(ev.sdgs ?? "");
+  cancelOpen.value = false;
+  cancelReason.value = "";
 }
 
 watch(
@@ -101,6 +118,20 @@ async function onSave() {
     saving.value = false;
   }
 }
+
+async function onConfirmCancel() {
+  if (!props.event) return;
+  if (!cancelReason.value.trim()) {
+    window.alert("Please enter a cancellation note/reason.");
+    return;
+  }
+  cancelling.value = true;
+  try {
+    emit("cancelEvent", props.event.id, cancelReason.value.trim());
+  } finally {
+    cancelling.value = false;
+  }
+}
 </script>
 
 <template>
@@ -111,13 +142,45 @@ async function onSave() {
   >
     <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-2xl">
       <div class="sticky top-0 flex items-center justify-between bg-[#16A34A] px-6 py-4 text-white">
-        <h3 class="text-base font-bold">Edit scheduled event</h3>
+        <h3 class="text-base font-bold">{{ cancelOpen ? "Cancel Event" : "Scheduled event" }}</h3>
         <button type="button" class="rounded-lg p-1.5 transition hover:bg-[#15803D]" @click="emit('close')">
           <X :size="18" />
         </button>
       </div>
 
-      <form class="space-y-4 p-6" @submit.prevent="onSave">
+      <div v-if="cancelOpen" class="space-y-4 p-6">
+        <p class="text-sm text-gray-700">Are you sure you want to cancel this scheduled event?</p>
+        <div>
+          <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-500">Notes / Reason</label>
+          <textarea
+            v-model="cancelReason"
+            rows="3"
+            required
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            placeholder="Enter cancellation reason"
+          />
+        </div>
+        <div class="flex justify-end gap-2 border-t border-gray-200 pt-4">
+          <button
+            type="button"
+            class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300"
+            :disabled="cancelling"
+            @click="cancelOpen = false"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+            :disabled="cancelling"
+            @click="onConfirmCancel"
+          >
+            {{ cancelling ? "Cancelling…" : "Confirm Cancellation" }}
+          </button>
+        </div>
+      </div>
+
+      <form v-else class="space-y-4 p-6" @submit.prevent="onSave">
         <div>
           <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-500">Activity</label>
           <input
@@ -203,22 +266,32 @@ async function onSave() {
 
         <SdgCheckboxGroup v-model="selectedSdgs" />
 
-        <div class="flex justify-end gap-2 border-t border-gray-200 pt-4">
+        <div class="flex flex-wrap justify-between gap-2 border-t border-gray-200 pt-4">
           <button
+            v-if="canCancel"
             type="button"
-            class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300"
-            @click="emit('close')"
+            class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+            @click="cancelOpen = true"
           >
-            Cancel
+            Cancel Event
           </button>
-          <button
-            type="submit"
-            :disabled="saving"
-            class="inline-flex items-center gap-2 rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#15803D] disabled:opacity-60"
-          >
-            <Save :size="16" />
-            {{ saving ? "Saving…" : "Save changes" }}
-          </button>
+          <div class="ml-auto flex gap-2">
+            <button
+              type="button"
+              class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300"
+              @click="emit('close')"
+            >
+              Close
+            </button>
+            <button
+              type="submit"
+              :disabled="saving"
+              class="inline-flex items-center gap-2 rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#15803D] disabled:opacity-60"
+            >
+              <Save :size="16" />
+              {{ saving ? "Saving…" : "Save changes" }}
+            </button>
+          </div>
         </div>
       </form>
     </div>

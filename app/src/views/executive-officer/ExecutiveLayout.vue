@@ -22,6 +22,7 @@ const {
   handleCreateEvent,
   handlePostEvent,
   handleUpdateEvent,
+  handleCancelScheduled,
   submitRequest,
   useDb,
 } = usePortalEvents("eo", { events: mockPending, approvedEvents: mockApproved }, { canPost: true });
@@ -36,6 +37,7 @@ provide(executivePortalKey, {
   handleCreateEvent,
   handlePostEvent,
   handleUpdateEvent,
+  handleCancelScheduled,
   submitRequest,
   useDb,
 });

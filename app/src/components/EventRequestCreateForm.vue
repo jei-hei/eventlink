@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { FileText, Upload, X } from "lucide-vue-next";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { isWordLetterFile } from "@/services/eventLetterStorage";
@@ -63,7 +63,7 @@ const form = reactive({
   endTime: "17:00",
   venueId: "",
   numberOfParticipants: 50,
-  needsGso: true,
+  needsGso: false,
 });
 
 const isSscForm = computed(() => props.requestType === "ssc");
@@ -94,13 +94,6 @@ const selectedVenueName = computed(
 
 const selectedEquipmentIds = computed(() =>
   new Set(equipmentRows.value.map((r) => r.equipmentId).filter(Boolean)),
-);
-
-watch(
-  () => form.venueId,
-  (v) => {
-    if (v) form.needsGso = true;
-  },
 );
 
 onMounted(async () => {
@@ -261,7 +254,7 @@ function resetForm() {
   form.venueId = venues.value[0]?.id ?? "";
   form.numberOfParticipants = 50;
   selectedSdgs.value = [];
-  form.needsGso = true;
+  form.needsGso = false;
   letterFile.value = null;
   letterError.value = "";
   equipmentRows.value = [];
@@ -554,19 +547,6 @@ defineExpose({ resetForm });
     <div>
       <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">SDG/s *</label>
       <SdgCheckboxGroup v-model="selectedSdgs" />
-    </div>
-
-    <div>
-      <label class="flex items-center gap-2">
-        <input
-          v-model="form.needsGso"
-          type="checkbox"
-          class="h-4 w-4 rounded border-gray-300 text-[#16A34A] focus:ring-[#16A34A]"
-        />
-        <span class="text-xs font-bold text-gray-600">
-          Requires GSO approval (auto-checked when a venue is selected). GSO reviews after OSAS and EO confirm the date.
-        </span>
-      </label>
     </div>
 
     <div class="rounded-lg border border-blue-200 bg-blue-50 p-3">

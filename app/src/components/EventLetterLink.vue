@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Download, FileText } from "lucide-vue-next";
+import { Download } from "lucide-vue-next";
 import { downloadEventLetter, letterFileNameFromPath } from "@/services/eventLetterStorage";
 
-const props = defineProps<{
-  letterPath?: string | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    letterPath?: string | null;
+    label?: string;
+  }>(),
+  { label: "Current letter / document" },
+);
 
 const loading = ref(false);
 
@@ -26,7 +30,7 @@ async function download() {
 
 <template>
   <div v-if="letterPath" class="rounded-lg border border-gray-200 bg-gray-50 p-3">
-    <p class="mb-1 text-xs font-bold uppercase tracking-wider text-gray-500">Uploaded Word letter</p>
+    <p class="mb-1 text-xs font-bold uppercase tracking-wider text-gray-500">{{ label }}</p>
     <p class="mb-2 truncate text-sm text-gray-700">{{ fileName }}</p>
     <button
       type="button"
@@ -35,7 +39,7 @@ async function download() {
       @click="download"
     >
       <Download :size="16" />
-      {{ loading ? "Preparing…" : "Download original file" }}
+      {{ loading ? "Preparing…" : "Download file" }}
     </button>
   </div>
 </template>

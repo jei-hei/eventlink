@@ -25,6 +25,7 @@ const {
   handleCreateEvent,
   handlePostEvent,
   handleUpdateEvent,
+  handleCancelScheduled,
   submitRequest,
   useDb,
 } = useExecutivePortal();
@@ -120,6 +121,11 @@ function onCalendarSelect(cal: ScheduledCalendarEvent) {
 
 async function onEditSave(id: string, input: UpdateEventRequestInput) {
   await handleUpdateEvent(id, input);
+  editEvent.value = null;
+}
+
+async function onCancelScheduled(id: string, reason: string) {
+  await handleCancelScheduled(id, reason);
   editEvent.value = null;
 }
 </script>
@@ -255,7 +261,12 @@ async function onEditSave(id: string, input: UpdateEventRequestInput) {
     </div>
 
     <EoCreateSscEventModal v-model:open="createOpen" @submit="onCreateSubmit" />
-    <EoEditScheduledEventModal :event="editEvent" @close="editEvent = null" @save="onEditSave" />
+    <EoEditScheduledEventModal
+      :event="editEvent"
+      @close="editEvent = null"
+      @save="onEditSave"
+      @cancel-event="onCancelScheduled"
+    />
     <EoEventDetailModal
       v-if="selectedEvent"
       :event="selectedEvent"

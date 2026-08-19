@@ -13,6 +13,9 @@ export type WorkflowStatus =
   | "Pending IT Infrastructure Approval"
   | "Pending SSC Venue Approval"
   | "Pending Resource Offices"
+  | "Pending Resource Approval"
+  | "Scheduled"
+  | "Cancelled"
   | "Approved"
   | "Rejected"
   | string;
@@ -42,7 +45,7 @@ export interface PortalEvent {
   date: string;
   venue: string;
   venueId?: string | null;
-  status: "Conflict" | "Pending" | "Approved";
+  status: "Conflict" | "Pending" | "Approved" | "Cancelled";
   workflowStatus?: WorkflowStatus;
   description?: string;
   requesterName?: string;
@@ -59,6 +62,8 @@ export interface PortalEvent {
   purpose?: string;
   letterContent?: string;
   letterPath?: string | null;
+  originalLetterPath?: string | null;
+  letterHistory?: Array<{ id: string; letterPath: string; label: string; createdAt: string }>;
   studentPostCaption?: string | null;
   studentPostImagePath?: string | null;
   studentPostImageUrl?: string | null;
@@ -79,4 +84,7 @@ export interface PortalEvent {
   resourceAssignments?: PortalResourceAssignment[];
   workflowHistory?: WorkflowStepUi[];
   declineReason?: string;
+  cancellationReason?: string;
+  cancelledAt?: string | null;
+  updatedAt?: string | null;
 }

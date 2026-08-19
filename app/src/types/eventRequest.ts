@@ -1,6 +1,6 @@
 /** Postgres enums (public schema). */
 export type DbRequestType = "student_officer" | "ssc" | "eo_direct";
-export type DbRequestStatus = "pending" | "declined" | "approved" | "posted";
+export type DbRequestStatus = "pending" | "declined" | "approved" | "posted" | "cancelled";
 export type DbWorkflowStep =
   | "adviser"
   | "dean"
@@ -29,6 +29,10 @@ export type EventRequestRow = {
   purpose: string;
   needs_gso: boolean;
   letter_path: string | null;
+  original_letter_path?: string | null;
+  cancellation_reason?: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
   decline_reason: string | null;
   declined_at_step: DbWorkflowStep | null;
   posted_at: string | null;
@@ -53,6 +57,12 @@ export type EventRequestRow = {
     assigned_office: string;
     status: "pending" | "approved" | "declined";
     decline_reason: string | null;
+  }> | null;
+  event_request_letters?: Array<{
+    id: string;
+    letter_path: string;
+    label: string;
+    created_at: string;
   }> | null;
 };
 
