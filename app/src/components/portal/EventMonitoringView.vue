@@ -3,8 +3,6 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { Eye, Search } from "lucide-vue-next";
 import { useAuthStore } from "@/stores/auth";
 import { useEventRequestsStore } from "@/stores/eventRequests";
-import { useUiStore } from "@/stores/ui";
-import { usePageVisibility } from "@/composables/usePageVisibility";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import type { PortalEvent } from "@/types/portalEvent";
 import { resourceOfficeLabel } from "@/types/resourceOffice";
@@ -13,34 +11,25 @@ import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
 const auth = useAuthStore();
 const store = useEventRequestsStore();
-const ui = useUiStore();
-const { visible: pageVisible } = usePageVisibility();
 
 const loading = ref(true);
 const selected = ref<PortalEvent | null>(null);
 const search = ref("");
 
-async function refresh(force = false, toast = false) {
+async function refresh(force = false) {
   if (!isSupabaseConfigured || !auth.userId || !auth.appRole) {
     loading.value = false;
     return;
   }
   loading.value = true;
   try {
-    const updated = await store.load(force);
-    if (toast && updated) {
-      ui.pushToast("Data updated.", "Latest data loaded.", "info");
-    }
+    await store.load(force);
   } finally {
     loading.value = false;
   }
 }
 
 onMounted(() => void refresh(true));
-
-watch(pageVisible, (isVisible) => {
-  if (isVisible) void refresh(true, true);
-});
 
 const events = computed(() => {
   if (!auth.userId || !auth.appRole) return [];

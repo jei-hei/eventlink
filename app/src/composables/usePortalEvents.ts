@@ -65,13 +65,8 @@ export function usePortalEvents(
   watch(pageVisible, (isVisible) => {
     if (!useDb.value) return;
     if (isVisible) {
-      void (async () => {
-        const updated = await refreshEvents(true);
-        if (updated) {
-          ui.pushToast("Data updated.", "Latest data loaded.", "info");
-        }
-        schedulePoll();
-      })();
+      // Session + store refresh is handled globally in App.vue after token revalidation.
+      schedulePoll();
     } else {
       schedulePoll();
     }

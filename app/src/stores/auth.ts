@@ -315,6 +315,68 @@ export const useAuthStore = defineStore("auth", () => {
     resetInactivityTimer();
   }
 
+  let resumeRevalidatePromise: Promise<{ ok: boolean; signedOut?: boolean }> | null = null;
+
+  /**
+   * When a backgrounded tab becomes visible again, browser timers were throttled so
+   * Supabase may have a stale access token. Refresh the session before any API work.
+   */
+  async function revalidateSessionOnResume(): Promise<{ ok: boolean; signedOut?: boolean }> {
+    if (resumeRevalidatePromise) return resumeRevalidatePromise;
+
+    resumeRevalidatePromise = (async () => {
+      if (useMock.value) {
+        await enforceInactivityNow();
+        return { ok: isAuthenticated.value };
+      }
+
+      await enforceInactivityNow();
+      if (!isAuthenticated.value) return { ok: false, signedOut: true };
+
+      const supabase = getSupabase();
+      try {
+        const { data, error } = await supabase.auth.refreshSession();
+        if (error || !data.session) {
+          const { data: existing } = await supabase.auth.getSession();
+          if (!existing.session) {
+            try {
+              await supabase.auth.signOut({ scope: "local" });
+            } catch {
+              // ignore
+            }
+            logout();
+            return { ok: false, signedOut: true };
+          }
+          if (!userId.value) {
+            await applySession(existing.session, { enforceSingleSession: false, showLoginAlert: false });
+          }
+        } else if (!userId.value) {
+          await applySession(data.session, { enforceSingleSession: false, showLoginAlert: false });
+        }
+      } catch {
+        const { data: existing } = await supabase.auth.getSession();
+        if (!existing.session) {
+          try {
+            await supabase.auth.signOut({ scope: "local" });
+          } catch {
+            // ignore
+          }
+          logout();
+          return { ok: false, signedOut: true };
+        }
+      }
+
+      resumeSingleSessionMonitorFromStorage();
+      void verifySingleSessionStillActive();
+      resetInactivityTimer();
+      return { ok: true };
+    })().finally(() => {
+      resumeRevalidatePromise = null;
+    });
+
+    return resumeRevalidatePromise;
+  }
+
   function resetInactivityTimer() {
     if (typeof window === "undefined") return;
     if (!isAuthenticated.value) {
@@ -340,14 +402,14 @@ export const useAuthStore = defineStore("auth", () => {
       window.addEventListener(eventName, onActivity, { passive: true });
     });
     window.addEventListener("focus", () => {
-      void enforceInactivityNow();
+      void revalidateSessionOnResume();
     });
     window.addEventListener("pageshow", () => {
-      void enforceInactivityNow();
+      void revalidateSessionOnResume();
     });
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
-        void enforceInactivityNow();
+        void revalidateSessionOnResume();
       }
     });
     inactivityListenersBound = true;
@@ -645,12 +707,21 @@ export const useAuthStore = defineStore("auth", () => {
       return;
     }
     const supabase = getSupabase();
+    // Always clear local auth first so logout never hangs on a stale/expired JWT.
+    logout();
     try {
-      await supabase.auth.signOut();
+      await Promise.race([
+        supabase.auth.signOut({ scope: "global" }),
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 4000);
+        }),
+      ]);
     } catch {
-      // Still clear local auth state so idle/session security remains reliable.
-    } finally {
-      logout();
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        // Local UI already cleared.
+      }
     }
   }
 
@@ -713,6 +784,7 @@ export const useAuthStore = defineStore("auth", () => {
     homePath,
     whenReady,
     init,
+    revalidateSessionOnResume,
     verifyStudentRegistry,
     fetchRegistryRow,
     signIn,
