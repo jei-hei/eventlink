@@ -23,23 +23,51 @@ const emit = defineEmits<{
 const eventsLoading = useEventsTableLoading();
 const selectedEvent = ref<PortalEvent | null>(null);
 
+const resourceKindFilter = computed(() => {
+  if (props.office === "it_infrastructure") return "equipment" as const;
+  if (props.office === "sports_office") return "venue" as const;
+  return null;
+});
+
+const resourceColumnLabel = computed(() => {
+  if (props.office === "it_infrastructure") return "Equipment";
+  if (props.office === "sports_office") return "Venue";
+  return "Assigned resources";
+});
+
+const showQuantity = computed(() => props.office === "it_infrastructure");
+
+function officeAssignments(event: PortalEvent) {
+  const kind = resourceKindFilter.value;
+  return (event.resourceAssignments ?? []).filter(
+    (a) =>
+      a.assignedOffice === props.office &&
+      a.status === "pending" &&
+      (kind == null || a.resourceKind === kind),
+  );
+}
+
 const pending = computed(() =>
   props.events.filter((e) => {
     if (e.status !== "Pending") return false;
-    const assigned = (e.resourceAssignments ?? []).filter(
-      (a) => a.assignedOffice === props.office && a.status === "pending",
-    );
-    return assigned.length > 0 || (!e.resourceAssignments?.length && props.office === "gso");
+    const assigned = officeAssignments(e);
+    if (assigned.length > 0) return true;
+    // Legacy GSO step without EO resource assignments
+    return props.office === "gso" && !e.resourceAssignments?.length;
   }),
 );
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(props.scheduledEvents));
 
 function assignedSummary(event: PortalEvent) {
-  return (event.resourceAssignments ?? [])
-    .filter((a) => a.assignedOffice === props.office)
+  return officeAssignments(event)
     .map((a) => (a.resourceKind === "equipment" ? `${a.resourceName} (x${a.quantity})` : a.resourceName))
     .join(", ");
+}
+
+function assignedQuantity(event: PortalEvent) {
+  const qty = officeAssignments(event).reduce((sum, a) => sum + Math.max(1, Number(a.quantity || 1)), 0);
+  return qty || "—";
 }
 
 function onApprove(event: PortalEvent) {
@@ -51,6 +79,8 @@ function onReject(event: PortalEvent) {
   emit("reject", event.id);
   selectedEvent.value = null;
 }
+
+const colCount = computed(() => (showQuantity.value ? 7 : 6));
 </script>
 
 <template>
@@ -76,14 +106,21 @@ function onReject(event: PortalEvent) {
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Activity</th>
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Organization</th>
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Date / time</th>
-                  <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Assigned resources</th>
+                  <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">{{ resourceColumnLabel }}</th>
+                  <th
+                    v-if="showQuantity"
+                    class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600"
+                  >
+                    Quantity
+                  </th>
+                  <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Status</th>
                   <th class="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-slate-600">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="5" />
+                <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="colCount" />
                 <tr v-else-if="!pending.length">
-                  <td colspan="5" class="py-12 text-center text-sm text-gray-400">
+                  <td :colspan="colCount" class="py-12 text-center text-sm text-gray-400">
                     No pending requests assigned to {{ resourceOfficeLabel(office) }}
                   </td>
                 </tr>
@@ -104,6 +141,17 @@ function onReject(event: PortalEvent) {
                     </td>
                     <td class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
                       {{ assignedSummary(event) || event.venue || event.itemsEquipment || "—" }}
+                    </td>
+                    <td
+                      v-if="showQuantity"
+                      class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600"
+                    >
+                      {{ assignedQuantity(event) }}
+                    </td>
+                    <td class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
+                      <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                        {{ event.status }}
+                      </span>
                     </td>
                     <td class="px-2 py-2 text-center" @click.stop>
                       <div class="flex flex-wrap justify-center gap-1.5">

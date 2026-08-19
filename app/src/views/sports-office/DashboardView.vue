@@ -8,7 +8,7 @@ const { events, scheduledEvents, handleApprove, handleReject } = useSportsPortal
 <template>
   <ResourceOfficeDashboard
     office="sports_office"
-    title="Pending venue requests"
+    title="Venue requests"
     :events="events"
     :scheduled-events="scheduledEvents"
     @approve="handleApprove"

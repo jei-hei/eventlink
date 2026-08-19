@@ -18,7 +18,6 @@ const {
   displayName,
   roleLabel,
   roleDescription,
-  studentOrEmployeeId,
   memberSince,
   lastLogin,
   isOnline,
@@ -79,10 +78,6 @@ const badgeTone = computed(() => roleToBadgeTone(portalRole.value));
         <RoleBadge :label="roleLabel" :tone="badgeTone" class="shrink-0" />
       </div>
       <p class="mt-0.5 line-clamp-1 text-xs text-slate-600 sm:text-sm">{{ roleDescription }}</p>
-      <p class="mt-1 truncate font-mono text-xs font-semibold text-slate-800 sm:text-sm">
-        {{ portalRole === "admin" || portalRole === "adviser" || portalRole === "dean" || portalRole === "osas" || portalRole === "eo" || portalRole === "gso" || portalRole === "it-infrastructure" || portalRole === "sports-office" ? "Employee ID" : "Student ID" }}:
-        {{ studentOrEmployeeId }}
-      </p>
       <div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 sm:text-xs">
         <span class="inline-flex shrink-0 items-center gap-1 font-medium" :class="isOnline ? 'text-emerald-800' : 'text-slate-500'">
           <span class="h-1.5 w-1.5 rounded-full" :class="isOnline ? 'bg-emerald-500' : 'bg-slate-400'" />
@@ -127,10 +122,6 @@ const badgeTone = computed(() => roleToBadgeTone(portalRole.value));
           <RoleBadge :label="roleLabel" :tone="badgeTone" />
         </div>
         <p class="mt-1 text-sm text-slate-600 sm:text-base">{{ roleDescription }}</p>
-        <p class="mt-3 font-mono text-sm font-semibold text-slate-800">
-          {{ portalRole === "admin" || portalRole === "adviser" || portalRole === "dean" || portalRole === "osas" || portalRole === "eo" || portalRole === "gso" || portalRole === "it-infrastructure" || portalRole === "sports-office" ? "Employee ID" : "Student ID" }}:
-          {{ studentOrEmployeeId }}
-        </p>
         <div class="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-slate-600 sm:justify-start sm:text-sm">
           <span class="inline-flex items-center gap-1.5 font-medium" :class="isOnline ? 'text-emerald-800' : 'text-slate-500'">
             <span class="h-2 w-2 rounded-full" :class="isOnline ? 'bg-emerald-500' : 'bg-slate-400'" />

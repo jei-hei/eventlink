@@ -3,7 +3,6 @@ import { computed, ref } from "vue";
 import { useRoute, useRouter, RouterLink, RouterView } from "vue-router";
 import {
   Users,
-  GraduationCap,
   Building2,
   BarChart3,
   Settings,
@@ -12,6 +11,7 @@ import {
   IdCard,
   UserCircle,
   LogOut,
+  LayoutDashboard,
 } from "lucide-vue-next";
 import NotificationDropdown from "@/components/portal/NotificationDropdown.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -36,9 +36,9 @@ async function onLogout() {
 }
 
 const navItems = [
+  { to: "/admin", name: "admin-dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/admin/users", name: "admin-users", label: "Users", icon: Users },
   { to: "/admin/students", name: "admin-students", label: "Students", icon: IdCard },
-  { to: "/admin/ssc", name: "admin-ssc", label: "SSC", icon: GraduationCap },
   { to: "/admin/colleges", name: "admin-colleges", label: "Colleges", icon: Building2 },
   { to: "/admin/reports", name: "admin-reports", label: "Reports", icon: BarChart3 },
   { to: "/admin/settings", name: "admin-settings", label: "Settings", icon: Settings },

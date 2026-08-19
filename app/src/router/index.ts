@@ -111,11 +111,7 @@ const router = createRouter({
           name: "it-equipment",
           component: () => import("@/views/it-infrastructure/EquipmentView.vue"),
         },
-        {
-          path: "requests",
-          name: "it-requests",
-          component: () => import("@/views/it-infrastructure/RequestsView.vue"),
-        },
+        { path: "requests", redirect: { name: "it-dashboard" } },
         {
           path: "analytics",
           name: "it-analytics",
@@ -144,11 +140,7 @@ const router = createRouter({
           name: "sports-venues",
           component: () => import("@/views/sports-office/VenuesView.vue"),
         },
-        {
-          path: "requests",
-          name: "sports-requests",
-          component: () => import("@/views/sports-office/RequestsView.vue"),
-        },
+        { path: "requests", redirect: { name: "sports-dashboard" } },
         {
           path: "analytics",
           name: "sports-analytics",

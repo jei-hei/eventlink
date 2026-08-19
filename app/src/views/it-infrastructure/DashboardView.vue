@@ -8,7 +8,7 @@ const { events, scheduledEvents, handleApprove, handleReject } = useItPortal();
 <template>
   <ResourceOfficeDashboard
     office="it_infrastructure"
-    title="Pending equipment requests"
+    title="IT equipment requests"
     :events="events"
     :scheduled-events="scheduledEvents"
     @approve="handleApprove"

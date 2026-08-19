@@ -3,6 +3,7 @@ import { usePageVisibility } from "@/composables/usePageVisibility";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
 import { useEventRequestsStore } from "@/stores/eventRequests";
+import { useUiStore } from "@/stores/ui";
 import type { AppRole } from "@/types/appRole";
 import type { PortalEvent } from "@/types/portalEvent";
 import type { CreateEventRequestInput } from "@/types/eventRequest";
@@ -21,6 +22,7 @@ export function usePortalEvents(
 ) {
   const auth = useAuthStore();
   const store = useEventRequestsStore();
+  const ui = useUiStore();
   const { visible: pageVisible } = usePageVisibility();
   const useDb = computed(() => isSupabaseConfigured && !!auth.userId && !auth.useMock);
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -111,11 +113,14 @@ export function usePortalEvents(
 
   const busy = ref(false);
 
-  async function runAction(fn: () => Promise<void>) {
+  async function runAction(fn: () => Promise<void>, successToast?: { title: string; description?: string }) {
     if (busy.value) return;
     busy.value = true;
     try {
       await fn();
+      if (successToast) {
+        ui.pushToast(successToast.title, successToast.description, "success");
+      }
     } catch (e) {
       window.alert(e instanceof Error ? e.message : String(e));
     } finally {
@@ -125,13 +130,17 @@ export function usePortalEvents(
 
   function handleApprove(id: string) {
     if (useDb.value) {
-      void runAction(() => store.approve(id));
+      void runAction(() => store.approve(id), {
+        title: "Request approved successfully.",
+        description: "The event request was approved.",
+      });
       return;
     }
     const ev = mock.events.value.find((e) => e.id === id);
     if (!ev) return;
     mock.approvedEvents.value = [...mock.approvedEvents.value, { ...ev, status: "Approved" }];
     mock.events.value = mock.events.value.filter((e) => e.id !== id);
+    ui.pushToast("Request approved successfully.", "The event request was approved.", "success");
   }
 
   function handleReject(id: string) {
@@ -152,10 +161,18 @@ export function usePortalEvents(
     assignments: import("@/types/resourceOffice").ResourceAssignmentInput[],
   ) {
     if (useDb.value) {
-      await runAction(() => store.approveAndForward(id, assignments));
+      await runAction(() => store.approveAndForward(id, assignments), {
+        title: "Request approved successfully.",
+        description: "Resources were forwarded to the responsible offices.",
+      });
       return;
     }
     mock.events.value = mock.events.value.filter((e) => e.id !== id);
+    ui.pushToast(
+      "Request approved successfully.",
+      "Resources were forwarded to the responsible offices.",
+      "success",
+    );
   }
 
   function handleCreateEvent(newEvent: PortalEvent) {

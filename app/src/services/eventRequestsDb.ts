@@ -262,6 +262,60 @@ const EVENT_REQUEST_LIST_SELECT_INNER_ORG = `
 
 const PORTAL_LIST_LIMIT = 400;
 
+const ASSIGNMENT_LIST_SELECT =
+  "id, request_id, resource_kind, venue_id, equipment_id, resource_name, quantity, assigned_office, status, decline_reason";
+
+type AssignmentListRow = NonNullable<EventRequestRow["event_request_resource_assignments"]>[number] & {
+  request_id: string;
+};
+
+/** Ensures resource-office visibility even when nested embeds fail or are stripped by fallbacks. */
+async function attachResourceAssignments(rows: EventRequestRow[]): Promise<EventRequestRow[]> {
+  if (!rows.length) return rows;
+  const missing = rows.filter((r) => !Array.isArray(r.event_request_resource_assignments));
+  // Always refresh for resource_offices / gso pending so offices see EO forwards immediately.
+  const needsRefresh = rows.filter(
+    (r) =>
+      r.status === "pending" &&
+      (r.current_step === "resource_offices" || r.current_step === "gso") &&
+      (!(r.event_request_resource_assignments ?? []).length || missing.includes(r)),
+  );
+  const targetIds = [...new Set([...missing, ...needsRefresh].map((r) => r.id))];
+  if (!targetIds.length) return rows;
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("event_request_resource_assignments")
+    .select(ASSIGNMENT_LIST_SELECT)
+    .in("request_id", targetIds);
+  if (error || !data) return rows;
+
+  const byRequest = new Map<string, NonNullable<EventRequestRow["event_request_resource_assignments"]>>();
+  for (const row of data as AssignmentListRow[]) {
+    const list = byRequest.get(row.request_id) ?? [];
+    list.push({
+      id: row.id,
+      resource_kind: row.resource_kind,
+      venue_id: row.venue_id,
+      equipment_id: row.equipment_id,
+      resource_name: row.resource_name,
+      quantity: row.quantity,
+      assigned_office: row.assigned_office,
+      status: row.status,
+      decline_reason: row.decline_reason,
+    });
+    byRequest.set(row.request_id, list);
+  }
+
+  return rows.map((r) => {
+    if (!targetIds.includes(r.id)) return r;
+    return {
+      ...r,
+      event_request_resource_assignments: byRequest.get(r.id) ?? r.event_request_resource_assignments ?? [],
+    };
+  });
+}
+
 export type PortalEventLoadScope = {
   role: AppRole;
   userId: string;
@@ -278,16 +332,30 @@ async function runEventRequestListQuery(select: string, apply: (q: any) => any):
     .order("created_at", { ascending: false })
     .limit(PORTAL_LIST_LIMIT);
   const { data, error } = await apply(base);
+  let rows: EventRequestRow[];
   if (error) {
     const fallback = await supabase
       .from("event_requests")
-      .select(`*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
+      .select(
+        `*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) ), event_request_resource_assignments ( id, resource_kind, venue_id, equipment_id, resource_name, quantity, assigned_office, status, decline_reason )`,
+      )
       .order("created_at", { ascending: false })
       .limit(PORTAL_LIST_LIMIT);
-    if (fallback.error) throw fallback.error;
-    return (fallback.data ?? []) as EventRequestRow[];
+    if (fallback.error) {
+      const bare = await supabase
+        .from("event_requests")
+        .select(`*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
+        .order("created_at", { ascending: false })
+        .limit(PORTAL_LIST_LIMIT);
+      if (bare.error) throw bare.error;
+      rows = (bare.data ?? []) as EventRequestRow[];
+    } else {
+      rows = (fallback.data ?? []) as EventRequestRow[];
+    }
+  } else {
+    rows = (data ?? []) as EventRequestRow[];
   }
-  return (data ?? []) as EventRequestRow[];
+  return attachResourceAssignments(rows);
 }
 
 /** Role-scoped fetch — avoids loading the full event_requests table on every portal view. */
@@ -664,7 +732,11 @@ export async function approveAndForwardEventRequest(
   }
 
   const supabase = getSupabase();
-  await supabase.from("event_request_resource_assignments").delete().eq("request_id", id);
+  const { error: deleteErr } = await supabase
+    .from("event_request_resource_assignments")
+    .delete()
+    .eq("request_id", id);
+  if (deleteErr) throw deleteErr;
 
   const rows = assignments.map((a) => ({
     request_id: id,
@@ -756,8 +828,12 @@ export async function approveResourceAssignment(
     throw new Error("This request is not awaiting resource-office approval.");
   }
 
+  const kind = office === "it_infrastructure" ? "equipment" : office === "sports_office" ? "venue" : null;
   const mine = (row.event_request_resource_assignments ?? []).filter(
-    (a) => a.assigned_office === office && a.status === "pending",
+    (a) =>
+      a.assigned_office === office &&
+      a.status === "pending" &&
+      (kind == null || a.resource_kind === kind),
   );
   if (!mine.length) {
     throw new Error("No pending resources are assigned to your office for this request.");
@@ -822,8 +898,12 @@ export async function declineResourceAssignment(
     throw new Error("This request is not awaiting resource-office approval.");
   }
 
+  const kind = office === "it_infrastructure" ? "equipment" : office === "sports_office" ? "venue" : null;
   const mine = (row.event_request_resource_assignments ?? []).filter(
-    (a) => a.assigned_office === office && a.status === "pending",
+    (a) =>
+      a.assigned_office === office &&
+      a.status === "pending" &&
+      (kind == null || a.resource_kind === kind),
   );
   if (!mine.length) {
     throw new Error("No pending resources are assigned to your office for this request.");
@@ -1086,13 +1166,23 @@ export function filterPendingForRole(
   });
 }
 
+function officePendingKind(office: ResourceOffice): "venue" | "equipment" | null {
+  if (office === "it_infrastructure") return "equipment";
+  if (office === "sports_office") return "venue";
+  return null;
+}
+
 function hasPendingAssignmentForOffice(row: EventRequestRow, office: ResourceOffice): boolean {
   if (row.status !== "pending") return false;
   // Legacy GSO step without assignments
   if (office === "gso" && row.current_step === "gso") return true;
   if (row.current_step !== "resource_offices") return false;
+  const kind = officePendingKind(office);
   return (row.event_request_resource_assignments ?? []).some(
-    (a) => a.assigned_office === office && a.status === "pending",
+    (a) =>
+      a.assigned_office === office &&
+      a.status === "pending" &&
+      (kind == null || a.resource_kind === kind),
   );
 }
 

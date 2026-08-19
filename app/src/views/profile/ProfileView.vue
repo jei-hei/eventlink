@@ -11,7 +11,6 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import ProfileHeader from "@/components/profile/ProfileHeader.vue";
 import ProfileSectionCard from "@/components/profile/ProfileSectionCard.vue";
 import ProfileField from "@/components/profile/ProfileField.vue";
-import ActivityStatCard from "@/components/profile/ActivityStatCard.vue";
 import AvatarUpload from "@/components/profile/AvatarUpload.vue";
 import ProfilePageSkeleton from "@/components/profile/ProfilePageSkeleton.vue";
 
@@ -64,10 +63,10 @@ watch(editMode, (on) => {
   if (on) syncDraftFromStore();
 });
 
+/** Academic block for students / student officers only — not SSC or staff. */
 const showAcademic = computed(() =>
-  ["student", "student-officer", "ssc"].includes(portalRole.value),
+  ["student", "student-officer"].includes(portalRole.value),
 );
-const showOffice = computed(() => portalRole.value !== "student");
 
 onMounted(async () => {
   try {
@@ -186,11 +185,6 @@ async function onLogout() {
   router.push("/login");
 }
 
-const idLabel = computed(() =>
-  ["admin", "adviser", "dean", "osas", "eo", "gso", "it-infrastructure", "sports-office"].includes(portalRole.value) ? "Employee ID" : "Student ID",
-);
-
-const idEditable = computed(() => editMode.value && portalRole.value !== "student");
 const emailEditable = computed(() => editMode.value && portalRole.value !== "student");
 
 /** Student-adjacent portals use the same tight header as standalone `/student/profile` (no tall hero card). */
@@ -262,12 +256,6 @@ const compactProfileHeader = computed(
                 :editable="emailEditable"
               />
               <ProfileField v-model="draft.phone" label="Contact number" input-type="tel" :editable="editMode" />
-              <ProfileField
-                v-model="draft.studentOrEmployeeId"
-                :label="idLabel"
-                :editable="idEditable"
-                :copyable="!editMode"
-              />
               <div class="sm:col-span-2">
                 <ProfileField :model-value="profile.roleLabel" label="Role" :editable="false" />
               </div>
@@ -308,35 +296,6 @@ const compactProfileHeader = computed(
             <p v-if="registryLinked" class="mt-2 text-xs text-slate-500">
               College and program come from the student registry. Ask an administrator to update them if needed.
             </p>
-          </ProfileSectionCard>
-
-          <ProfileSectionCard
-            v-if="showOffice"
-            title="Office information"
-            description="Used in routing memos and approval queues."
-          >
-            <div class="grid gap-3 sm:grid-cols-2">
-              <ProfileField v-model="draft.department" label="Department" :editable="editMode" />
-              <ProfileField v-model="draft.office" label="Office" :editable="editMode" />
-              <div class="sm:col-span-2">
-                <ProfileField v-model="draft.position" label="Position" :editable="editMode" />
-              </div>
-            </div>
-            <p v-if="editMode && usesSupabaseProfile" class="mt-2 text-xs text-slate-500">
-              Office details are saved to your account in the backend.
-            </p>
-          </ProfileSectionCard>
-
-          <ProfileSectionCard title="Activity summary" description="Snapshot of your recent profile activity.">
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <ActivityStatCard
-                v-for="s in profile.activityStats"
-                :key="s.id"
-                :label="s.label"
-                :value="s.value"
-                :icon-key="s.icon"
-              />
-            </div>
           </ProfileSectionCard>
 
           <ProfileSectionCard title="Account settings">

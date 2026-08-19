@@ -72,7 +72,7 @@ async function save() {
       description: form.value.description,
       quantityAvailable: form.value.quantity,
       responsibleOffice: props.office,
-      availability: form.value.availability,
+      availability: form.value.availability || "available",
       status: form.value.status,
       active: form.value.status !== "inactive",
     };
@@ -130,13 +130,6 @@ async function save() {
           <input :value="resourceOfficeLabel(office)" type="text" disabled class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm" />
         </label>
         <label class="block text-sm">
-          <span class="mb-1 block text-xs font-semibold text-gray-500">Availability</span>
-          <select v-model="form.availability" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-            <option value="available">Available</option>
-            <option value="unavailable">Unavailable</option>
-          </select>
-        </label>
-        <label class="block text-sm">
           <span class="mb-1 block text-xs font-semibold text-gray-500">Status</span>
           <select v-model="form.status" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
             <option value="active">Active</option>
@@ -161,7 +154,6 @@ async function save() {
           <tr>
             <th class="px-4 py-3">Equipment</th>
             <th class="px-4 py-3">Qty available</th>
-            <th class="px-4 py-3">Availability</th>
             <th class="px-4 py-3">Status</th>
             <th class="px-4 py-3">Actions</th>
           </tr>
@@ -176,7 +168,6 @@ async function save() {
               <p v-if="item.description" class="mt-0.5 text-xs text-gray-500">{{ item.description }}</p>
             </td>
             <td class="px-4 py-3 text-sm text-gray-600">{{ item.quantity_available }}</td>
-            <td class="px-4 py-3 text-sm capitalize text-gray-600">{{ item.availability }}</td>
             <td class="px-4 py-3 text-sm capitalize text-gray-600">{{ item.status }}</td>
             <td class="px-4 py-3">
               <button type="button" class="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700" @click="openEdit(item)">
@@ -185,7 +176,7 @@ async function save() {
             </td>
           </tr>
           <tr v-if="!items.length">
-            <td colspan="5" class="px-4 py-10 text-center text-sm text-gray-400">No equipment yet. Add items to make them selectable in event requests.</td>
+            <td colspan="4" class="px-4 py-10 text-center text-sm text-gray-400">No equipment yet. Add items to make them selectable in event requests.</td>
           </tr>
         </tbody>
       </table>
