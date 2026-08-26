@@ -2,16 +2,17 @@ import { getSupabase } from "@/lib/supabase";
 
 const BUCKET = "event-letters";
 
-const WORD_TYPES = new Set([
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-]);
+const PDF_TYPES = new Set(["application/pdf"]);
+const PDF_EXT = /\.pdf$/i;
 
-const WORD_EXT = /\.(docx?|DOCX?)$/;
+export function isPdfProposalFile(file: File): boolean {
+  if (PDF_TYPES.has(file.type)) return true;
+  return PDF_EXT.test(file.name);
+}
 
+/** @deprecated Use isPdfProposalFile — kept for older Word uploads still in storage. */
 export function isWordLetterFile(file: File): boolean {
-  if (WORD_TYPES.has(file.type)) return true;
-  return WORD_EXT.test(file.name);
+  return isPdfProposalFile(file);
 }
 
 export async function uploadEventLetter(
@@ -19,17 +20,17 @@ export async function uploadEventLetter(
   userId: string,
   requestId: string,
 ): Promise<string> {
-  if (!isWordLetterFile(file)) {
-    throw new Error("Please upload a Word document (.doc or .docx).");
+  if (!isPdfProposalFile(file)) {
+    throw new Error("Please upload a PDF proposal (.pdf).");
   }
 
-  const safeName = file.name.replace(/[^\w.\-() ]+/g, "_").trim() || "letter.docx";
-  const path = `${userId}/${requestId}/${safeName}`;
+  const safeName = file.name.replace(/[^\w.\-() ]+/g, "_").trim() || "proposal.pdf";
+  const path = `${userId}/${requestId}/${Date.now()}-${safeName}`;
 
   const supabase = getSupabase();
   const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-    upsert: true,
-    contentType: file.type || undefined,
+    upsert: false,
+    contentType: file.type || "application/pdf",
   });
   if (error) throw error;
   return path;
@@ -44,14 +45,18 @@ export async function getEventLetterSignedUrl(path: string): Promise<string | nu
 
 export function letterFileNameFromPath(path: string): string {
   const part = path.split("/").pop();
-  return part || "letter.docx";
+  return part || "proposal.pdf";
 }
 
-/** Download the original Word file uploaded with the event request. */
+export function isPdfPath(path: string): boolean {
+  return PDF_EXT.test(path);
+}
+
+/** Download helper for non-PDF legacy files. Prefer in-app PDF viewer for proposals. */
 export async function downloadEventLetter(letterPath: string): Promise<boolean> {
   const url = await getEventLetterSignedUrl(letterPath);
   if (!url) {
-    window.alert("Could not open the letter file.");
+    window.alert("Could not open the proposal file.");
     return false;
   }
   const a = document.createElement("a");

@@ -87,9 +87,25 @@ async function notifyUser(payload: NotificationPayload): Promise<void> {
   }
 }
 
+function roleLabel(role: string): string {
+  const map: Record<string, string> = {
+    eo: "Executive Officer",
+    osas: "OSAS",
+    adviser: "Adviser",
+    dean: "Dean",
+    admin: "Admin",
+    gso: "GSO",
+    it_infrastructure: "IT Infrastructure",
+    sports_office: "Sports Office",
+    ssc: "SSC",
+    student_officer: "Student Officer",
+  };
+  return map[role] ?? role;
+}
+
 function mapStatus(row: EventRequestRow): PortalEvent["status"] {
   if (row.status === "cancelled") return "Cancelled";
-  if (row.status === "declined") return "Pending";
+  if (row.status === "declined" || row.status === "revision_requested") return "Pending";
   if (row.status === "posted") return "Approved";
   if (row.status === "approved" && row.current_step === "eo_publish") return "Pending";
   if (row.status === "approved") return "Approved";
@@ -140,6 +156,8 @@ export function mapRowToPortalEvent(
   const wfStatus =
     row.status === "cancelled"
       ? "Cancelled"
+      : row.status === "revision_requested"
+        ? "Revision Requested"
       : row.status === "declined"
       ? "Rejected"
       : row.status === "posted" || (row.status === "approved" && row.calendar_posted_at)
@@ -205,11 +223,24 @@ export function mapRowToPortalEvent(
     letterHistory: (row.event_request_letters ?? [])
       .slice()
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-      .map((l) => ({
+      .map((l, idx, arr) => ({
         id: l.id,
         letterPath: l.letter_path,
-        label: l.label,
+        label: l.label || (idx === arr.length - 1 ? `Version ${arr.length - idx}` : `Version ${arr.length - idx}`),
         createdAt: l.created_at,
+      })),
+    complianceComments: (row.event_request_compliance_comments ?? [])
+      .slice()
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      .map((c) => ({
+        id: c.id,
+        comment: c.comment,
+        attachmentPath: c.attachment_path,
+        attachmentName: c.attachment_name,
+        senderId: c.sender_id,
+        senderRole: c.sender_role,
+        senderName: c.profiles?.display_name ?? roleLabel(c.sender_role),
+        createdAt: c.created_at,
       })),
     studentPostCaption: row.student_post_caption,
     updatedAt: row.updated_at ?? null,
@@ -255,30 +286,68 @@ export async function fetchPostedEventRequests(): Promise<EventRequestRow[]> {
 }
 
 const EVENT_REQUEST_LIST_SELECT = `
-  *,
+  id, request_type, status, current_step, organization_id, submitted_by,
+  activity, start_date, end_date, start_time, end_time, venue, venue_id,
+  number_of_participants, sdgs, purpose, needs_gso,
+  letter_path, original_letter_path, decline_reason, declined_at_step,
+  cancellation_reason, cancelled_at, cancelled_by,
+  posted_at, calendar_posted_at, student_post_caption, student_post_image_path,
+  created_at, updated_at,
   organizations ( id, name, college_id ),
   profiles!event_requests_submitted_by_fkey ( display_name ),
   event_request_equipment ( quantity_requested, equipment ( id, name ) ),
   event_request_resource_assignments (
     id, resource_kind, venue_id, equipment_id, resource_name, quantity,
     assigned_office, status, decline_reason
-  ),
-  event_request_letters ( id, letter_path, label, created_at )
+  )
 `;
 
 const EVENT_REQUEST_LIST_SELECT_INNER_ORG = `
-  *,
+  id, request_type, status, current_step, organization_id, submitted_by,
+  activity, start_date, end_date, start_time, end_time, venue, venue_id,
+  number_of_participants, sdgs, purpose, needs_gso,
+  letter_path, original_letter_path, decline_reason, declined_at_step,
+  cancellation_reason, cancelled_at, cancelled_by,
+  posted_at, calendar_posted_at, student_post_caption, student_post_image_path,
+  created_at, updated_at,
   organizations!inner ( id, name, college_id ),
   profiles!event_requests_submitted_by_fkey ( display_name ),
   event_request_equipment ( quantity_requested, equipment ( id, name ) ),
   event_request_resource_assignments (
     id, resource_kind, venue_id, equipment_id, resource_name, quantity,
     assigned_office, status, decline_reason
-  ),
-  event_request_letters ( id, letter_path, label, created_at )
+  )
 `;
 
-const PORTAL_LIST_LIMIT = 400;
+const EVENT_REQUEST_LIST_FALLBACK_SELECT = `
+  id, request_type, status, current_step, organization_id, submitted_by,
+  activity, start_date, end_date, start_time, end_time, venue, venue_id,
+  number_of_participants, sdgs, purpose, needs_gso,
+  letter_path, original_letter_path, decline_reason, declined_at_step,
+  cancellation_reason, cancelled_at, cancelled_by,
+  posted_at, calendar_posted_at, student_post_caption, student_post_image_path,
+  created_at, updated_at,
+  organizations ( id, name, college_id ),
+  event_request_equipment ( quantity_requested, equipment ( id, name ) ),
+  event_request_resource_assignments (
+    id, resource_kind, venue_id, equipment_id, resource_name, quantity,
+    assigned_office, status, decline_reason
+  )
+`;
+
+const EVENT_REQUEST_LIST_BARE_SELECT = `
+  id, request_type, status, current_step, organization_id, submitted_by,
+  activity, start_date, end_date, start_time, end_time, venue, venue_id,
+  number_of_participants, sdgs, purpose, needs_gso,
+  letter_path, original_letter_path, decline_reason, declined_at_step,
+  cancellation_reason, cancelled_at, cancelled_by,
+  posted_at, calendar_posted_at, student_post_caption, student_post_image_path,
+  created_at, updated_at,
+  organizations ( id, name, college_id ),
+  event_request_equipment ( quantity_requested, equipment ( id, name ) )
+`;
+
+const PORTAL_LIST_LIMIT = 200;
 
 const ASSIGNMENT_LIST_SELECT =
   "id, request_id, resource_kind, venue_id, equipment_id, resource_name, quantity, assigned_office, status, decline_reason";
@@ -287,18 +356,11 @@ type AssignmentListRow = NonNullable<EventRequestRow["event_request_resource_ass
   request_id: string;
 };
 
-/** Ensures resource-office visibility even when nested embeds fail or are stripped by fallbacks. */
+/** Fill assignments only when the nested embed was missing (not when it is an empty array). */
 async function attachResourceAssignments(rows: EventRequestRow[]): Promise<EventRequestRow[]> {
   if (!rows.length) return rows;
-  const missing = rows.filter((r) => !Array.isArray(r.event_request_resource_assignments));
-  // Always refresh for resource_offices / gso pending so offices see EO forwards immediately.
-  const needsRefresh = rows.filter(
-    (r) =>
-      r.status === "pending" &&
-      (r.current_step === "resource_offices" || r.current_step === "gso") &&
-      (!(r.event_request_resource_assignments ?? []).length || missing.includes(r)),
-  );
-  const targetIds = [...new Set([...missing, ...needsRefresh].map((r) => r.id))];
+  const missing = rows.filter((r) => r.event_request_resource_assignments == null);
+  const targetIds = [...new Set(missing.map((r) => r.id))];
   if (!targetIds.length) return rows;
 
   const supabase = getSupabase();
@@ -329,7 +391,7 @@ async function attachResourceAssignments(rows: EventRequestRow[]): Promise<Event
     if (!targetIds.includes(r.id)) return r;
     return {
       ...r,
-      event_request_resource_assignments: byRequest.get(r.id) ?? r.event_request_resource_assignments ?? [],
+      event_request_resource_assignments: byRequest.get(r.id) ?? [],
     };
   });
 }
@@ -352,19 +414,19 @@ async function runEventRequestListQuery(select: string, apply: (q: any) => any):
   const { data, error } = await apply(base);
   let rows: EventRequestRow[];
   if (error) {
-    const fallback = await supabase
+    const fallbackBase = supabase
       .from("event_requests")
-      .select(
-        `*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) ), event_request_resource_assignments ( id, resource_kind, venue_id, equipment_id, resource_name, quantity, assigned_office, status, decline_reason )`,
-      )
+      .select(EVENT_REQUEST_LIST_FALLBACK_SELECT)
       .order("created_at", { ascending: false })
       .limit(PORTAL_LIST_LIMIT);
+    const fallback = await apply(fallbackBase);
     if (fallback.error) {
-      const bare = await supabase
+      const bareBase = supabase
         .from("event_requests")
-        .select(`*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
+        .select(EVENT_REQUEST_LIST_BARE_SELECT)
         .order("created_at", { ascending: false })
         .limit(PORTAL_LIST_LIMIT);
+      const bare = await apply(bareBase);
       if (bare.error) throw bare.error;
       rows = (bare.data ?? []) as EventRequestRow[];
     } else {
@@ -394,10 +456,9 @@ export async function fetchPortalEventRequestsForRole(
       );
     }
     case "ssc":
-      // SSC-created requests plus any request with SSC resource assignments / scheduled
       return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
         q.or(
-          "request_type.eq.ssc,and(status.eq.pending,current_step.eq.resource_offices),status.in.(approved,posted),calendar_posted_at.not.is.null",
+          "request_type.eq.ssc,and(status.eq.pending,current_step.eq.resource_offices),calendar_posted_at.not.is.null",
         ),
       );
     case "adviser": {
@@ -417,19 +478,19 @@ export async function fetchPortalEventRequestsForRole(
     case "sports_office":
       return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
         q.or(
-          "and(status.eq.pending,current_step.in.(gso,resource_offices)),status.in.(approved,posted),calendar_posted_at.not.is.null",
+          "and(status.eq.pending,current_step.in.(gso,resource_offices)),calendar_posted_at.not.is.null",
         ),
       );
     case "osas":
       return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
         q.or(
-          "status.in.(pending,approved,posted,declined,cancelled),calendar_posted_at.not.is.null",
+          "and(status.eq.pending,current_step.in.(osas,eo_schedule,eo_publish,resource_offices)),status.in.(declined,cancelled,revision_requested),calendar_posted_at.not.is.null",
         ),
       );
     case "eo":
       return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
         q.or(
-          "current_step.in.(eo_schedule,eo_publish,resource_offices),calendar_posted_at.not.is.null,status.in.(approved,posted,cancelled)",
+          "and(status.eq.pending,current_step.in.(eo_schedule,eo_publish,resource_offices)),status.in.(cancelled,revision_requested),calendar_posted_at.not.is.null",
         ),
       );
     case "student":
@@ -443,24 +504,32 @@ export async function fetchPortalEventRequestsForRole(
   }
 }
 
-export async function fetchAllEventRequests(): Promise<EventRequestRow[]> {
+/** Lazy-load document history + compliance comments for a single request (detail views). */
+export async function fetchEventRequestDocuments(requestId: string): Promise<{
+  letters: NonNullable<EventRequestRow["event_request_letters"]>;
+  comments: NonNullable<EventRequestRow["event_request_compliance_comments"]>;
+}> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("event_requests")
-    .select(EVENT_REQUEST_LIST_SELECT)
-    .order("created_at", { ascending: false })
-    .limit(PORTAL_LIST_LIMIT);
+  const [lettersRes, commentsRes] = await Promise.all([
+    supabase
+      .from("event_request_letters")
+      .select("id, letter_path, label, created_at")
+      .eq("request_id", requestId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("event_request_compliance_comments")
+      .select("id, comment, attachment_path, attachment_name, sender_id, sender_role, created_at")
+      .eq("request_id", requestId)
+      .order("created_at", { ascending: false }),
+  ]);
+  return {
+    letters: (lettersRes.data ?? []) as NonNullable<EventRequestRow["event_request_letters"]>,
+    comments: (commentsRes.data ?? []) as NonNullable<EventRequestRow["event_request_compliance_comments"]>,
+  };
+}
 
-  if (error) {
-    const fallback = await supabase
-      .from("event_requests")
-      .select(`*, organizations ( id, name, college_id ), event_request_equipment ( quantity_requested, equipment ( id, name ) )`)
-      .order("created_at", { ascending: false })
-      .limit(PORTAL_LIST_LIMIT);
-    if (fallback.error) throw fallback.error;
-    return (fallback.data ?? []) as EventRequestRow[];
-  }
-  return (data ?? []) as EventRequestRow[];
+export async function fetchAllEventRequests(): Promise<EventRequestRow[]> {
+  return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) => q);
 }
 
 export async function fetchHistoryForRequest(requestId: string): Promise<EventRequestHistoryRow[]> {
@@ -499,7 +568,7 @@ export async function createEventRequest(
     (input.requestType === "student_officer" || input.requestType === "ssc") &&
     !input.letterFile
   ) {
-    throw new Error("Please upload your Word letter (.doc or .docx).");
+    throw new Error("Please upload your PDF proposal (.pdf).");
   }
 
   const available = await checkVenueAvailable(input.venue, input.startDate, input.endDate);
@@ -558,14 +627,14 @@ export async function createEventRequest(
       await supabase.from("event_request_letters").insert({
         request_id: requestId,
         letter_path: letterPath,
-        label: "Original proposal",
+        label: "Version 1 — Original Proposal",
         created_by: submittedBy,
       });
     } catch (letterErr) {
       const msg = letterErr instanceof Error ? letterErr.message : String(letterErr);
       if (msg.toLowerCase().includes("row-level security") || msg.toLowerCase().includes("policy")) {
         throw new Error(
-          "Event was created but the Word letter could not be saved. Run supabase/migrations/20260528120000_event_letters_storage.sql and 20260528200000_fix_event_requests_rls.sql in the Supabase SQL Editor, then try again.",
+          "Event was created but the PDF proposal could not be saved. Run supabase/migrations/20260528120000_event_letters_storage.sql and 20260528200000_fix_event_requests_rls.sql in the Supabase SQL Editor, then try again.",
         );
       }
       throw letterErr;
@@ -1261,13 +1330,17 @@ export function filterDeclinedForRole(
 ): EventRequestRow[] {
   if (role === "student_officer") {
     return rows.filter((r) => {
-      if (r.request_type !== "student_officer" || r.status !== "declined") return false;
+      if (r.request_type !== "student_officer") return false;
+      if (r.status !== "declined" && r.status !== "revision_requested") return false;
       if (scope?.organizationId) return r.organization_id === scope.organizationId;
       return r.submitted_by === userId;
     });
   }
   if (role === "ssc") {
-    return rows.filter((r) => r.request_type === "ssc" && r.status === "declined");
+    return rows.filter(
+      (r) =>
+        r.request_type === "ssc" && (r.status === "declined" || r.status === "revision_requested"),
+    );
   }
   return [];
 }
@@ -1379,7 +1452,81 @@ export type UpdateEventRequestInput = {
   numberOfParticipants: number;
   sdgs?: string;
   purpose?: string;
+  letterFile?: File | null;
 };
+
+export async function requestRevision(
+  id: string,
+  actorId: string,
+  actorRole: AppRole,
+  comment: string,
+  attachmentFile?: File | null,
+): Promise<void> {
+  const cleanComment = comment.trim();
+  if (!cleanComment) {
+    throw new Error("Compliance comment is required.");
+  }
+
+  const allowed: AppRole[] = ["eo", "osas", "adviser", "dean", "admin"];
+  if (!allowed.includes(actorRole)) {
+    throw new Error("You cannot request a revision for this request.");
+  }
+
+  const row = await getRow(id);
+  if (row.status !== "pending") {
+    throw new Error("Only pending requests can be sent for revision.");
+  }
+  if (actorRole !== "admin") {
+    await assertActorCanHandleCurrentStep(row, actorId, actorRole);
+  }
+
+  let attachmentPath: string | null = null;
+  let attachmentName: string | null = null;
+  if (attachmentFile) {
+    const { uploadComplianceAttachment } = await import("@/services/complianceAttachmentStorage");
+    const uploaded = await uploadComplianceAttachment(attachmentFile, actorId, id);
+    attachmentPath = uploaded.path;
+    attachmentName = uploaded.name;
+  }
+
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("event_requests")
+    .update({
+      status: "revision_requested",
+      decline_reason: cleanComment,
+      declined_at_step: row.current_step,
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  const { error: commentErr } = await supabase.from("event_request_compliance_comments").insert({
+    request_id: id,
+    comment: cleanComment,
+    attachment_path: attachmentPath,
+    attachment_name: attachmentName,
+    sender_id: actorId,
+    sender_role: actorRole,
+  });
+  if (commentErr) throw commentErr;
+
+  await supabase.from("event_request_history").insert({
+    request_id: id,
+    actor_id: actorId,
+    action: "revision_requested",
+    step: row.current_step,
+    comment: cleanComment,
+  });
+
+  await notifyUser({
+    userId: row.submitted_by,
+    title: "Revision requested for your event request.",
+    body: `${row.activity}: ${cleanComment}`,
+    category: "approval",
+    emailSubject: "EventLink: Revision requested",
+    emailText: `Revision requested for your event request "${row.activity}".\n\n${cleanComment}\n\nOpen Event Monitoring to review the comment and resubmit.`,
+  });
+}
 
 export async function updateEventRequest(
   id: string,
@@ -1425,11 +1572,11 @@ export async function resubmitDeclinedEventRequest(
   actorRole: AppRole,
 ): Promise<void> {
   const row = await getRow(id);
-  if (row.status !== "declined") {
-    throw new Error("Only declined requests can be edited and resubmitted.");
+  if (row.status !== "declined" && row.status !== "revision_requested") {
+    throw new Error("Only declined or revision-requested requests can be edited and resubmitted.");
   }
   if (row.submitted_by !== actorId) {
-    throw new Error("You can only resubmit your own declined requests.");
+    throw new Error("You can only resubmit your own requests.");
   }
   if (actorRole === "student_officer" && row.request_type !== "student_officer") {
     throw new Error("This request is not a Student Officer request.");
@@ -1443,7 +1590,12 @@ export async function resubmitDeclinedEventRequest(
     throw new Error("This venue is already booked for the selected date range.");
   }
 
-  const initialStep = getInitialStep(row.request_type);
+  const wasRevision = row.status === "revision_requested";
+  const resumeStep =
+    wasRevision && row.declined_at_step
+      ? row.declined_at_step
+      : getInitialStep(row.request_type);
+
   const supabase = getSupabase();
   const { error } = await supabase
     .from("event_requests")
@@ -1458,27 +1610,49 @@ export async function resubmitDeclinedEventRequest(
       sdgs: input.sdgs?.trim() ?? "",
       purpose: input.purpose?.trim() ?? "",
       status: "pending",
-      current_step: initialStep,
+      current_step: resumeStep,
       decline_reason: null,
       declined_at_step: null,
     })
     .eq("id", id);
   if (error) throw error;
 
+  if (input.letterFile) {
+    const letterPath = await uploadEventLetter(input.letterFile, actorId, id);
+    const { count } = await supabase
+      .from("event_request_letters")
+      .select("id", { count: "exact", head: true })
+      .eq("request_id", id);
+    const version = (count ?? 0) + 1;
+    const { error: letterErr } = await supabase
+      .from("event_requests")
+      .update({ letter_path: letterPath })
+      .eq("id", id);
+    if (letterErr) throw letterErr;
+    await supabase.from("event_request_letters").insert({
+      request_id: id,
+      letter_path: letterPath,
+      label: `Version ${version} — Revised Proposal`,
+      created_by: actorId,
+    });
+  }
+
   await supabase.from("event_request_history").insert({
     request_id: id,
     actor_id: actorId,
     action: "resubmitted",
-    step: initialStep,
-    comment: "Declined request edited and resubmitted",
+    step: resumeStep,
+    comment: wasRevision
+      ? "Revision completed and resubmitted"
+      : "Declined request edited and resubmitted",
   });
 
   await notifyUser({
     userId: row.submitted_by,
-    title: "Request resubmitted",
-    body: `${input.activity.trim()} was edited and resubmitted. It is now awaiting ${stepLabel(initialStep)}.`,
+    title: "Event resubmitted successfully.",
+    body: `${input.activity.trim()} was resubmitted. It is now awaiting ${stepLabel(resumeStep)}.`,
     category: "approval",
     emailSubject: "EventLink: Request resubmitted",
-    emailText: `Your request "${input.activity.trim()}" was edited and resubmitted. It is now awaiting ${stepLabel(initialStep)}.`,
+    emailText: `Your request "${input.activity.trim()}" was resubmitted. It is now awaiting ${stepLabel(resumeStep)}.`,
   });
 }

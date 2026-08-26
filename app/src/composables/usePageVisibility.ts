@@ -1,20 +1,32 @@
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, type Ref } from "vue";
 
-/** True when the document tab is visible (Page Visibility API). */
+const visible: Ref<boolean> = ref(
+  typeof document === "undefined" ? true : document.visibilityState !== "hidden",
+);
+
+let listenerCount = 0;
+
+function sync() {
+  visible.value = document.visibilityState !== "hidden";
+}
+
+/** Shared Page Visibility signal — one DOM listener for the whole app. */
 export function usePageVisibility() {
-  const visible = ref(
-    typeof document === "undefined" ? true : document.visibilityState !== "hidden",
-  );
-
-  function sync() {
-    visible.value = document.visibilityState !== "hidden";
-  }
-
   onMounted(() => {
-    document.addEventListener("visibilitychange", sync);
+    if (typeof document === "undefined") return;
+    if (listenerCount === 0) {
+      document.addEventListener("visibilitychange", sync);
+      sync();
+    }
+    listenerCount += 1;
   });
+
   onUnmounted(() => {
-    document.removeEventListener("visibilitychange", sync);
+    if (typeof document === "undefined") return;
+    listenerCount = Math.max(0, listenerCount - 1);
+    if (listenerCount === 0) {
+      document.removeEventListener("visibilitychange", sync);
+    }
   });
 
   return { visible };

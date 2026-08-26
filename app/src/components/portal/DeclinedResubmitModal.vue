@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { Save, X } from "lucide-vue-next";
+import { Save, Upload, X } from "lucide-vue-next";
 import SdgCheckboxGroup from "@/components/SdgCheckboxGroup.vue";
 import { parseSdgsFromStorage, formatSdgsForStorage } from "@/constants/sdgs";
 import { fetchActiveVenues } from "@/services/venuesDb";
+import { isPdfProposalFile } from "@/services/eventLetterStorage";
 import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import type { PortalEvent } from "@/types/portalEvent";
 
@@ -30,8 +31,15 @@ const form = ref({
 const selectedSdgs = ref<number[]>([]);
 const venues = ref<string[]>([]);
 const loadingVenues = ref(false);
+const letterFile = ref<File | null>(null);
+const letterError = ref("");
 
 const open = computed(() => !!props.event);
+const isRevision = computed(() =>
+  String(props.event?.workflowStatus ?? "")
+    .toLowerCase()
+    .includes("revision"),
+);
 
 function toTimeInput(value: string | undefined): string {
   if (!value) return "08:00";
@@ -64,6 +72,8 @@ function resetForm() {
     purpose: ev.purpose ?? ev.description ?? "",
   };
   selectedSdgs.value = parseSdgsFromStorage(ev.sdgs ?? "");
+  letterFile.value = null;
+  letterError.value = "";
 }
 
 async function loadVenues() {
@@ -90,6 +100,23 @@ watch(
   },
   { immediate: true },
 );
+
+function onLetterChange(ev: Event) {
+  letterError.value = "";
+  const input = ev.target as HTMLInputElement;
+  const file = input.files?.[0] ?? null;
+  if (!file) {
+    letterFile.value = null;
+    return;
+  }
+  if (!isPdfProposalFile(file)) {
+    letterError.value = "Only PDF files (.pdf) are allowed.";
+    letterFile.value = null;
+    input.value = "";
+    return;
+  }
+  letterFile.value = file;
+}
 
 function submitForm() {
   if (!props.event) return;
@@ -119,6 +146,7 @@ function submitForm() {
     numberOfParticipants: Math.max(1, Math.floor(form.value.numberOfParticipants)),
     sdgs: formatSdgsForStorage(selectedSdgs.value),
     purpose: form.value.purpose.trim(),
+    letterFile: letterFile.value,
   });
 }
 </script>
@@ -131,16 +159,23 @@ function submitForm() {
   >
     <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-2xl">
       <div class="sticky top-0 flex items-center justify-between bg-[#16A34A] px-6 py-4 text-white">
-        <h3 class="text-base font-bold">Edit declined request and resend</h3>
+        <h3 class="text-base font-bold">
+          {{ isRevision ? "Edit and resubmit after revision" : "Edit declined request and resend" }}
+        </h3>
         <button type="button" class="rounded-lg p-1.5 transition hover:bg-[#15803D]" @click="emit('close')">
           <X :size="18" />
         </button>
       </div>
 
       <form class="space-y-4 p-6" @submit.prevent="submitForm">
-        <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-          <p class="font-semibold">Decline reason</p>
-          <p class="mt-1">{{ event.declineReason || "No reason provided." }}</p>
+        <div
+          :class="[
+            'rounded-lg border px-3 py-2 text-sm',
+            isRevision ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-red-200 bg-red-50 text-red-800',
+          ]"
+        >
+          <p class="font-semibold">{{ isRevision ? "Compliance comment" : "Decline reason" }}</p>
+          <p class="mt-1 whitespace-pre-wrap">{{ event.declineReason || "No reason provided." }}</p>
         </div>
 
         <div>
@@ -228,6 +263,21 @@ function submitForm() {
           />
         </div>
 
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
+            Replace proposal PDF (optional)
+          </label>
+          <label
+            class="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-3 text-sm text-gray-600 hover:border-emerald-400"
+          >
+            <Upload :size="16" />
+            <span class="truncate">{{ letterFile?.name || "Upload revised PDF" }}</span>
+            <input type="file" accept=".pdf,application/pdf" class="sr-only" @change="onLetterChange" />
+          </label>
+          <p v-if="letterError" class="mt-1 text-xs text-red-600">{{ letterError }}</p>
+          <p class="mt-1 text-xs text-gray-500">Uploading a new PDF adds a version to document history.</p>
+        </div>
+
         <SdgCheckboxGroup v-model="selectedSdgs" />
 
         <div class="flex justify-end gap-2 border-t border-gray-200 pt-4">
@@ -244,7 +294,7 @@ function submitForm() {
             class="inline-flex items-center gap-2 rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#15803D] disabled:opacity-60"
           >
             <Save :size="16" />
-            {{ submitting ? "Resending..." : "Save and resend" }}
+            {{ submitting ? "Resubmitting..." : "Save and resubmit" }}
           </button>
         </div>
       </form>

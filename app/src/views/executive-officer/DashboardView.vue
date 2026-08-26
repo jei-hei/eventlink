@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { Calendar, CheckCircle, XCircle } from "lucide-vue-next";
+import { Calendar, CheckCircle, Eye } from "lucide-vue-next";
 import type { EoEvent } from "./types";
 import { useExecutivePortal } from "./portalContext";
 import EoCreateSscEventModal, { type EoCreateDirectPayload } from "./components/EoCreateSscEventModal.vue";
@@ -19,9 +19,9 @@ const eventsLoading = useEventsTableLoading();
 const {
   events,
   scheduledEvents,
-  handleApprove,
   handleReject,
   handleApproveAndForward,
+  handleRequestRevision,
   handleCreateEvent,
   handlePostEvent,
   handleUpdateEvent,
@@ -48,6 +48,11 @@ async function onApproveAndForward(
 
 function onDetailReject(id: string) {
   handleReject(id);
+  selectedEvent.value = null;
+}
+
+async function onRequestRevision(id: string, comment: string, attachmentFile: File | null) {
+  await handleRequestRevision(id, comment, attachmentFile);
   selectedEvent.value = null;
 }
 
@@ -201,42 +206,25 @@ async function onCancelScheduled(id: string, reason: string) {
                     <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.venue }}</td>
                     <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.participants ?? "—" }}</td>
                     <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.sdgs ?? "—" }}</td>
-                    <td class="px-3 py-2.5">
+                    <td class="px-3 py-2.5" @click.stop>
                       <div class="flex gap-1.5">
                         <button
                           v-if="isReadyForCalendarPost(event)"
                           type="button"
                           class="bg-[#16A34A] hover:bg-[#15803D] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
-                          @click.stop="handlePostEvent(event.id)"
+                          @click="handlePostEvent(event.id)"
                         >
                           <CheckCircle :size="12" />
                           Post to calendar
                         </button>
                         <button
-                          v-else-if="isReadyForForward(event)"
-                          type="button"
-                          class="bg-[#16A34A] hover:bg-[#15803D] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
-                          @click.stop="selectedEvent = event"
-                        >
-                          <CheckCircle :size="12" />
-                          Assign &amp; Forward
-                        </button>
-                        <button
                           v-else
                           type="button"
-                          class="bg-[#4ADE80] hover:bg-[#3BC56D] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
-                          @click.stop="handleApprove(event.id)"
+                          class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          @click="selectedEvent = event"
                         >
-                          <CheckCircle :size="12" />
-                          APPROVE
-                        </button>
-                        <button
-                          type="button"
-                          class="bg-[#DC2626] hover:bg-[#B91C1C] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
-                          @click.stop="handleReject(event.id)"
-                        >
-                          <XCircle :size="12" />
-                          REJECT
+                          <Eye :size="12" />
+                          {{ isReadyForForward(event) ? "Open & Assign" : "Open" }}
                         </button>
                       </div>
                     </td>
@@ -273,6 +261,7 @@ async function onCancelScheduled(id: string, reason: string) {
       @close="selectedEvent = null"
       @approve-and-forward="onApproveAndForward"
       @reject="onDetailReject"
+      @request-revision="onRequestRevision"
     />
   </div>
 </template>

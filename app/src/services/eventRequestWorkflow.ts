@@ -105,7 +105,7 @@ export function buildWorkflowHistory(
   currentStep: DbWorkflowStep | null,
   _needsGso: boolean,
   historyApprovals: { step: DbWorkflowStep; approver: string; at: string }[],
-): { name: string; status: "completed" | "current" | "pending"; timestamp?: string; approver?: string }[] {
+): { name: string; status: "completed" | "current" | "pending" | "declined" | "revision"; timestamp?: string; approver?: string }[] {
   const chain = getWorkflowChain(requestType);
   const currentIdx = currentStep ? chain.indexOf(currentStep) : -1;
   const allDone = currentStep == null && historyApprovals.length > 0;

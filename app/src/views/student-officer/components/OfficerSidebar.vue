@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterLink, useRoute } from "vue-router";
-import { LayoutDashboard, ClipboardList, BarChart2, X, ChevronRight, UserCircle } from "lucide-vue-next";
+import { LayoutDashboard, Radar, BarChart2, X, ChevronRight, UserCircle } from "lucide-vue-next";
 import PortalSidebarFooter from "@/components/portal/PortalSidebarFooter.vue";
 
 defineProps<{ open: boolean }>();
@@ -11,7 +11,7 @@ const route = useRoute();
 const navItems = [
   { label: "Dashboard", to: "/student-officer", name: "officer-dashboard", icon: LayoutDashboard },
   { label: "Analytics", to: "/student-officer/analytics", name: "officer-analytics", icon: BarChart2 },
-  { label: "Events", to: "/student-officer/events", name: "officer-events", icon: ClipboardList },
+  { label: "Event Monitoring", to: "/student-officer/events", name: "officer-events", icon: Radar },
   { label: "Profile", to: "/student-officer/profile", name: "officer-profile", icon: UserCircle },
 ] as const;
 

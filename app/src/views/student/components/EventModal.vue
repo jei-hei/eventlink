@@ -47,17 +47,26 @@ function onFeedbackSubmitted() {
 
       <div class="border-b border-gray-200 p-4">
         <div class="flex items-center gap-3">
+          <img
+            v-if="event.posterAvatarUrl"
+            :src="event.posterAvatarUrl"
+            :alt="event.posterName || 'Poster'"
+            class="h-12 w-12 shrink-0 rounded-full object-cover shadow"
+          />
           <div
+            v-else
             :class="[
               'flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white shadow',
-              getOrgColor(event.organization),
+              getOrgColor(event.posterName || event.organization || 'user'),
             ]"
           >
-            {{ event.organization.charAt(0) }}
+            {{ (event.posterName || event.organization || '?').charAt(0).toUpperCase() }}
           </div>
-          <div>
-            <p class="font-semibold text-gray-900">{{ event.organization }}</p>
-            <p class="text-xs text-gray-500">{{ formatPostedAgo(event.postedAt, event.day) }}</p>
+          <div class="min-w-0">
+            <p class="font-semibold text-gray-900">{{ event.posterName }}</p>
+            <p v-if="event.organization" class="text-sm text-gray-600">{{ event.organization }}</p>
+            <p v-if="event.posterCollege" class="text-sm text-gray-600">{{ event.posterCollege }}</p>
+            <p class="text-xs text-gray-500">{{ formatPostedAgo(event.postedAt, event.day) }} · 🌐 Public</p>
           </div>
         </div>
         <p v-if="event.caption" class="mt-4 whitespace-pre-wrap text-gray-800 leading-relaxed">{{ event.caption }}</p>

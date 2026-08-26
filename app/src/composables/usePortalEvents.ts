@@ -27,8 +27,8 @@ export function usePortalEvents(
   const useDb = computed(() => isSupabaseConfigured && !!auth.userId && !auth.useMock);
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let refreshing = false;
-  const POLL_MS_VISIBLE = 50_000;
-  const POLL_MS_HIDDEN = 120_000;
+  const POLL_MS_VISIBLE = 60_000;
+  const POLL_MS_HIDDEN = 180_000;
 
   async function refreshEvents(force = false): Promise<boolean> {
     if (!useDb.value || refreshing) return false;
@@ -57,26 +57,23 @@ export function usePortalEvents(
   }
 
   onMounted(() => {
-    void refreshEvents(true);
+    // Soft load if store already warm; force only on first entry.
+    void refreshEvents(!store.loaded);
     schedulePoll();
   });
   onUnmounted(stopPolling);
 
-  watch(pageVisible, (isVisible) => {
+  watch(pageVisible, () => {
     if (!useDb.value) return;
-    if (isVisible) {
-      // Session + store refresh is handled globally in App.vue after token revalidation.
-      schedulePoll();
-    } else {
-      schedulePoll();
-    }
+    // Data refresh on visibility is owned by App.vue after session revalidation.
+    schedulePoll();
   });
 
   watch(
     () => auth.userId,
     (id) => {
       if (id && useDb.value) {
-        void refreshEvents(true);
+        void refreshEvents(!store.loaded);
         schedulePoll();
       } else {
         stopPolling();
@@ -131,7 +128,7 @@ export function usePortalEvents(
   function handleApprove(id: string) {
     if (useDb.value) {
       void runAction(() => store.approve(id), {
-        title: "Request approved successfully.",
+        title: "Event approved successfully.",
         description: "The event request was approved.",
       });
       return;
@@ -182,10 +179,6 @@ export function usePortalEvents(
     } else {
       mock.events.value = [...mock.events.value, newEvent];
     }
-  }
-
-  async function submitRequest(input: CreateEventRequestInput) {
-    await store.submit(input);
   }
 
   const canPostToStudents = computed(() => role === "ssc" || role === "student_officer");
@@ -279,8 +272,36 @@ export function usePortalEvents(
 
   async function handleResubmitDeclined(id: string, input: UpdateEventRequestInput) {
     if (useDb.value) {
-      await runAction(() => store.resubmitDeclined(id, input));
+      await runAction(() => store.resubmitDeclined(id, input), {
+        title: "Event resubmitted successfully.",
+        description: "Your corrected request was sent back into the workflow.",
+      });
       return;
+    }
+  }
+
+  async function handleRequestRevision(
+    id: string,
+    comment: string,
+    attachmentFile?: File | null,
+  ) {
+    if (useDb.value) {
+      await runAction(() => store.requestRevision(id, comment, attachmentFile), {
+        title: "Revision request sent successfully.",
+        description: "The requester was notified with your compliance comment.",
+      });
+      return;
+    }
+  }
+
+  async function submitRequest(input: CreateEventRequestInput) {
+    await store.submit(input);
+    if (input.letterFile) {
+      ui.pushToast(
+        "PDF uploaded successfully.",
+        "Your event request was submitted with the proposal PDF.",
+        "success",
+      );
     }
   }
 
@@ -292,6 +313,7 @@ export function usePortalEvents(
     handleApprove,
     handleReject,
     handleApproveAndForward,
+    handleRequestRevision,
     handleCreateEvent,
     handlePostEvent,
     handleCreateFeedPost,

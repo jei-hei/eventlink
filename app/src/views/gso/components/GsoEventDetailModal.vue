@@ -98,7 +98,7 @@ const showCloseOnly = props.event.createdBy === "EO" || props.event.status !== "
           <p class="text-gray-800 text-sm whitespace-pre-wrap">{{ event.itemsEquipment || "No items or equipment specified." }}</p>
         </div>
 
-        <EventLetterLink v-if="event.letterPath" :letter-path="event.letterPath" />
+        <EventLetterLink v-if="event.letterPath" :letter-path="event.letterPath" label="Proposal PDF" :current="true" />
         <div v-else-if="event.letterContent">
           <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Full Event Letter Content</label>
           <div class="text-gray-800 text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded-lg border border-gray-200">
@@ -114,7 +114,7 @@ const showCloseOnly = props.event.createdBy === "EO" || props.event.status !== "
         </div>
 
         <div v-if="event.remarks">
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Remarks / Special Instructions</label>
+          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Notes</label>
           <p class="text-gray-800 text-sm whitespace-pre-wrap">{{ event.remarks }}</p>
         </div>
 

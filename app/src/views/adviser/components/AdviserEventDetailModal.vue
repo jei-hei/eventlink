@@ -72,7 +72,7 @@ const emit = defineEmits<{ close: [] }>();
           <p class="text-gray-800 text-sm whitespace-pre-wrap">{{ event.itemsEquipment || "No items or equipment specified." }}</p>
         </div>
 
-        <EventLetterLink v-if="event.letterPath" :letter-path="event.letterPath" />
+        <EventLetterLink v-if="event.letterPath" :letter-path="event.letterPath" label="Proposal PDF" :current="true" />
         <div v-else-if="event.letterContent">
           <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Full Event Letter Content</label>
           <div class="text-gray-800 text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded-lg border border-gray-200">
@@ -87,13 +87,8 @@ const emit = defineEmits<{ close: [] }>();
           </div>
         </div>
 
-        <div v-if="event.remarks">
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Remarks / Special Instructions</label>
-          <p class="text-gray-800 text-sm whitespace-pre-wrap">{{ event.remarks }}</p>
-        </div>
-
         <div>
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Approval Workflow Tracker</label>
+          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Approval history</label>
           <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
             <div v-if="event.workflowHistory && event.workflowHistory.length > 0" class="space-y-0">
               <div v-for="(step, index) in event.workflowHistory" :key="index" class="relative">

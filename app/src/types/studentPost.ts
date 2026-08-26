@@ -14,6 +14,13 @@ export type CreateStudentFeedPostInput = {
 /** @deprecated use CreateStudentFeedPostInput */
 export type PublishStudentPostInput = Pick<CreateStudentFeedPostInput, "caption" | "imageFile">;
 
+export type StudentFeedPosterProfile = {
+  display_name: string;
+  avatar_url: string | null;
+  organizations: { name: string } | null;
+  colleges: { name: string; code: string } | null;
+};
+
 export type StudentFeedPostRow = {
   id: string;
   organization_id: string | null;
@@ -28,6 +35,9 @@ export type StudentFeedPostRow = {
   venue: string | null;
   posted_at: string;
   created_at: string;
+  /** Org linked to the post row (event relationship); not used as poster identity. */
   organizations?: { name: string } | null;
+  /** Actual creator profile via submitted_by → profiles. */
+  profiles?: StudentFeedPosterProfile | null;
   event_requests?: { letter_path: string | null } | null;
 };

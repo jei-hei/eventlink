@@ -1,8 +1,13 @@
 import { getSupabase } from "@/lib/supabase";
 import { getEventPostImagePublicUrl, uploadEventPostImage } from "@/services/eventPostImageStorage";
+import { getProfileAvatarPublicUrl } from "@/services/profileAvatarStorage";
 import { fetchSscOrganization } from "@/services/organizationsDb";
 import type { AppRole } from "@/types/appRole";
-import type { CreateStudentFeedPostInput, StudentFeedPostRow } from "@/types/studentPost";
+import type {
+  CreateStudentFeedPostInput,
+  StudentFeedPosterProfile,
+  StudentFeedPostRow,
+} from "@/types/studentPost";
 import type { StudentEvent } from "@/views/student/types";
 
 const FEED_SELECT = `
@@ -15,11 +20,60 @@ const FEED_SELECT_WITH_LETTER = `
   event_requests ( letter_path )
 `;
 
+const POSTER_PROFILE_SELECT = `
+  id,
+  display_name,
+  avatar_url,
+  organizations ( name ),
+  colleges ( name, code )
+`;
+
+type PosterProfileQueryRow = {
+  id: string;
+  display_name: string;
+  avatar_url: string | null;
+  organizations: { name: string } | null;
+  colleges: { name: string; code: string } | null;
+};
+
 export type StudentFeedPostsPage = {
   rows: StudentFeedPostRow[];
   hasMore: boolean;
   nextOffset: number;
 };
+
+function toPosterProfile(row: PosterProfileQueryRow): StudentFeedPosterProfile {
+  return {
+    display_name: row.display_name,
+    avatar_url: row.avatar_url,
+    organizations: row.organizations,
+    colleges: row.colleges,
+  };
+}
+
+/** Load real creator profiles for feed posts (submitted_by → profiles). */
+async function attachPosterProfiles(rows: StudentFeedPostRow[]): Promise<StudentFeedPostRow[]> {
+  if (!rows.length) return rows;
+  const ids = [...new Set(rows.map((r) => r.submitted_by).filter(Boolean))];
+  if (!ids.length) return rows;
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(POSTER_PROFILE_SELECT)
+    .in("id", ids);
+  if (error) throw error;
+
+  const byId = new Map<string, StudentFeedPosterProfile>();
+  for (const row of (data ?? []) as PosterProfileQueryRow[]) {
+    byId.set(row.id, toPosterProfile(row));
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    profiles: byId.get(row.submitted_by) ?? row.profiles ?? null,
+  }));
+}
 
 export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent {
   const posted = new Date(row.posted_at);
@@ -27,10 +81,17 @@ export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent
     .map((p) => getEventPostImagePublicUrl(p))
     .filter((u): u is string => !!u);
   const firstImageUrl = imageUrls[0] ?? (row.image_path ? getEventPostImagePublicUrl(row.image_path) : null);
+  const poster = row.profiles;
+  const posterName = (poster?.display_name ?? "").trim();
+  const posterOrg = (poster?.organizations?.name ?? "").trim();
+  const posterCollege = (poster?.colleges?.name ?? "").trim();
   return {
     id: row.id,
     title: row.event_title,
-    organization: row.organizations?.name ?? "Organization",
+    organization: posterOrg,
+    posterName,
+    posterCollege,
+    posterAvatarUrl: getProfileAvatarPublicUrl(poster?.avatar_url),
     venue: row.venue ?? "TBA",
     day: posted.getDate(),
     date: row.event_date ?? "Date TBA",
@@ -66,7 +127,8 @@ export async function fetchStudentFeedPostsPage(
   if (error) throw error;
   const fetched = (data ?? []) as StudentFeedPostRow[];
   const hasMore = fetched.length > sliceSize;
-  const rows = hasMore ? fetched.slice(0, sliceSize) : fetched;
+  const sliced = hasMore ? fetched.slice(0, sliceSize) : fetched;
+  const rows = await attachPosterProfiles(sliced);
   return {
     rows,
     hasMore,
@@ -82,7 +144,7 @@ export async function fetchFeedPostsBySubmitter(userId: string): Promise<Student
     .eq("submitted_by", userId)
     .order("posted_at", { ascending: false });
   if (error) throw error;
-  return (data ?? []) as StudentFeedPostRow[];
+  return attachPosterProfiles((data ?? []) as StudentFeedPostRow[]);
 }
 
 async function resolveOrganizationId(
@@ -168,13 +230,16 @@ export async function createStudentFeedPost(
         .select(FEED_SELECT_WITH_LETTER)
         .single();
       if (updateErr) throw updateErr;
-      return updated as StudentFeedPostRow;
+      const [withPoster] = await attachPosterProfiles([updated as StudentFeedPostRow]);
+      return withPoster!;
     } catch (imgErr) {
       const msg = imgErr instanceof Error ? imgErr.message : String(imgErr);
       console.warn("Post saved but image upload failed:", msg);
-      return inserted as StudentFeedPostRow;
+      const [withPoster] = await attachPosterProfiles([inserted as StudentFeedPostRow]);
+      return withPoster!;
     }
   }
 
-  return inserted as StudentFeedPostRow;
+  const [withPoster] = await attachPosterProfiles([inserted as StudentFeedPostRow]);
+  return withPoster!;
 }

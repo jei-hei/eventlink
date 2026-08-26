@@ -49,7 +49,7 @@ const router = createRouter({
       component: () => import("@/views/student-officer/OfficerLayout.vue"),
       children: [
         { path: "", name: "officer-dashboard", component: () => import("@/views/student-officer/DashboardView.vue") },
-        { path: "events", name: "officer-events", component: () => import("@/views/student-officer/EventsView.vue") },
+        { path: "events", name: "officer-events", component: () => import("@/components/portal/EventMonitoringView.vue") },
         {
           path: "analytics",
           name: "officer-analytics",
@@ -231,7 +231,7 @@ const router = createRouter({
       component: () => import("@/views/ssc/SscLayout.vue"),
       children: [
         { path: "", name: "ssc-dashboard", component: () => import("@/views/ssc/DashboardView.vue") },
-        { path: "events", name: "ssc-events", component: () => import("@/views/ssc/EventsView.vue") },
+        { path: "events", name: "ssc-events", component: () => import("@/components/portal/EventMonitoringView.vue") },
         { path: "analytics", name: "ssc-analytics", component: () => import("@/views/ssc/AnalyticsView.vue") },
         { path: "venues", name: "ssc-venues", component: () => import("@/views/ssc/VenuesView.vue") },
         { path: "equipment", name: "ssc-equipment", component: () => import("@/views/ssc/EquipmentView.vue") },
@@ -249,11 +249,6 @@ const router = createRouter({
       component: () => import("@/views/admin/AdminLayout.vue"),
       children: [
         { path: "", name: "admin-dashboard", component: () => import("@/views/admin/DashboardView.vue") },
-        {
-          path: "monitoring",
-          name: "admin-monitoring",
-          component: () => import("@/components/portal/EventMonitoringView.vue"),
-        },
         { path: "users", name: "admin-users", component: () => import("@/views/admin/UsersView.vue") },
         { path: "students", name: "admin-students", component: () => import("@/views/admin/StudentsView.vue") },
         { path: "ssc", name: "admin-ssc", component: () => import("@/views/admin/SscView.vue") },

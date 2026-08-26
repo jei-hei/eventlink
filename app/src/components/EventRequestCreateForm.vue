@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { FileText, Upload, X } from "lucide-vue-next";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { isWordLetterFile } from "@/services/eventLetterStorage";
+import { isPdfProposalFile } from "@/services/eventLetterStorage";
 import {
   fetchOrganizationsForSubmit,
   fetchSscOrganization,
@@ -229,8 +229,8 @@ function onLetterChange(ev: Event) {
     letterFile.value = null;
     return;
   }
-  if (!isWordLetterFile(file)) {
-    letterError.value = "Only Word files (.doc, .docx) are allowed.";
+  if (!isPdfProposalFile(file)) {
+    letterError.value = "Only PDF files (.pdf) are allowed.";
     letterFile.value = null;
     input.value = "";
     return;
@@ -304,7 +304,7 @@ function handleSubmit() {
     return;
   }
   if (!letterFile.value) {
-    window.alert("Please upload your Word letter (.doc or .docx).");
+    window.alert("Please upload your PDF proposal (.pdf).");
     return;
   }
   if (!form.venueId || !selectedVenueName.value) {
@@ -353,7 +353,7 @@ defineExpose({ resetForm });
   <div class="space-y-4">
     <div>
       <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
-        Upload Word letter *
+        Upload PDF proposal *
       </label>
       <div
         class="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 transition hover:border-[#16A34A]/50"
@@ -361,7 +361,7 @@ defineExpose({ resetForm });
         <input
           id="event-letter-upload"
           type="file"
-          accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          accept=".pdf,application/pdf"
           class="sr-only"
           @change="onLetterChange"
         />
@@ -373,8 +373,8 @@ defineExpose({ resetForm });
             <Upload :size="20" />
           </div>
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-semibold text-gray-800">Choose .doc or .docx file</p>
-            <p class="text-xs text-gray-500">Official request letter from your organization</p>
+            <p class="text-sm font-semibold text-gray-800">Choose PDF file</p>
+            <p class="text-xs text-gray-500">Official proposal document from your organization</p>
           </div>
         </label>
         <div

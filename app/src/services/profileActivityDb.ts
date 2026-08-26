@@ -11,9 +11,9 @@ export async function fetchProfileActivityStats(role: AppRole, userId: string): 
 
   if (role === "admin") {
     const [{ count: usersCount }, orgsRes, { count: eventsCount }] = await Promise.all([
-      supabase.from("user_roles").select("*", { head: true, count: "exact" }),
+      supabase.from("user_roles").select("user_id", { head: true, count: "exact" }),
       supabase.from("organizations").select("id"),
-      supabase.from("event_requests").select("*", { head: true, count: "exact" }),
+      supabase.from("event_requests").select("id", { head: true, count: "exact" }),
     ]);
     return [
       makeStat("users", "Managed users", usersCount ?? 0, "Users"),
@@ -24,12 +24,12 @@ export async function fetchProfileActivityStats(role: AppRole, userId: string): 
 
   if (role === "student") {
     const [{ count: postedCount }, { count: calendarCount }, { count: notifCount }] = await Promise.all([
-      supabase.from("event_requests").select("*", { head: true, count: "exact" }).eq("status", "posted"),
+      supabase.from("event_requests").select("id", { head: true, count: "exact" }).eq("status", "posted"),
       supabase
         .from("event_requests")
-        .select("*", { head: true, count: "exact" })
+        .select("id", { head: true, count: "exact" })
         .not("calendar_posted_at", "is", null),
-      supabase.from("notifications").select("*", { head: true, count: "exact" }).eq("user_id", userId),
+      supabase.from("notifications").select("id", { head: true, count: "exact" }).eq("user_id", userId),
     ]);
     return [
       makeStat("joined", "Posted events", postedCount ?? 0, "CalendarCheck"),
@@ -41,13 +41,13 @@ export async function fetchProfileActivityStats(role: AppRole, userId: string): 
   const [{ count: approvedCount }, { count: pendingCount }, { count: scheduledCount }] = await Promise.all([
     supabase
       .from("event_request_history")
-      .select("*", { head: true, count: "exact" })
+      .select("id", { head: true, count: "exact" })
       .eq("actor_id", userId)
       .eq("action", "approved"),
-    supabase.from("event_requests").select("*", { head: true, count: "exact" }).eq("status", "pending"),
+    supabase.from("event_requests").select("id", { head: true, count: "exact" }).eq("status", "pending"),
     supabase
       .from("event_requests")
-      .select("*", { head: true, count: "exact" })
+      .select("id", { head: true, count: "exact" })
       .not("calendar_posted_at", "is", null),
   ]);
 

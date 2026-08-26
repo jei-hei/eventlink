@@ -43,7 +43,10 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   const loaded = ref(false);
   const lastLoadedAt = ref(0);
   const loadScopeKey = ref("");
-  const STALE_MS = 10_000;
+  /** Soft cache for background polls; mutations and long tab-hide still force. */
+  const STALE_MS = 45_000;
+  let inFlight: { scope: string; force: boolean; promise: Promise<boolean> } | null = null;
+  const portalById = ref<Map<string, PortalEvent>>(new Map());
 
   function currentScopeKey() {
     const auth = useAuthStore();
@@ -55,14 +58,24 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   const feedPostRows = ref<StudentFeedPostRow[]>([]);
   const myFeedPostRows = ref<StudentFeedPostRow[]>([]);
 
+  function rebuildPortalCache(list: EventRequestRow[]) {
+    const next = new Map<string, PortalEvent>();
+    for (const r of list) {
+      next.set(r.id, mapRowToPortalEvent(r));
+    }
+    portalById.value = next;
+  }
+
+  function portalOf(row: EventRequestRow): PortalEvent {
+    return portalById.value.get(row.id) ?? mapRowToPortalEvent(row);
+  }
+
   const postedRows = computed(() => filterPostedEvents(rows.value));
 
-  const postedEvents = computed<PortalEvent[]>(() =>
-    postedRows.value.map((r) => mapRowToPortalEvent(r)),
-  );
+  const postedEvents = computed<PortalEvent[]>(() => postedRows.value.map((r) => portalOf(r)));
 
   const scheduledEvents = computed<PortalEvent[]>(() =>
-    filterCalendarEvents(rows.value).map((r) => mapRowToPortalEvent(r)),
+    filterCalendarEvents(rows.value).map((r) => portalOf(r)),
   );
 
   async function withRetry<T>(task: () => Promise<T>, retries = 2): Promise<T> {
@@ -91,27 +104,48 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
       force = true;
     }
     if (loaded.value && !force && Date.now() - lastLoadedAt.value < STALE_MS) return false;
-    loading.value = true;
-    error.value = null;
+
+    if (inFlight && inFlight.scope === scopeKey) {
+      if (!force || inFlight.force) return inFlight.promise;
+      await inFlight.promise.catch(() => undefined);
+      if (loaded.value && Date.now() - lastLoadedAt.value < 2_000) {
+        // Just finished; still honor force after a soft load.
+      }
+    }
+
+    const runForce = force;
+    const promise = (async (): Promise<boolean> => {
+      loading.value = true;
+      error.value = null;
+      try {
+        const nextRows = await withRetry(
+          () =>
+            fetchPortalEventRequestsForRole({
+              role: auth.appRole!,
+              userId: auth.userId!,
+              collegeId: auth.collegeId,
+              organizationId: auth.organizationId,
+            }),
+          2,
+        );
+        rows.value = nextRows;
+        rebuildPortalCache(nextRows);
+        loaded.value = true;
+        lastLoadedAt.value = Date.now();
+        return true;
+      } catch (e) {
+        error.value = e instanceof Error ? e.message : String(e);
+        throw e;
+      } finally {
+        loading.value = false;
+      }
+    })();
+
+    inFlight = { scope: scopeKey, force: runForce, promise };
     try {
-      rows.value = await withRetry(
-        () =>
-          fetchPortalEventRequestsForRole({
-            role: auth.appRole!,
-            userId: auth.userId!,
-            collegeId: auth.collegeId,
-            organizationId: auth.organizationId,
-          }),
-        2,
-      );
-      loaded.value = true;
-      lastLoadedAt.value = Date.now();
-      return true;
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e);
-      throw e;
+      return await promise;
     } finally {
-      loading.value = false;
+      if (inFlight?.promise === promise) inFlight = null;
     }
   }
 
@@ -201,21 +235,21 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     return filterPendingForRole(rows.value, role, userId, {
       collegeId: auth.collegeId,
       organizationId: auth.organizationId,
-    }).map((r) => mapRowToPortalEvent(r));
+    }).map((r) => portalOf(r));
   }
 
   function approvedForRole(role: AppRole, userId: string): PortalEvent[] {
     const auth = useAuthStore();
     return filterApprovedForRole(rows.value, role, userId, {
       organizationId: auth.organizationId,
-    }).map((r) => mapRowToPortalEvent(r));
+    }).map((r) => portalOf(r));
   }
 
   function declinedForRole(role: AppRole, userId: string): PortalEvent[] {
     const auth = useAuthStore();
     return filterDeclinedForRole(rows.value, role, userId, {
       organizationId: auth.organizationId,
-    }).map((r) => mapRowToPortalEvent(r));
+    }).map((r) => portalOf(r));
   }
 
   async function submit(input: CreateEventRequestInput) {
@@ -299,7 +333,39 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     return filterMonitoringForRole(rows.value, role, userId, {
       collegeId: auth.collegeId,
       organizationId: auth.organizationId,
-    }).map((r) => mapRowToPortalEvent(r));
+    }).map((r) => portalOf(r));
+  }
+
+  async function ensureDocuments(id: string): Promise<PortalEvent | null> {
+    const idx = rows.value.findIndex((r) => r.id === id);
+    if (idx < 0) return null;
+    const row = rows.value[idx]!;
+    if (row.event_request_letters != null && row.event_request_compliance_comments != null) {
+      return portalOf(row);
+    }
+    const { fetchEventRequestDocuments } = await import("@/services/eventRequestsDb");
+    const docs = await fetchEventRequestDocuments(id);
+    const next: EventRequestRow = {
+      ...row,
+      event_request_letters: docs.letters,
+      event_request_compliance_comments: docs.comments,
+    };
+    const copy = rows.value.slice();
+    copy[idx] = next;
+    rows.value = copy;
+    const mapped = mapRowToPortalEvent(next);
+    const cache = new Map(portalById.value);
+    cache.set(id, mapped);
+    portalById.value = cache;
+    return mapped;
+  }
+
+  async function requestRevision(id: string, comment: string, attachmentFile?: File | null) {
+    const auth = useAuthStore();
+    if (!auth.userId || !auth.appRole) throw new Error("You must be signed in.");
+    const { requestRevision: requestRevisionDb } = await import("@/services/eventRequestsDb");
+    await requestRevisionDb(id, auth.userId, auth.appRole, comment, attachmentFile);
+    await load(true);
   }
 
   async function resubmitDeclined(id: string, input: UpdateEventRequestInput) {
@@ -313,6 +379,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   }
 
   async function getPortalEvent(id: string): Promise<PortalEvent | null> {
+    await ensureDocuments(id);
     const row = rows.value.find((r) => r.id === id);
     if (!row) return null;
     const history = await fetchHistoryForRequest(id);
@@ -342,10 +409,12 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     approvedForRole,
     declinedForRole,
     monitoringForRole,
+    ensureDocuments,
     submit,
     approve,
     decline,
     approveAndForward,
+    requestRevision,
     postToCalendar,
     update,
     cancelScheduled,

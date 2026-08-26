@@ -84,9 +84,9 @@ async function loadReportData() {
     const [{ count: activeThisMonth }, { count: requestsCount }] = await Promise.all([
       supabase
         .from("event_requests")
-        .select("*", { head: true, count: "exact" })
+        .select("id", { head: true, count: "exact" })
         .gte("created_at", monthStart.toISOString()),
-      supabase.from("event_requests").select("*", { head: true, count: "exact" }),
+      supabase.from("event_requests").select("id", { head: true, count: "exact" }),
     ]);
 
     const activeStudents = registry.students.filter((s) => !s.archived).length;

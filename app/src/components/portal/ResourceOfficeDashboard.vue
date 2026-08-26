@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Calendar, CheckCircle, XCircle } from "lucide-vue-next";
+import { Calendar, CheckCircle, Eye } from "lucide-vue-next";
 import type { PortalEvent } from "@/types/portalEvent";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
+import EventLetterLink from "@/components/EventLetterLink.vue";
 import { resourceOfficeLabel, type ResourceOffice } from "@/types/resourceOffice";
 
 const props = defineProps<{
@@ -154,22 +155,13 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
                       </span>
                     </td>
                     <td class="px-2 py-2 text-center" @click.stop>
-                      <div class="flex flex-wrap justify-center gap-1.5">
-                        <button
-                          type="button"
-                          class="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-700 px-2 py-1.5 text-xs font-semibold text-white"
-                          @click="onApprove(event)"
-                        >
-                          <CheckCircle :size="12" /> Approve
-                        </button>
-                        <button
-                          type="button"
-                          class="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2 py-1.5 text-xs font-semibold text-white"
-                          @click="onReject(event)"
-                        >
-                          <XCircle :size="12" /> Decline
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        @click="selectedEvent = event"
+                      >
+                        <Eye :size="12" /> Open
+                      </button>
                     </td>
                   </tr>
                 </template>
@@ -211,6 +203,12 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
             <p class="text-xs font-bold uppercase tracking-wider text-gray-500">Assigned to {{ resourceOfficeLabel(office) }}</p>
             <p class="font-medium text-gray-800">{{ assignedSummary(selectedEvent) || "—" }}</p>
           </div>
+          <EventLetterLink
+            v-if="selectedEvent.letterPath"
+            :letter-path="selectedEvent.letterPath"
+            label="Proposal PDF"
+            :current="true"
+          />
         </div>
         <div class="flex justify-end gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
           <button type="button" class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold" @click="selectedEvent = null">Close</button>

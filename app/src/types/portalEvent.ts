@@ -18,13 +18,25 @@ export type WorkflowStatus =
   | "Cancelled"
   | "Approved"
   | "Rejected"
+  | "Revision Requested"
   | string;
 
 export interface WorkflowStepUi {
   name: string;
-  status: "completed" | "current" | "pending";
+  status: "completed" | "current" | "pending" | "declined" | "revision";
   timestamp?: string;
   approver?: string;
+}
+
+export interface PortalComplianceComment {
+  id: string;
+  comment: string;
+  attachmentPath?: string | null;
+  attachmentName?: string | null;
+  senderId?: string | null;
+  senderRole: string;
+  senderName?: string;
+  createdAt: string;
 }
 
 export interface PortalResourceAssignment {
@@ -64,6 +76,7 @@ export interface PortalEvent {
   letterPath?: string | null;
   originalLetterPath?: string | null;
   letterHistory?: Array<{ id: string; letterPath: string; label: string; createdAt: string }>;
+  complianceComments?: PortalComplianceComment[];
   studentPostCaption?: string | null;
   studentPostImagePath?: string | null;
   studentPostImageUrl?: string | null;

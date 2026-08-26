@@ -34,8 +34,8 @@ export async function fetchAdminStatsSnapshot(): Promise<AdminStatSnapshot> {
   const users = await fetchAdminPortalUsers();
 
   const [{ count: studentCount }, { count: pendingCount }, orgsRes] = await Promise.all([
-    supabase.from("students").select("*", { count: "exact", head: true }).eq("archived", false),
-    supabase.from("event_requests").select("*", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("students").select("student_id", { count: "exact", head: true }).eq("archived", false),
+    supabase.from("event_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("organizations").select("id").eq("active", true),
   ]);
 

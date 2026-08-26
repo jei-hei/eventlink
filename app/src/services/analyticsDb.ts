@@ -131,10 +131,15 @@ export async function fetchAnalyticsOverview(scope: AnalyticsScope): Promise<Ana
   if (!isSupabaseConfigured) return emptyOverview();
 
   const supabase = getSupabase();
+  const since = new Date();
+  since.setFullYear(since.getFullYear() - 1);
+  const sinceIso = since.toISOString();
   let query = supabase
     .from("event_requests")
     .select("id, activity, request_type, status, current_step, created_at, organizations(name, college_id)")
-    .order("created_at", { ascending: false });
+    .gte("created_at", sinceIso)
+    .order("created_at", { ascending: false })
+    .limit(500);
 
   if (scope === "ssc" || scope === "student_officer") {
     query = query.eq("request_type", scope);

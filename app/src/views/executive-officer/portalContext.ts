@@ -14,6 +14,11 @@ export interface ExecutivePortalContext {
     id: string,
     assignments: import("@/types/resourceOffice").ResourceAssignmentInput[],
   ) => Promise<void>;
+  handleRequestRevision: (
+    id: string,
+    comment: string,
+    attachmentFile?: File | null,
+  ) => Promise<void>;
   handlePostEvent: (id: string) => void;
   handleCreateEvent: (e: EoEvent) => void;
   handleUpdateEvent: (id: string, input: UpdateEventRequestInput) => Promise<void>;

@@ -8,6 +8,15 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{ select: []; previewImage: [images: string[], index: number, title: string] }>();
+
+function avatarLetter(event: StudentEvent) {
+  const source = event.posterName || event.organization || "?";
+  return source.charAt(0).toUpperCase();
+}
+
+function avatarColor(event: StudentEvent) {
+  return getOrgColor(event.posterName || event.organization || "user");
+}
 </script>
 
 <template>
@@ -19,22 +28,31 @@ const emit = defineEmits<{ select: []; previewImage: [images: string[], index: n
     @keydown.enter.prevent="emit('select')"
   >
     <div class="flex items-center gap-3 p-4 pb-2">
+      <img
+        v-if="event.posterAvatarUrl"
+        :src="event.posterAvatarUrl"
+        :alt="event.posterName || 'Poster'"
+        class="h-11 w-11 shrink-0 rounded-full object-cover shadow-sm"
+      />
       <div
+        v-else
         :class="[
           'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white shadow-sm',
-          getOrgColor(event.organization),
+          avatarColor(event),
         ]"
       >
-        {{ event.organization.charAt(0) }}
+        {{ avatarLetter(event) }}
       </div>
 
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-1">
           <h3 class="truncate font-semibold text-gray-900 hover:underline">
-            {{ event.organization }}
+            {{ event.posterName }}
           </h3>
           <span v-if="event.organization === 'Supreme Student Council'" class="shrink-0 text-blue-500">✓</span>
         </div>
+        <p v-if="event.organization" class="truncate text-sm text-gray-600">{{ event.organization }}</p>
+        <p v-if="event.posterCollege" class="truncate text-sm text-gray-600">{{ event.posterCollege }}</p>
         <p class="text-xs text-gray-500">
           {{ formatPostedAgo(event.postedAt, event.day) }} · 🌐 Public
         </p>

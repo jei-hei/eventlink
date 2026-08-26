@@ -316,10 +316,11 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   let resumeRevalidatePromise: Promise<{ ok: boolean; signedOut?: boolean }> | null = null;
+  let lastSessionRefreshAt = 0;
 
   /**
    * When a backgrounded tab becomes visible again, browser timers were throttled so
-   * Supabase may have a stale access token. Refresh the session before any API work.
+   * Supabase may have a stale access token. Refresh only when near expiry.
    */
   async function revalidateSessionOnResume(): Promise<{ ok: boolean; signedOut?: boolean }> {
     if (resumeRevalidatePromise) return resumeRevalidatePromise;
@@ -335,23 +336,44 @@ export const useAuthStore = defineStore("auth", () => {
 
       const supabase = getSupabase();
       try {
-        const { data, error } = await supabase.auth.refreshSession();
-        if (error || !data.session) {
-          const { data: existing } = await supabase.auth.getSession();
-          if (!existing.session) {
-            try {
-              await supabase.auth.signOut({ scope: "local" });
-            } catch {
-              // ignore
-            }
-            logout();
-            return { ok: false, signedOut: true };
+        const { data: existingWrap } = await supabase.auth.getSession();
+        const existing = existingWrap.session;
+        if (!existing) {
+          try {
+            await supabase.auth.signOut({ scope: "local" });
+          } catch {
+            // ignore
           }
-          if (!userId.value) {
-            await applySession(existing.session, { enforceSingleSession: false, showLoginAlert: false });
+          logout();
+          return { ok: false, signedOut: true };
+        }
+
+        const expiresAtMs = (existing.expires_at ?? 0) * 1000;
+        const nearExpiry = !expiresAtMs || expiresAtMs - Date.now() < 120_000;
+        const refreshedRecently = Date.now() - lastSessionRefreshAt < 60_000;
+
+        if (nearExpiry && !refreshedRecently) {
+          const { data, error } = await supabase.auth.refreshSession();
+          lastSessionRefreshAt = Date.now();
+          if (error || !data.session) {
+            const { data: again } = await supabase.auth.getSession();
+            if (!again.session) {
+              try {
+                await supabase.auth.signOut({ scope: "local" });
+              } catch {
+                // ignore
+              }
+              logout();
+              return { ok: false, signedOut: true };
+            }
+            if (!userId.value) {
+              await applySession(again.session, { enforceSingleSession: false, showLoginAlert: false });
+            }
+          } else if (!userId.value) {
+            await applySession(data.session, { enforceSingleSession: false, showLoginAlert: false });
           }
         } else if (!userId.value) {
-          await applySession(data.session, { enforceSingleSession: false, showLoginAlert: false });
+          await applySession(existing, { enforceSingleSession: false, showLoginAlert: false });
         }
       } catch {
         const { data: existing } = await supabase.auth.getSession();
@@ -401,17 +423,7 @@ export const useAuthStore = defineStore("auth", () => {
     ACTIVITY_EVENTS.forEach((eventName) => {
       window.addEventListener(eventName, onActivity, { passive: true });
     });
-    window.addEventListener("focus", () => {
-      void revalidateSessionOnResume();
-    });
-    window.addEventListener("pageshow", () => {
-      void revalidateSessionOnResume();
-    });
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") {
-        void revalidateSessionOnResume();
-      }
-    });
+    // Tab resume (session + data) is owned by App.vue — avoid duplicate refresh storms.
     inactivityListenersBound = true;
   }
 
@@ -540,6 +552,19 @@ export const useAuthStore = defineStore("auth", () => {
     await applySession(data.session, { enforceSingleSession: true, showLoginAlert: false });
 
     supabase.auth.onAuthStateChange(async (event, session) => {
+      // Token refresh must not reload role/profile/notifications (resume storm).
+      if (event === "TOKEN_REFRESHED") {
+        lastSessionRefreshAt = Date.now();
+        if (session?.user && !userId.value) {
+          await applySession(session, { enforceSingleSession: false, showLoginAlert: false });
+        }
+        return;
+      }
+      if (event === "INITIAL_SESSION") {
+        if (userId.value || !session?.user) return;
+        await applySession(session, { enforceSingleSession: true, showLoginAlert: false });
+        return;
+      }
       await applySession(session, {
         enforceSingleSession: event === "SIGNED_IN",
         showLoginAlert: false,

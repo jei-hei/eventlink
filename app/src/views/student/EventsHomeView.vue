@@ -156,7 +156,9 @@ const filteredEvents = computed(() => {
     if (!q) return true;
     return (
       event.title.toLowerCase().includes(q) ||
+      event.posterName.toLowerCase().includes(q) ||
       event.organization.toLowerCase().includes(q) ||
+      event.posterCollege.toLowerCase().includes(q) ||
       event.venue.toLowerCase().includes(q) ||
       (event.caption?.toLowerCase().includes(q) ?? false)
     );

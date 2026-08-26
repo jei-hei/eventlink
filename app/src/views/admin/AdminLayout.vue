@@ -12,7 +12,6 @@ import {
   UserCircle,
   LogOut,
   LayoutDashboard,
-  Radar,
 } from "lucide-vue-next";
 import NotificationDropdown from "@/components/portal/NotificationDropdown.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -38,7 +37,6 @@ async function onLogout() {
 
 const navItems = [
   { to: "/admin", name: "admin-dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/admin/monitoring", name: "admin-monitoring", label: "Event Monitoring", icon: Radar },
   { to: "/admin/users", name: "admin-users", label: "Users", icon: Users },
   { to: "/admin/students", name: "admin-students", label: "Students", icon: IdCard },
   { to: "/admin/colleges", name: "admin-colleges", label: "Colleges", icon: Building2 },

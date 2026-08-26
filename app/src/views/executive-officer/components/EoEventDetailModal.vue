@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { X } from "lucide-vue-next";
 import EventLetterLink from "@/components/EventLetterLink.vue";
+import ComplianceRevisionModal from "@/components/portal/ComplianceRevisionModal.vue";
 import type { EoEvent } from "../types";
 import type { ResourceAssignmentInput, ResourceOffice } from "@/types/resourceOffice";
 import {
@@ -9,14 +10,34 @@ import {
   VENUE_OFFICES,
   resourceOfficeLabel,
 } from "@/types/resourceOffice";
+import { useEventRequestsStore } from "@/stores/eventRequests";
 
 const props = defineProps<{ event: EoEvent }>();
 const emit = defineEmits<{
   close: [];
   approveAndForward: [id: string, assignments: ResourceAssignmentInput[]];
   reject: [id: string];
+  requestRevision: [id: string, comment: string, attachmentFile: File | null];
 }>();
 
+const store = useEventRequestsStore();
+const detailEvent = ref(props.event);
+
+watch(
+  () => props.event.id,
+  async (id) => {
+    detailEvent.value = props.event;
+    try {
+      const enriched = await store.ensureDocuments(id);
+      if (enriched && detailEvent.value.id === id) {
+        detailEvent.value = { ...detailEvent.value, ...enriched };
+      }
+    } catch {
+      // keep list snapshot
+    }
+  },
+  { immediate: true },
+);
 type DraftRow = {
   key: string;
   resourceKind: "venue" | "equipment";
@@ -28,6 +49,8 @@ type DraftRow = {
 };
 
 const drafts = reactive<DraftRow[]>([]);
+const revisionOpen = ref(false);
+const revisionSubmitting = ref(false);
 
 function buildDrafts(event: EoEvent): DraftRow[] {
   if (event.resourceAssignments?.length) {
@@ -129,6 +152,16 @@ function onForward() {
     })),
   );
 }
+
+async function onRevisionSubmit(payload: { comment: string; attachmentFile: File | null }) {
+  revisionSubmitting.value = true;
+  try {
+    emit("requestRevision", props.event.id, payload.comment, payload.attachmentFile);
+    revisionOpen.value = false;
+  } finally {
+    revisionSubmitting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -162,7 +195,36 @@ function onForward() {
           <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Equipment</label>
           <p class="font-medium text-gray-800">{{ event.itemsEquipment || "—" }}</p>
         </div>
-        <EventLetterLink v-if="event.letterPath" :letter-path="event.letterPath" />
+
+        <EventLetterLink
+          v-if="detailEvent.letterPath"
+          :letter-path="detailEvent.letterPath"
+          label="Proposal PDF"
+          :current="true"
+        />
+        <div v-if="detailEvent.letterHistory?.length" class="space-y-2">
+          <p class="text-xs font-bold uppercase tracking-wider text-gray-500">Document history</p>
+          <EventLetterLink
+            v-for="(doc, idx) in detailEvent.letterHistory"
+            :key="doc.id"
+            :letter-path="doc.letterPath"
+            :label="doc.label"
+            :current="idx === 0"
+          />
+        </div>
+
+        <div v-if="event.workflowHistory?.length">
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Approval history</label>
+          <ul class="space-y-1 text-sm text-gray-700">
+            <li v-for="step in event.workflowHistory" :key="step.name">
+              <span v-if="step.status === 'completed'">✓ {{ step.name }}</span>
+              <span v-else-if="step.status === 'current'">● {{ step.name }}</span>
+              <span v-else>○ {{ step.name }}</span>
+              <span v-if="step.approver" class="text-xs text-gray-500"> — {{ step.approver }}</span>
+            </li>
+          </ul>
+        </div>
+
         <div>
           <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Status</label>
           <span :class="['inline-block rounded-full px-2.5 py-1 text-xs font-semibold', statusClass(event.status)]">
@@ -211,6 +273,13 @@ function onForward() {
         </button>
         <button
           type="button"
+          class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700"
+          @click="revisionOpen = true"
+        >
+          Request Revision
+        </button>
+        <button
+          type="button"
           class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
           @click="emit('reject', event.id)"
         >
@@ -226,5 +295,13 @@ function onForward() {
         </button>
       </div>
     </div>
+
+    <ComplianceRevisionModal
+      :open="revisionOpen"
+      :submitting="revisionSubmitting"
+      :event-name="event.name"
+      @close="revisionOpen = false"
+      @submit="onRevisionSubmit"
+    />
   </div>
 </template>
