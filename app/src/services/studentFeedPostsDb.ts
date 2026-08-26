@@ -32,8 +32,8 @@ type PosterProfileQueryRow = {
   id: string;
   display_name: string;
   avatar_url: string | null;
-  organizations: { name: string } | null;
-  colleges: { name: string; code: string } | null;
+  organizations: { name: string } | { name: string }[] | null;
+  colleges: { name: string; code: string } | { name: string; code: string }[] | null;
 };
 
 export type StudentFeedPostsPage = {
@@ -42,12 +42,17 @@ export type StudentFeedPostsPage = {
   nextOffset: number;
 };
 
+function asSingle<T>(value: T | T[] | null | undefined): T | null {
+  if (value == null) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
 function toPosterProfile(row: PosterProfileQueryRow): StudentFeedPosterProfile {
   return {
     display_name: row.display_name,
     avatar_url: row.avatar_url,
-    organizations: row.organizations,
-    colleges: row.colleges,
+    organizations: asSingle(row.organizations),
+    colleges: asSingle(row.colleges),
   };
 }
 
@@ -65,7 +70,7 @@ async function attachPosterProfiles(rows: StudentFeedPostRow[]): Promise<Student
   if (error) throw error;
 
   const byId = new Map<string, StudentFeedPosterProfile>();
-  for (const row of (data ?? []) as PosterProfileQueryRow[]) {
+  for (const row of (data ?? []) as unknown as PosterProfileQueryRow[]) {
     byId.set(row.id, toPosterProfile(row));
   }
 
