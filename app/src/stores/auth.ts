@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { ROLE_HOME_PATH, type AppRole } from "@/types/appRole";
 import { useNotificationsStore } from "@/stores/notifications";
+import { isDevTestEmailAddress } from "@/config/devAuth";
 
 export function formatAuthError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
@@ -22,14 +23,6 @@ export const useAuthStore = defineStore("auth", () => {
   const SINGLE_SESSION_CHECK_MS = 15 * 1000;
   const ACTIVITY_EVENTS = ["pointerdown", "keydown", "mousemove", "scroll", "touchstart"] as const;
   const EXTENDED_SESSION_ROLES = new Set<AppRole>(["eo", "gso", "osas"]);
-  const SECURITY_EXEMPT_EMAIL_DOMAINS = new Set([
-    "eventlink.local",
-    "university.edu",
-    "example.com",
-    "example.org",
-    "test.local",
-    "localhost",
-  ]);
 
   const ready = ref(false);
   const userId = ref<string | null>(null);
@@ -148,8 +141,7 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   function isSecurityExemptEmail(mail: string | null | undefined): boolean {
-    const domain = (mail ?? "").trim().toLowerCase().split("@")[1] ?? "";
-    return SECURITY_EXEMPT_EMAIL_DOMAINS.has(domain);
+    return isDevTestEmailAddress(mail ?? "");
   }
 
   function sessionMarkerKey() {

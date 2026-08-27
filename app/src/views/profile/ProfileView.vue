@@ -241,8 +241,6 @@ const compactProfileHeader = computed(
 
           <ProfileHeader :compact="compactProfileHeader" />
 
-          <ProfileMyPostsSection v-if="showMyPosts" />
-
           <ProfileSectionCard title="Photo" description="Upload a profile image to save it to your account.">
             <AvatarUpload
               v-model="avatarDataUrl"
@@ -303,6 +301,8 @@ const compactProfileHeader = computed(
               College and program come from the student registry. Ask an administrator to update them if needed.
             </p>
           </ProfileSectionCard>
+
+          <ProfileMyPostsSection v-if="showMyPosts" />
 
           <ProfileSectionCard title="Account settings">
             <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">

@@ -179,6 +179,8 @@ Deno.serve(async (req) => {
 
   let userId = existing?.id ?? "";
   if (!existing) {
+    // email_confirm: true → account is immediately login-ready (no confirmation link).
+    // Required for Admin-created / dummy test emails during development.
     const { data: createData, error: createErr } = await admin.auth.admin.createUser({
       email,
       password,

@@ -6,6 +6,7 @@ import { formatAuthError, useAuthStore } from "@/stores/auth";
 import { useProfileStore } from "@/stores/profile";
 import { useUiStore } from "@/stores/ui";
 import { useNotificationsStore } from "@/stores/notifications";
+import { shouldSkipStaffEmailOtp } from "@/config/devAuth";
 
 const route = useRoute();
 const router = useRouter();
@@ -30,14 +31,6 @@ const failedPasswordAttempts = ref(0);
 const lockedUntilMs = ref(0);
 const nowMs = ref(Date.now());
 let clockTimer: ReturnType<typeof setInterval> | null = null;
-const TEST_EMAIL_DOMAINS = new Set([
-  "eventlink.local",
-  "university.edu",
-  "example.com",
-  "example.org",
-  "test.local",
-  "localhost",
-]);
 const MAX_FAILED_PASSWORD_ATTEMPTS = 3;
 const LOCKOUT_MS = 60 * 1000;
 const LOCKOUT_KEY_PREFIX = "eventlink:login-lockout:";
@@ -152,11 +145,6 @@ async function completeLogin() {
   await router.push(redirect || auth.homePath);
 }
 
-function isTestEmailAddress(mail: string): boolean {
-  const domain = mail.trim().toLowerCase().split("@")[1] ?? "";
-  return TEST_EMAIL_DOMAINS.has(domain);
-}
-
 async function onSubmit() {
   error.value = "";
   if (!email.value.trim() || !password.value) {
@@ -171,11 +159,9 @@ async function onSubmit() {
   try {
     await auth.signIn(email.value.trim(), password.value, { provisional: true });
     clearLockoutState(email.value);
-    const requiresEmailOtp =
-      !auth.useMock &&
-      auth.appRole !== "student" &&
-      !isTestEmailAddress(email.value);
-    if (requiresEmailOtp) {
+    const skipOtp =
+      auth.useMock || shouldSkipStaffEmailOtp(email.value.trim(), auth.appRole);
+    if (!skipOtp) {
       try {
         await auth.sendEmailOtp(email.value.trim());
         otpRequired.value = true;
@@ -198,13 +184,6 @@ async function onSubmit() {
         }
       }
       return;
-    }
-    if (!auth.useMock && auth.appRole !== "student" && isTestEmailAddress(email.value)) {
-      ui.pushToast(
-        "OTP skipped for test account",
-        "This account uses a test email domain. Add a real email to enforce OTP.",
-        "warning",
-      );
     }
     await auth.activateCurrentSessionSecurity(true);
     await completeLogin();

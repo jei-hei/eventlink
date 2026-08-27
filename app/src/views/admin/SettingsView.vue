@@ -16,7 +16,12 @@ import { ShieldCheck, Database, Bell } from "lucide-vue-next";
           <h2 class="text-base font-semibold text-slate-900">Security Controls</h2>
         </div>
         <ul class="space-y-2 text-sm text-slate-700">
-          <li>Password + Email OTP required for non-student users (real email domains).</li>
+          <li>
+            <strong>Dev:</strong> Staff Email OTP is skipped while
+            <code>DEV_SKIP_STAFF_EMAIL_OTP</code> is true in
+            <code>app/src/config/devAuth.ts</code> (set false for production).
+          </li>
+          <li>Admin-created users are created with email already confirmed (no verification link).</li>
           <li>Three failed password attempts trigger a 60-second lockout.</li>
           <li>Single active session enforcement is enabled for non-exempt email domains.</li>
           <li>New login security notifications are stored in-app.</li>
