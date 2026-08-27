@@ -11,7 +11,7 @@ const route = useRoute();
 const navItems = [
   { label: "Dashboard", to: "/executive-officer", name: "eo-dashboard", icon: LayoutDashboard },
   { label: "Analytics", to: "/executive-officer/analytics", name: "eo-analytics", icon: BarChart2 },
-  { label: "Events", to: "/executive-officer/events", name: "eo-events", icon: ClipboardList },
+  { label: "Event Monitoring", to: "/executive-officer/events", name: "eo-events", icon: ClipboardList },
   { label: "Settings", to: "/executive-officer/settings", name: "eo-settings", icon: Settings },
   { label: "Profile", to: "/executive-officer/profile", name: "eo-profile", icon: UserCircle },
 ] as const;

@@ -1438,6 +1438,9 @@ export function filterMonitoringForRole(
     if (role === "ssc") {
       return r.request_type === "ssc" || r.submitted_by === userId;
     }
+    if (role === "eo") {
+      return true;
+    }
     return false;
   });
 }

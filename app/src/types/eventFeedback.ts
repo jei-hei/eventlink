@@ -24,5 +24,6 @@ export type SubmitEventFeedbackInput = {
 export type FeedbackSummary = {
   total: number;
   averageRating: number;
+  ratingCounts: Record<1 | 2 | 3 | 4 | 5, number>;
   byPost: { feedPostId: string; eventTitle: string; count: number; averageRating: number }[];
 };

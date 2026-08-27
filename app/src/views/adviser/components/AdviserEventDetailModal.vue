@@ -1,10 +1,32 @@
 <script setup lang="ts">
-import { CheckCircle, X } from "lucide-vue-next";
+import { ref } from "vue";
+import { CheckCircle, X, XCircle } from "lucide-vue-next";
 import EventLetterLink from "@/components/EventLetterLink.vue";
+import ComplianceRevisionModal from "@/components/portal/ComplianceRevisionModal.vue";
 import type { AdviserEvent } from "../types";
 
-defineProps<{ event: AdviserEvent }>();
-const emit = defineEmits<{ close: [] }>();
+const props = defineProps<{ event: AdviserEvent }>();
+const emit = defineEmits<{
+  close: [];
+  approve: [];
+  reject: [];
+  requestRevision: [comment: string, attachmentFile: File | null];
+}>();
+
+const revisionOpen = ref(false);
+const revisionSubmitting = ref(false);
+
+async function onRevisionSubmit(payload: { comment: string; attachmentFile: File | null }) {
+  revisionSubmitting.value = true;
+  try {
+    emit("requestRevision", payload.comment, payload.attachmentFile);
+    revisionOpen.value = false;
+  } finally {
+    revisionSubmitting.value = false;
+  }
+}
+
+const showActions = props.event.status === "Pending";
 </script>
 
 <template>
@@ -86,65 +108,9 @@ const emit = defineEmits<{ close: [] }>();
             {{ event.description }}
           </div>
         </div>
-
-        <div>
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Approval history</label>
-          <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <div v-if="event.workflowHistory && event.workflowHistory.length > 0" class="space-y-0">
-              <div v-for="(step, index) in event.workflowHistory" :key="index" class="relative">
-                <div class="flex items-start gap-3 pb-6 last:pb-0">
-                  <div class="relative shrink-0">
-                    <div
-                      :class="[
-                        'w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs z-10 relative',
-                        step.status === 'completed'
-                          ? 'bg-[#16A34A] text-white'
-                          : step.status === 'current'
-                            ? 'bg-yellow-400 text-gray-900 animate-pulse'
-                            : 'bg-gray-300 text-gray-600',
-                      ]"
-                    >
-                      <CheckCircle v-if="step.status === 'completed'" :size="16" />
-                      <span v-else-if="step.status === 'current'">⏳</span>
-                      <span v-else>⏸</span>
-                    </div>
-                    <div
-                      v-if="index < (event.workflowHistory?.length ?? 0) - 1"
-                      :class="[
-                        'absolute left-1/2 -translate-x-1/2 top-8 w-0.5 h-[calc(100%+8px)]',
-                        step.status === 'completed' ? 'bg-[#16A34A]' : 'bg-gray-300',
-                      ]"
-                    />
-                  </div>
-                  <div class="flex-1 pt-0.5 min-w-0">
-                    <div
-                      :class="[
-                        'font-bold text-sm',
-                        step.status === 'current'
-                          ? 'text-yellow-700'
-                          : step.status === 'completed'
-                            ? 'text-green-700'
-                            : 'text-gray-500',
-                      ]"
-                    >
-                      {{ step.name }}
-                      <span v-if="step.status === 'current'" class="ml-2 text-xs font-normal italic">(Currently Here)</span>
-                    </div>
-                    <div v-if="step.timestamp" class="text-xs text-gray-600 mt-0.5">{{ step.timestamp }}</div>
-                    <div v-if="step.approver" class="text-xs text-gray-500 mt-0.5">
-                      Approved by: <span class="font-semibold">{{ step.approver }}</span>
-                    </div>
-                    <div v-if="step.status === 'pending'" class="text-xs text-gray-400 italic mt-0.5">Waiting for approval</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-else class="text-center text-gray-400 text-sm py-4">No workflow history available</div>
-          </div>
-        </div>
       </div>
 
-      <div class="px-6 py-4 bg-gray-50 flex gap-3 justify-end border-t border-gray-200 shrink-0">
+      <div class="px-6 py-4 bg-gray-50 flex flex-wrap gap-3 justify-end border-t border-gray-200 shrink-0">
         <button
           type="button"
           class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-semibold transition"
@@ -152,7 +118,40 @@ const emit = defineEmits<{ close: [] }>();
         >
           Close
         </button>
+        <template v-if="showActions">
+          <button
+            type="button"
+            class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition"
+            @click="revisionOpen = true"
+          >
+            Request Revision
+          </button>
+          <button
+            type="button"
+            class="px-4 py-2 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-lg text-sm font-semibold transition flex items-center gap-2"
+            @click="emit('reject')"
+          >
+            <XCircle :size="15" />
+            Decline
+          </button>
+          <button
+            type="button"
+            class="px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-sm font-semibold transition flex items-center gap-2"
+            @click="emit('approve')"
+          >
+            <CheckCircle :size="15" />
+            Approve
+          </button>
+        </template>
       </div>
     </div>
+
+    <ComplianceRevisionModal
+      :open="revisionOpen"
+      :submitting="revisionSubmitting"
+      :event-name="event.name"
+      @close="revisionOpen = false"
+      @submit="onRevisionSubmit"
+    />
   </div>
 </template>

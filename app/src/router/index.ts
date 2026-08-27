@@ -69,7 +69,7 @@ const router = createRouter({
       component: () => import("@/views/executive-officer/ExecutiveLayout.vue"),
       children: [
         { path: "", name: "eo-dashboard", component: () => import("@/views/executive-officer/DashboardView.vue") },
-        { path: "events", name: "eo-events", component: () => import("@/views/executive-officer/EventsView.vue") },
+        { path: "events", name: "eo-events", component: () => import("@/components/portal/EventMonitoringView.vue") },
         { path: "analytics", name: "eo-analytics", component: () => import("@/views/executive-officer/AnalyticsView.vue") },
         {
           path: "settings",

@@ -49,18 +49,98 @@ export async function fetchFeedbackForSubmitter(userId: string): Promise<EventFe
   return (data ?? []) as EventFeedbackRow[];
 }
 
+/** Feedback for one campus feed post only. */
+export async function fetchFeedbackForFeedPost(feedPostId: string): Promise<EventFeedbackRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("event_feedback")
+    .select(
+      `
+      *,
+      student_feed_posts (
+        event_title,
+        organization_id,
+        submitted_by
+      )
+    `,
+    )
+    .eq("feed_post_id", feedPostId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as EventFeedbackRow[];
+}
+
+/** Feedback linked to an event request (via feed post request_id and/or feedback.request_id). */
+export async function fetchFeedbackForRequest(requestId: string): Promise<EventFeedbackRow[]> {
+  const supabase = getSupabase();
+  const { data: byRequest, error: err1 } = await supabase
+    .from("event_feedback")
+    .select(
+      `
+      *,
+      student_feed_posts (
+        event_title,
+        organization_id,
+        submitted_by
+      )
+    `,
+    )
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: false });
+  if (err1) throw err1;
+
+  const { data: posts, error: err2 } = await supabase
+    .from("student_feed_posts")
+    .select("id")
+    .eq("request_id", requestId);
+  if (err2) throw err2;
+
+  const postIds = (posts ?? []).map((p) => p.id as string);
+  let byPost: EventFeedbackRow[] = [];
+  if (postIds.length) {
+    const { data, error } = await supabase
+      .from("event_feedback")
+      .select(
+        `
+        *,
+        student_feed_posts (
+          event_title,
+          organization_id,
+          submitted_by
+        )
+      `,
+      )
+      .in("feed_post_id", postIds)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    byPost = (data ?? []) as EventFeedbackRow[];
+  }
+
+  const merged = new Map<string, EventFeedbackRow>();
+  for (const row of [...((byRequest ?? []) as EventFeedbackRow[]), ...byPost]) {
+    merged.set(row.id, row);
+  }
+  return [...merged.values()].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+}
+
 export function summarizeFeedback(rows: EventFeedbackRow[]): FeedbackSummary {
+  const ratingCounts: FeedbackSummary["ratingCounts"] = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   if (!rows.length) {
-    return { total: 0, averageRating: 0, byPost: [] };
+    return { total: 0, averageRating: 0, ratingCounts, byPost: [] };
   }
 
   const total = rows.length;
-  const averageRating = rows.reduce((s, r) => s + r.rating, 0) / total;
+  let sum = 0;
+  for (const row of rows) {
+    sum += row.rating;
+    const r = Math.min(5, Math.max(1, Math.round(row.rating))) as 1 | 2 | 3 | 4 | 5;
+    ratingCounts[r] += 1;
+  }
+  const averageRating = sum / total;
 
-  const byPostMap = new Map<
-    string,
-    { eventTitle: string; count: number; sum: number }
-  >();
+  const byPostMap = new Map<string, { eventTitle: string; count: number; sum: number }>();
 
   for (const row of rows) {
     const postId = row.feed_post_id ?? "unknown";
@@ -78,5 +158,5 @@ export function summarizeFeedback(rows: EventFeedbackRow[]): FeedbackSummary {
     averageRating: v.sum / v.count,
   }));
 
-  return { total, averageRating, byPost };
+  return { total, averageRating, ratingCounts, byPost };
 }

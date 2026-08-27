@@ -9,6 +9,7 @@ import EventLetterLink from "@/components/EventLetterLink.vue";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 import WorkflowProgressDisplay from "@/components/portal/WorkflowProgressDisplay.vue";
 import DeclinedResubmitModal from "@/components/portal/DeclinedResubmitModal.vue";
+import EventFeedbackModal from "@/components/portal/EventFeedbackModal.vue";
 import { getComplianceAttachmentSignedUrl } from "@/services/complianceAttachmentStorage";
 import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import { useUiStore } from "@/stores/ui";
@@ -22,6 +23,7 @@ const selected = ref<PortalEvent | null>(null);
 const search = ref("");
 const resubmitEvent = ref<PortalEvent | null>(null);
 const resubmitting = ref(false);
+const feedbackOpen = ref(false);
 
 const isRequester = computed(
   () => auth.appRole === "student_officer" || auth.appRole === "ssc",
@@ -40,7 +42,28 @@ async function refresh(force = false) {
   }
 }
 
-onMounted(() => void refresh(!store.loaded));
+onMounted(() => {
+  void refresh(!store.loaded);
+  if (isRequester.value) {
+    void store.loadMyFeedPosts().catch(() => undefined);
+  }
+});
+
+function linkedFeedPostId(event: PortalEvent): string | null {
+  const post = store.myFeedPosts.find((p) => p.requestId === event.id);
+  return post?.id ?? null;
+}
+
+function canViewFeedback(event: PortalEvent) {
+  if (!isRequester.value) return false;
+  const status = String(event.workflowStatus ?? event.status).toLowerCase();
+  return (
+    !!linkedFeedPostId(event) ||
+    status.includes("schedul") ||
+    status.includes("posted") ||
+    status.includes("approved")
+  );
+}
 
 async function openEvent(event: PortalEvent) {
   selected.value = event;
@@ -130,6 +153,7 @@ async function onResubmit(id: string, input: UpdateEventRequestInput) {
 
 onUnmounted(() => {
   selected.value = null;
+  feedbackOpen.value = false;
 });
 </script>
 
@@ -213,7 +237,7 @@ onUnmounted(() => {
       <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-2xl">
         <div class="flex items-center justify-between bg-emerald-600 px-6 py-4 text-white">
           <h3 class="text-base font-bold">Event details</h3>
-          <button type="button" class="rounded-lg p-1.5 hover:bg-emerald-700" @click="selected = null">✕</button>
+          <button type="button" class="rounded-lg p-1.5 hover:bg-emerald-700" @click="selected = null; feedbackOpen = false">✕</button>
         </div>
         <div class="space-y-3 p-6 text-sm">
           <div>
@@ -300,6 +324,14 @@ onUnmounted(() => {
             Close
           </button>
           <button
+            v-if="selected && canViewFeedback(selected)"
+            type="button"
+            class="rounded-lg border border-emerald-600 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+            @click="feedbackOpen = true"
+          >
+            View Feedback
+          </button>
+          <button
             v-if="canResubmit(selected)"
             type="button"
             class="rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#15803D]"
@@ -310,6 +342,18 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <EventFeedbackModal
+      :open="feedbackOpen && !!selected"
+      :event-title="selected?.name ?? 'Event'"
+      :event-date="selected?.date"
+      :event-time="selected ? `${selected.startTime ?? ''} – ${selected.endTime ?? ''}` : undefined"
+      :venue="selected?.venue"
+      :organization="selected?.organization"
+      :feed-post-id="selected ? linkedFeedPostId(selected) : null"
+      :request-id="selected?.id"
+      @close="feedbackOpen = false"
+    />
 
     <DeclinedResubmitModal
       :event="resubmitEvent"

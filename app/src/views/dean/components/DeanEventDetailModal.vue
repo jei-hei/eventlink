@@ -1,10 +1,31 @@
 <script setup lang="ts">
-import { X } from "lucide-vue-next";
+import { ref } from "vue";
+import { CheckCircle, X, XCircle } from "lucide-vue-next";
 import EventLetterLink from "@/components/EventLetterLink.vue";
+import ComplianceRevisionModal from "@/components/portal/ComplianceRevisionModal.vue";
 import type { DeanEvent } from "../types";
 
-defineProps<{ event: DeanEvent }>();
-const emit = defineEmits<{ close: [] }>();
+const props = defineProps<{ event: DeanEvent }>();
+const emit = defineEmits<{
+  close: [];
+  approve: [];
+  reject: [];
+  requestRevision: [comment: string, attachmentFile: File | null];
+}>();
+
+const revisionOpen = ref(false);
+const revisionSubmitting = ref(false);
+const showActions = props.event.status === "Pending";
+
+async function onRevisionSubmit(payload: { comment: string; attachmentFile: File | null }) {
+  revisionSubmitting.value = true;
+  try {
+    emit("requestRevision", payload.comment, payload.attachmentFile);
+    revisionOpen.value = false;
+  } finally {
+    revisionSubmitting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -91,7 +112,7 @@ const emit = defineEmits<{ close: [] }>();
         </div>
       </div>
 
-      <div class="px-6 py-4 bg-gray-50 flex gap-3 justify-end border-t border-gray-200 shrink-0">
+      <div class="px-6 py-4 bg-gray-50 flex flex-wrap gap-3 justify-end border-t border-gray-200 shrink-0">
         <button
           type="button"
           class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-semibold transition"
@@ -99,7 +120,40 @@ const emit = defineEmits<{ close: [] }>();
         >
           Close
         </button>
+        <template v-if="showActions">
+          <button
+            type="button"
+            class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition"
+            @click="revisionOpen = true"
+          >
+            Request Revision
+          </button>
+          <button
+            type="button"
+            class="px-4 py-2 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-lg text-sm font-semibold transition flex items-center gap-2"
+            @click="emit('reject')"
+          >
+            <XCircle :size="15" />
+            Decline
+          </button>
+          <button
+            type="button"
+            class="px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-sm font-semibold transition flex items-center gap-2"
+            @click="emit('approve')"
+          >
+            <CheckCircle :size="15" />
+            Approve
+          </button>
+        </template>
       </div>
     </div>
+
+    <ComplianceRevisionModal
+      :open="revisionOpen"
+      :submitting="revisionSubmitting"
+      :event-name="event.name"
+      @close="revisionOpen = false"
+      @submit="onRevisionSubmit"
+    />
   </div>
 </template>

@@ -12,12 +12,13 @@ import {
 } from "@/types/resourceOffice";
 import { useEventRequestsStore } from "@/stores/eventRequests";
 
-const props = defineProps<{ event: EoEvent }>();
+const props = defineProps<{ event: EoEvent; canPostToCalendar?: boolean }>();
 const emit = defineEmits<{
   close: [];
   approveAndForward: [id: string, assignments: ResourceAssignmentInput[]];
   reject: [id: string];
   requestRevision: [id: string, comment: string, attachmentFile: File | null];
+  postToCalendar: [id: string];
 }>();
 
 const store = useEventRequestsStore();
@@ -286,7 +287,15 @@ async function onRevisionSubmit(payload: { comment: string; attachmentFile: File
           Decline
         </button>
         <button
-          v-if="needsAssignment"
+          v-if="canPostToCalendar"
+          type="button"
+          class="rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#15803D]"
+          @click="emit('postToCalendar', event.id)"
+        >
+          Post to calendar
+        </button>
+        <button
+          v-else-if="needsAssignment"
           type="button"
           class="rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#15803D]"
           @click="onForward"

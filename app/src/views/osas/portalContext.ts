@@ -8,6 +8,11 @@ export interface OsasPortalContext {
   scheduledEvents: Ref<OsasEvent[]>;
   handleApprove: (id: string) => void;
   handleReject: (id: string) => void;
+  handleRequestRevision: (
+    id: string,
+    comment: string,
+    attachmentFile?: File | null,
+  ) => void | Promise<void>;
   handleCreateEvent: (e: OsasEvent) => void;
 }
 

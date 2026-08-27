@@ -9,7 +9,7 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
-const { events, scheduledEvents, handleApprove, handleReject } = useAdviserPortal();
+const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision } = useAdviserPortal();
 const eventsLoading = useEventsTableLoading();
 
 const selectedEvent = ref<AdviserEvent | null>(null);
@@ -17,6 +17,24 @@ const selectedEvent = ref<AdviserEvent | null>(null);
 const pendingCount = computed(() => events.value.filter((e) => e.status === "Pending").length);
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.value));
+
+function onModalApprove() {
+  if (!selectedEvent.value) return;
+  handleApprove(selectedEvent.value.id);
+  selectedEvent.value = null;
+}
+
+function onModalReject() {
+  if (!selectedEvent.value) return;
+  handleReject(selectedEvent.value.id);
+  selectedEvent.value = null;
+}
+
+async function onModalRevision(comment: string, attachmentFile: File | null) {
+  if (!selectedEvent.value) return;
+  await handleRequestRevision(selectedEvent.value.id, comment, attachmentFile);
+  selectedEvent.value = null;
+}
 </script>
 
 <template>
@@ -134,6 +152,13 @@ const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.
       </div>
     </div>
 
-    <AdviserEventDetailModal v-if="selectedEvent" :event="selectedEvent" @close="selectedEvent = null" />
+    <AdviserEventDetailModal
+      v-if="selectedEvent"
+      :event="selectedEvent"
+      @close="selectedEvent = null"
+      @approve="onModalApprove"
+      @reject="onModalReject"
+      @request-revision="onModalRevision"
+    />
   </div>
 </template>

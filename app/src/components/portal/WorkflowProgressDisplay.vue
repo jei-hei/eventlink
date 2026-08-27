@@ -83,7 +83,7 @@ function mark(status: Stage["status"]) {
   if (status === "completed") return "✓";
   if (status === "current") return "●";
   if (status === "declined") return "✗";
-  if (status === "revision") return "!";
+  if (status === "revision") return "⚠";
   return "○";
 }
 
@@ -116,7 +116,7 @@ function markClass(status: Stage["status"]) {
             <template v-if="s.status === 'completed'">Completed</template>
             <template v-else-if="s.status === 'current'">Current</template>
             <template v-else-if="s.status === 'declined'">Declined</template>
-            <template v-else-if="s.status === 'revision'">Revision requested</template>
+            <template v-else-if="s.status === 'revision'">Revision Requested</template>
             <template v-else>Pending</template>
           </p>
         </div>

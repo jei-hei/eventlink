@@ -9,7 +9,7 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
-const { events, scheduledEvents, handleApprove, handleReject } = useOsasPortal();
+const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision } = useOsasPortal();
 const eventsLoading = useEventsTableLoading();
 
 const selectedEvent = ref<OsasEvent | null>(null);
@@ -29,6 +29,12 @@ function onModalApprove() {
 function onModalReject() {
   if (!selectedEvent.value) return;
   handleReject(selectedEvent.value.id);
+  selectedEvent.value = null;
+}
+
+async function onModalRevision(comment: string, attachmentFile: File | null) {
+  if (!selectedEvent.value) return;
+  await handleRequestRevision(selectedEvent.value.id, comment, attachmentFile);
   selectedEvent.value = null;
 }
 </script>
@@ -168,6 +174,7 @@ function onModalReject() {
       @close="selectedEvent = null"
       @approve="onModalApprove"
       @reject="onModalReject"
+      @request-revision="onModalRevision"
     />
   </div>
 </template>

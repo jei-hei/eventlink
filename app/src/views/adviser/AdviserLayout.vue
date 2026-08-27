@@ -12,7 +12,7 @@ const sidebarOpen = ref(false);
 const mockPending = ref<AdviserEvent[]>([]);
 const mockApproved = ref<AdviserEvent[]>([]);
 
-const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, handleCreateEvent } =
+const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, handleRequestRevision, handleCreateEvent } =
   usePortalEvents("adviser", { events: mockPending, approvedEvents: mockApproved });
 
 provide(adviserPortalKey, {
@@ -21,6 +21,7 @@ provide(adviserPortalKey, {
   scheduledEvents,
   handleApprove,
   handleReject,
+  handleRequestRevision,
   handleCreateEvent,
 });
 </script>

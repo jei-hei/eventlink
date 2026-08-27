@@ -1,10 +1,20 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import { CheckCircle, X, XCircle } from "lucide-vue-next";
 import EventLetterLink from "@/components/EventLetterLink.vue";
+import ComplianceRevisionModal from "@/components/portal/ComplianceRevisionModal.vue";
 import type { OsasEvent } from "../types";
 
 const props = defineProps<{ event: OsasEvent }>();
-const emit = defineEmits<{ close: []; approve: []; reject: [] }>();
+const emit = defineEmits<{
+  close: [];
+  approve: [];
+  reject: [];
+  requestRevision: [comment: string, attachmentFile: File | null];
+}>();
+
+const revisionOpen = ref(false);
+const revisionSubmitting = ref(false);
 
 function statusClass(status: OsasEvent["status"]) {
   if (status === "Conflict") return "bg-red-100 text-red-700";
@@ -14,6 +24,16 @@ function statusClass(status: OsasEvent["status"]) {
 
 const showOrgActions = props.event.createdBy !== "EO" && props.event.status === "Pending";
 const showCloseOnly = props.event.createdBy === "EO" || props.event.status !== "Pending";
+
+async function onRevisionSubmit(payload: { comment: string; attachmentFile: File | null }) {
+  revisionSubmitting.value = true;
+  try {
+    emit("requestRevision", payload.comment, payload.attachmentFile);
+    revisionOpen.value = false;
+  } finally {
+    revisionSubmitting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -141,6 +161,13 @@ const showCloseOnly = props.event.createdBy === "EO" || props.event.status !== "
         <template v-if="showOrgActions">
           <button
             type="button"
+            class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition"
+            @click="revisionOpen = true"
+          >
+            Request Revision
+          </button>
+          <button
+            type="button"
             class="px-4 py-2 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-lg text-sm font-semibold transition flex items-center gap-2"
             @click="emit('reject')"
           >
@@ -164,7 +191,23 @@ const showCloseOnly = props.event.createdBy === "EO" || props.event.status !== "
         >
           Close
         </button>
+        <button
+          v-else-if="!showOrgActions"
+          type="button"
+          class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-semibold transition"
+          @click="emit('close')"
+        >
+          Close
+        </button>
       </div>
     </div>
+
+    <ComplianceRevisionModal
+      :open="revisionOpen"
+      :submitting="revisionSubmitting"
+      :event-name="event.name"
+      @close="revisionOpen = false"
+      @submit="onRevisionSubmit"
+    />
   </div>
 </template>

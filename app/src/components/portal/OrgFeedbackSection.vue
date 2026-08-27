@@ -8,14 +8,24 @@ import {
   summarizeFeedback,
 } from "@/services/eventFeedbackDb";
 import type { EventFeedbackRow } from "@/types/eventFeedback";
+import EventFeedbackModal from "@/components/portal/EventFeedbackModal.vue";
 
 const loading = ref(false);
 const error = ref<string | null>(null);
 const rows = ref<EventFeedbackRow[]>([]);
+const selectedPostId = ref<string | null>(null);
 
 const summary = computed(() => summarizeFeedback(rows.value));
 
-const recent = computed(() => rows.value.slice(0, 8));
+const selectedMeta = computed(() => {
+  if (!selectedPostId.value) return null;
+  const match = summary.value.byPost.find((p) => p.feedPostId === selectedPostId.value);
+  const sample = rows.value.find((r) => r.feed_post_id === selectedPostId.value);
+  return {
+    feedPostId: selectedPostId.value,
+    eventTitle: match?.eventTitle ?? sample?.student_feed_posts?.event_title ?? "Event",
+  };
+});
 
 onMounted(() => {
   void load();
@@ -34,15 +44,6 @@ async function load() {
     loading.value = false;
   }
 }
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 </script>
 
 <template>
@@ -54,7 +55,7 @@ function formatDate(iso: string) {
         </div>
         <div>
           <h3 class="font-bold text-gray-800 text-sm">Student feedback</h3>
-          <p class="text-gray-400 text-xs">On your campus feed posts</p>
+          <p class="text-gray-400 text-xs">Open an event to view its feedback only</p>
         </div>
       </div>
       <button
@@ -76,48 +77,41 @@ function formatDate(iso: string) {
       </span>
     </p>
 
-    <p v-else-if="summary.total === 0" class="text-sm text-gray-500 py-6 text-center">
+    <p v-else-if="summary.byPost.length === 0" class="text-sm text-gray-500 py-6 text-center">
       No feedback yet. Students submit ratings from the event post on <strong>/student</strong>.
     </p>
 
-    <template v-else>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-        <div class="rounded-lg bg-gray-50 border border-gray-100 p-3 text-center">
-          <p class="text-2xl font-bold text-gray-900">{{ summary.total }}</p>
-          <p class="text-xs text-gray-500">Total responses</p>
-        </div>
-        <div class="rounded-lg bg-yellow-50 border border-yellow-100 p-3 text-center">
-          <p class="text-2xl font-bold text-gray-900 flex items-center justify-center gap-1">
-            {{ summary.averageRating.toFixed(1) }}
-            <Star :size="20" class="fill-yellow-400 text-yellow-400" />
-          </p>
-          <p class="text-xs text-gray-500">Average rating</p>
-        </div>
-        <div class="rounded-lg bg-green-50 border border-green-100 p-3 text-center">
-          <p class="text-2xl font-bold text-gray-900">{{ summary.byPost.length }}</p>
-          <p class="text-xs text-gray-500">Events with feedback</p>
-        </div>
-      </div>
-
-      <ul class="space-y-2 max-h-72 overflow-y-auto">
-        <li
-          v-for="item in recent"
-          :key="item.id"
-          class="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2.5"
-        >
-          <div class="flex items-start justify-between gap-2">
-            <p class="text-sm font-semibold text-gray-800 truncate">
-              {{ item.student_feed_posts?.event_title ?? "Event" }}
+    <ul v-else class="space-y-2 max-h-80 overflow-y-auto">
+      <li
+        v-for="item in summary.byPost"
+        :key="item.feedPostId"
+        class="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2.5"
+      >
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-gray-800 truncate">{{ item.eventTitle }}</p>
+            <p class="mt-0.5 text-xs text-gray-500">
+              {{ item.count }} response{{ item.count === 1 ? "" : "s" }} · avg
+              {{ item.averageRating.toFixed(1) }}
+              <Star :size="11" class="inline fill-yellow-400 text-yellow-400" />
             </p>
-            <span class="shrink-0 flex items-center gap-0.5 text-xs font-bold text-yellow-600">
-              {{ item.rating }}
-              <Star :size="12" class="fill-yellow-400 text-yellow-400" />
-            </span>
           </div>
-          <p class="text-xs text-gray-600 mt-1 line-clamp-2">{{ item.comment }}</p>
-          <p class="text-[10px] text-gray-400 mt-1">{{ formatDate(item.created_at) }}</p>
-        </li>
-      </ul>
-    </template>
+          <button
+            type="button"
+            class="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
+            @click="selectedPostId = item.feedPostId"
+          >
+            View Feedback
+          </button>
+        </div>
+      </li>
+    </ul>
+
+    <EventFeedbackModal
+      :open="!!selectedPostId"
+      :event-title="selectedMeta?.eventTitle ?? 'Event'"
+      :feed-post-id="selectedPostId"
+      @close="selectedPostId = null"
+    />
   </div>
 </template>
