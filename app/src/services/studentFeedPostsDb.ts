@@ -108,6 +108,11 @@ export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent
     postedAt: row.posted_at,
     requestId: row.request_id,
     letterPath: row.event_requests?.letter_path ?? null,
+    submittedBy: row.submitted_by,
+    imagePaths: [
+      ...(row.image_paths ?? []),
+      ...(row.image_path && !(row.image_paths ?? []).includes(row.image_path) ? [row.image_path] : []),
+    ],
   };
 }
 
@@ -247,4 +252,50 @@ export async function createStudentFeedPost(
 
   const [withPoster] = await attachPosterProfiles([inserted as StudentFeedPostRow]);
   return withPoster!;
+}
+
+/**
+ * Delete a campus feed post owned by actorId.
+ * Does not delete event_requests, monitoring, calendar, or feedback rows.
+ * Feedback.feed_post_id is cleared by FK ON DELETE SET NULL (migration).
+ */
+export async function deleteStudentFeedPost(postId: string, actorId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { data: row, error: fetchErr } = await supabase
+    .from("student_feed_posts")
+    .select("id, submitted_by, request_id, image_path, image_paths")
+    .eq("id", postId)
+    .maybeSingle();
+  if (fetchErr) throw fetchErr;
+  if (!row) throw new Error("Post not found.");
+  if (row.submitted_by !== actorId) {
+    throw new Error("You can only delete your own posts.");
+  }
+
+  // Prefer keeping feedback tied to the event request when the post is removed.
+  if (row.request_id) {
+    await supabase
+      .from("event_feedback")
+      .update({ request_id: row.request_id })
+      .eq("feed_post_id", postId)
+      .is("request_id", null);
+  }
+
+  const imagePaths = [
+    ...((row.image_paths as string[] | null) ?? []),
+    ...((row.image_path as string | null) ? [row.image_path as string] : []),
+  ];
+  const uniquePaths = [...new Set(imagePaths.filter(Boolean))];
+
+  const { error: delErr } = await supabase
+    .from("student_feed_posts")
+    .delete()
+    .eq("id", postId)
+    .eq("submitted_by", actorId);
+  if (delErr) throw delErr;
+
+  if (uniquePaths.length) {
+    const { deleteEventPostImages } = await import("@/services/eventPostImageStorage");
+    await deleteEventPostImages(uniquePaths);
+  }
 }

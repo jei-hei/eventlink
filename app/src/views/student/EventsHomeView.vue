@@ -6,15 +6,18 @@ import { RouterLink } from "vue-router";
 import type { StudentEvent } from "./types";
 import { studentEvents } from "./eventData";
 import EventCard from "./components/EventCard.vue";
+import DeletePostConfirmModal from "./components/DeletePostConfirmModal.vue";
 import PortalFeedSkeleton from "@/components/portal/PortalFeedSkeleton.vue";
 import EventModal from "./components/EventModal.vue";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useEventRequestsStore } from "@/stores/eventRequests";
 import { useAuthStore } from "@/stores/auth";
 import { useProfileStore } from "@/stores/profile";
+import { useUiStore } from "@/stores/ui";
 
 const auth = useAuthStore();
 const profile = useProfileStore();
+const ui = useUiStore();
 
 const ALL_ORGANIZATIONS = "All Organizations";
 const ALL_VENUES = "All Venues";
@@ -29,6 +32,9 @@ const selectedVenue = ref(VENUE_SHOW_ALL);
 const selectedSort = ref("Newest");
 const selectedEvent = ref<StudentEvent | null>(null);
 const previewImage = ref<{ images: string[]; index: number; title: string } | null>(null);
+const deleteTarget = ref<StudentEvent | null>(null);
+const deleting = ref(false);
+
 function openImagePreview(images: string[], index: number, title: string) {
   if (!images.length) return;
   const safeIndex = Math.min(Math.max(0, index), images.length - 1);
@@ -91,6 +97,26 @@ async function loadMoreFeed() {
     await eventStore.loadMoreForStudentDashboard();
   } catch {
     /* feedError set in store */
+  }
+}
+
+function requestDeletePost(event: StudentEvent) {
+  deleteTarget.value = event;
+}
+
+async function confirmDeletePost() {
+  if (!deleteTarget.value || deleting.value) return;
+  const id = deleteTarget.value.id;
+  deleting.value = true;
+  try {
+    await eventStore.deleteFeedPost(id);
+    if (selectedEvent.value?.id === id) selectedEvent.value = null;
+    deleteTarget.value = null;
+    ui.pushToast("Post deleted successfully.", undefined, "success");
+  } catch (e) {
+    window.alert(e instanceof Error ? e.message : String(e));
+  } finally {
+    deleting.value = false;
   }
 }
 
@@ -292,6 +318,7 @@ const filteredEvents = computed(() => {
           :event="event"
           @select="selectedEvent = event"
           @preview-image="openImagePreview"
+          @delete-post="requestDeletePost"
         />
         <button
           v-if="useLiveFeed && eventStore.studentFeedHasMore && !searchQuery.trim() && selectedOrg === ALL_ORGANIZATIONS"
@@ -310,6 +337,14 @@ const filteredEvents = computed(() => {
       :event="selectedEvent"
       @close="selectedEvent = null"
       @preview-image="openImagePreview"
+    />
+
+    <DeletePostConfirmModal
+      :open="!!deleteTarget"
+      :event-title="deleteTarget?.title"
+      :deleting="deleting"
+      @close="deleteTarget = null"
+      @confirm="confirmDeletePost"
     />
 
     <div

@@ -230,6 +230,15 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     return row;
   }
 
+  async function deleteFeedPost(postId: string) {
+    const auth = useAuthStore();
+    if (!auth.userId) throw new Error("You must be signed in.");
+    const { deleteStudentFeedPost } = await import("@/services/studentFeedPostsDb");
+    await deleteStudentFeedPost(postId, auth.userId);
+    feedPostRows.value = feedPostRows.value.filter((r) => r.id !== postId);
+    myFeedPostRows.value = myFeedPostRows.value.filter((r) => r.id !== postId);
+  }
+
   function pendingForRole(role: AppRole, userId: string): PortalEvent[] {
     const auth = useAuthStore();
     return filterPendingForRole(rows.value, role, userId, {
@@ -404,6 +413,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     loadMoreForStudentDashboard,
     loadMyFeedPosts,
     createFeedPost,
+    deleteFeedPost,
     studentBoardLoaded,
     pendingForRole,
     approvedForRole,

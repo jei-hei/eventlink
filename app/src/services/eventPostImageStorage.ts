@@ -38,3 +38,14 @@ export function getEventPostImagePublicUrl(path: string): string | null {
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
   return data.publicUrl || null;
 }
+
+/** Remove post-only images from storage (paths under the author's folder). */
+export async function deleteEventPostImages(paths: string[]): Promise<void> {
+  const unique = [...new Set(paths.map((p) => p.trim()).filter(Boolean))];
+  if (!unique.length) return;
+  const supabase = getSupabase();
+  const { error } = await supabase.storage.from(BUCKET).remove(unique);
+  if (error) {
+    console.warn("Could not remove post image(s) from storage:", error.message);
+  }
+}

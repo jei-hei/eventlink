@@ -21,4 +21,8 @@ export interface StudentEvent {
   postedAt?: string | null;
   requestId?: string | null;
   letterPath?: string | null;
+  /** Auth user id of the post creator (submitted_by). */
+  submittedBy?: string | null;
+  /** Storage paths for post-only images. */
+  imagePaths?: string[];
 }
