@@ -13,6 +13,7 @@ import ProfileSectionCard from "@/components/profile/ProfileSectionCard.vue";
 import ProfileField from "@/components/profile/ProfileField.vue";
 import AvatarUpload from "@/components/profile/AvatarUpload.vue";
 import ProfilePageSkeleton from "@/components/profile/ProfilePageSkeleton.vue";
+import ProfileMyPostsSection from "@/components/profile/ProfileMyPostsSection.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -22,6 +23,9 @@ const ui = useUiStore();
 
 const portalRole = computed(() => (route.meta.portalRole as PortalRoleKey | undefined) ?? "student");
 const standalone = computed(() => !!route.meta.profileStandalone);
+const showMyPosts = computed(
+  () => portalRole.value === "student-officer" || portalRole.value === "ssc",
+);
 
 const loading = ref(true);
 const editMode = ref(false);
@@ -236,6 +240,8 @@ const compactProfileHeader = computed(
           </div>
 
           <ProfileHeader :compact="compactProfileHeader" />
+
+          <ProfileMyPostsSection v-if="showMyPosts" />
 
           <ProfileSectionCard title="Photo" description="Upload a profile image to save it to your account.">
             <AvatarUpload

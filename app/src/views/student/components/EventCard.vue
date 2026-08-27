@@ -1,28 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
 import { MoreHorizontal } from "lucide-vue-next";
 import type { StudentEvent } from "../types";
 import { formatPostedAgo, getOrgColor } from "../orgColor";
-import { useAuthStore } from "@/stores/auth";
 
-const props = defineProps<{
+defineProps<{
   event: StudentEvent;
 }>();
 
-const emit = defineEmits<{
-  select: [];
-  previewImage: [images: string[], index: number, title: string];
-  deletePost: [event: StudentEvent];
-}>();
-
-const auth = useAuthStore();
-const menuOpen = ref(false);
-const menuRoot = ref<HTMLElement | null>(null);
-
-const canDelete = computed(() => {
-  const ownerId = props.event.submittedBy;
-  return !!auth.userId && !!ownerId && auth.userId === ownerId;
-});
+const emit = defineEmits<{ select: []; previewImage: [images: string[], index: number, title: string] }>();
 
 function avatarLetter(event: StudentEvent) {
   const source = event.posterName || event.organization || "?";
@@ -32,28 +17,6 @@ function avatarLetter(event: StudentEvent) {
 function avatarColor(event: StudentEvent) {
   return getOrgColor(event.posterName || event.organization || "user");
 }
-
-function toggleMenu(ev: MouseEvent) {
-  ev.stopPropagation();
-  menuOpen.value = !menuOpen.value;
-}
-
-function onDeleteClick(ev: MouseEvent) {
-  ev.stopPropagation();
-  menuOpen.value = false;
-  emit("deletePost", props.event);
-}
-
-function onDocClick(ev: MouseEvent) {
-  if (!menuOpen.value) return;
-  const el = menuRoot.value;
-  if (el && !el.contains(ev.target as Node)) {
-    menuOpen.value = false;
-  }
-}
-
-onMounted(() => document.addEventListener("click", onDocClick));
-onUnmounted(() => document.removeEventListener("click", onDocClick));
 </script>
 
 <template>
@@ -95,35 +58,7 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
         </p>
       </div>
 
-      <div v-if="canDelete" ref="menuRoot" class="relative shrink-0">
-        <button
-          type="button"
-          class="rounded-full p-2 text-gray-500 hover:bg-gray-100"
-          aria-label="More options"
-          aria-haspopup="menu"
-          :aria-expanded="menuOpen"
-          @click="toggleMenu"
-        >
-          <MoreHorizontal class="h-5 w-5" />
-        </button>
-        <div
-          v-if="menuOpen"
-          class="absolute right-0 z-20 mt-1 min-w-[10rem] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
-          role="menu"
-          @click.stop
-        >
-          <button
-            type="button"
-            class="block w-full px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50"
-            role="menuitem"
-            @click="onDeleteClick"
-          >
-            Delete Post
-          </button>
-        </div>
-      </div>
       <button
-        v-else
         type="button"
         class="shrink-0 rounded-full p-2 text-gray-500 hover:bg-gray-100"
         aria-label="More options"
