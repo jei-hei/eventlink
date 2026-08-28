@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { Loader2, X, Star } from "lucide-vue-next";
+import { RouterLink } from "vue-router";
 import { FEEDBACK_PRESET_COMMENTS, submitEventFeedback } from "@/services/eventFeedbackDb";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { useAuthStore } from "@/stores/auth";
 
 const props = defineProps<{
   open: boolean;
@@ -12,6 +14,11 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ close: []; submitted: [] }>();
+
+const auth = useAuthStore();
+const canSubmitFeedback = computed(
+  () => auth.isAuthenticated && !!auth.userId && auth.appRole === "student",
+);
 
 const rating = ref(0);
 const hoveredRating = ref(0);
@@ -26,12 +33,23 @@ function reset() {
   errorMsg.value = "";
 }
 
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) reset();
+  },
+);
+
 function close() {
   reset();
   emit("close");
 }
 
 async function handleSubmit() {
+  if (!canSubmitFeedback.value) {
+    errorMsg.value = "Please log in to submit feedback.";
+    return;
+  }
   if (rating.value === 0 || !selectedComment.value) return;
   if (!isSupabaseConfigured) {
     window.alert("Feedback requires Supabase. Connect your project to save responses.");
@@ -87,80 +105,103 @@ async function handleSubmit() {
       </div>
 
       <div class="p-6 space-y-5 overflow-y-auto">
-        <div class="text-center">
-          <p class="text-sm text-gray-500 mb-1">How was</p>
-          <h3 class="text-lg font-semibold text-gray-900">{{ eventTitle }}?</h3>
-          <p class="mt-1 text-xs text-gray-500">Your name is not stored — rating and comment only.</p>
-        </div>
-
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700">Rate this event</label>
-          <div class="flex justify-center gap-2">
-            <button
-              v-for="star in [1, 2, 3, 4, 5]"
-              :key="star"
-              type="button"
-              class="transition-transform hover:scale-110"
-              @click="rating = star"
-              @mouseenter="hoveredRating = star"
-              @mouseleave="hoveredRating = 0"
-            >
-              <Star
-                class="w-10 h-10"
-                :class="
-                  star <= (hoveredRating || rating)
-                    ? 'fill-yellow-400 text-yellow-400'
-                    : 'text-gray-300'
-                "
-              />
-            </button>
-          </div>
-          <p v-if="rating > 0" class="text-center text-sm text-gray-600">
-            {{ rating }} {{ rating === 1 ? "star" : "stars" }}
+        <div v-if="!canSubmitFeedback" class="space-y-4 text-center">
+          <p class="text-base font-semibold text-gray-900">Please log in to submit feedback.</p>
+          <p class="text-sm text-gray-600">
+            You can browse events without an account, but ratings and comments require a student login.
           </p>
+          <RouterLink
+            to="/login"
+            class="inline-flex w-full items-center justify-center rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-green-700"
+            @click="close"
+          >
+            Log in
+          </RouterLink>
+          <button
+            type="button"
+            class="w-full rounded-lg bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-200"
+            @click="close"
+          >
+            Cancel
+          </button>
         </div>
 
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700">Choose a comment</label>
-          <div class="space-y-2 max-h-48 overflow-y-auto">
-            <label
-              v-for="comment in FEEDBACK_PRESET_COMMENTS"
-              :key="comment"
-              :class="[
-                'flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors',
-                selectedComment === comment
-                  ? 'bg-green-50 border-green-500'
-                  : 'bg-white border-gray-200 hover:bg-gray-50',
-              ]"
-            >
-              <input
-                v-model="selectedComment"
-                type="radio"
-                name="comment"
-                class="w-4 h-4 text-green-600"
-                :value="comment"
-              />
-              <span class="text-sm text-gray-700">{{ comment }}</span>
-            </label>
+        <template v-else>
+          <div class="text-center">
+            <p class="text-sm text-gray-500 mb-1">How was</p>
+            <h3 class="text-lg font-semibold text-gray-900">{{ eventTitle }}?</h3>
+            <p class="mt-1 text-xs text-gray-500">Your name is not stored — rating and comment only.</p>
           </div>
-        </div>
 
-        <p v-if="errorMsg" class="text-sm text-red-600">{{ errorMsg }}</p>
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-700">Rate this event</label>
+            <div class="flex justify-center gap-2">
+              <button
+                v-for="star in [1, 2, 3, 4, 5]"
+                :key="star"
+                type="button"
+                class="transition-transform hover:scale-110"
+                @click="rating = star"
+                @mouseenter="hoveredRating = star"
+                @mouseleave="hoveredRating = 0"
+              >
+                <Star
+                  class="w-10 h-10"
+                  :class="
+                    star <= (hoveredRating || rating)
+                      ? 'fill-yellow-400 text-yellow-400'
+                      : 'text-gray-300'
+                  "
+                />
+              </button>
+            </div>
+            <p v-if="rating > 0" class="text-center text-sm text-gray-600">
+              {{ rating }} {{ rating === 1 ? "star" : "stars" }}
+            </p>
+          </div>
 
-        <button
-          type="button"
-          :disabled="rating === 0 || !selectedComment || submitting"
-          :class="[
-            'w-full py-3 px-6 rounded-lg font-semibold transition-colors inline-flex items-center justify-center gap-2',
-            rating > 0 && selectedComment && !submitting
-              ? 'bg-green-600 hover:bg-green-700 text-white'
-              : 'bg-gray-300 text-gray-500 cursor-not-allowed',
-          ]"
-          @click="handleSubmit"
-        >
-          <Loader2 v-if="submitting" :size="18" class="animate-spin" />
-          {{ submitting ? "Submitting…" : "Submit feedback" }}
-        </button>
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-700">Choose a comment</label>
+            <div class="space-y-2 max-h-48 overflow-y-auto">
+              <label
+                v-for="comment in FEEDBACK_PRESET_COMMENTS"
+                :key="comment"
+                :class="[
+                  'flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors',
+                  selectedComment === comment
+                    ? 'bg-green-50 border-green-500'
+                    : 'bg-white border-gray-200 hover:bg-gray-50',
+                ]"
+              >
+                <input
+                  v-model="selectedComment"
+                  type="radio"
+                  name="comment"
+                  class="w-4 h-4 text-green-600"
+                  :value="comment"
+                />
+                <span class="text-sm text-gray-700">{{ comment }}</span>
+              </label>
+            </div>
+          </div>
+
+          <p v-if="errorMsg" class="text-sm text-red-600">{{ errorMsg }}</p>
+
+          <button
+            type="button"
+            :disabled="rating === 0 || !selectedComment || submitting"
+            :class="[
+              'w-full py-3 px-6 rounded-lg font-semibold transition-colors inline-flex items-center justify-center gap-2',
+              rating > 0 && selectedComment && !submitting
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed',
+            ]"
+            @click="handleSubmit"
+          >
+            <Loader2 v-if="submitting" :size="18" class="animate-spin" />
+            {{ submitting ? "Submitting…" : "Submit feedback" }}
+          </button>
+        </template>
       </div>
     </div>
   </div>

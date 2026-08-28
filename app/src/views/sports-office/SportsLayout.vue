@@ -21,10 +21,6 @@ provide(sportsPortalKey, { events, approvedEvents, scheduledEvents, handleApprov
 
 <template>
   <PortalShell
-    display-name="Sports Officer"
-    role-title="Sports Office"
-    email="sports@eventlink.local"
-    department="Sports Office"
     @open-sidebar="sidebarOpen = true"
   >
     <template #sidebar>

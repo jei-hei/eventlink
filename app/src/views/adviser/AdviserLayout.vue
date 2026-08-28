@@ -28,10 +28,6 @@ provide(adviserPortalKey, {
 
 <template>
   <PortalShell
-    display-name="Juan Dela Cruz"
-    role-title="Adviser"
-    email="juan.delacruz@isu.edu.ph"
-    department="CCSICT"
     @open-sidebar="sidebarOpen = true"
   >
     <template #sidebar>

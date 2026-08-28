@@ -62,6 +62,8 @@ const form = reactive({
   startTime: "08:00",
   endTime: "17:00",
   venueId: "",
+  customVenue: "",
+  venueMode: "select" as "select" | "custom",
   numberOfParticipants: 50,
   needsGso: false,
 });
@@ -88,9 +90,15 @@ const selectedOrgName = computed(() => {
   return organizations.value.find((o) => o.id === form.organizationId)?.name ?? form.organizationName;
 });
 
-const selectedVenueName = computed(
-  () => venues.value.find((v) => v.id === form.venueId)?.name ?? "",
-);
+const selectedVenueName = computed(() => {
+  if (form.venueMode === "custom") return form.customVenue.trim();
+  return venues.value.find((v) => v.id === form.venueId)?.name ?? "";
+});
+
+const resolvedVenueId = computed(() => {
+  if (form.venueMode === "custom") return null;
+  return form.venueId || null;
+});
 
 const selectedEquipmentIds = computed(() =>
   new Set(equipmentRows.value.map((r) => r.equipmentId).filter(Boolean)),
@@ -252,6 +260,8 @@ function resetForm() {
   form.startTime = "08:00";
   form.endTime = "17:00";
   form.venueId = venues.value[0]?.id ?? "";
+  form.customVenue = "";
+  form.venueMode = "select";
   form.numberOfParticipants = 50;
   selectedSdgs.value = [];
   form.needsGso = false;
@@ -307,7 +317,15 @@ function handleSubmit() {
     window.alert("Please upload your PDF proposal (.pdf).");
     return;
   }
-  if (!form.venueId || !selectedVenueName.value) {
+  if (!selectedVenueName.value) {
+    window.alert(
+      form.venueMode === "custom"
+        ? "Please enter a venue name."
+        : "Please select a venue or choose “Type a custom venue”.",
+    );
+    return;
+  }
+  if (form.venueMode === "select" && !form.venueId) {
     window.alert("Please select a venue.");
     return;
   }
@@ -337,7 +355,7 @@ function handleSubmit() {
     startTime: parseTimeInput(form.startTime),
     endTime: parseTimeInput(form.endTime),
     venue: selectedVenueName.value,
-    venueId: form.venueId || null,
+    venueId: resolvedVenueId.value,
     numberOfParticipants: form.numberOfParticipants,
     sdgs: formatSdgsForStorage(selectedSdgs.value),
     needsGso: form.needsGso,
@@ -475,15 +493,54 @@ defineExpose({ resetForm });
     </div>
 
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <div>
-        <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Venue *</label>
+      <div class="space-y-2">
+        <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Requested Venue *</label>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            :class="[
+              'rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition',
+              form.venueMode === 'select'
+                ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+            ]"
+            @click="form.venueMode = 'select'"
+          >
+            Choose existing
+          </button>
+          <button
+            type="button"
+            :class="[
+              'rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition',
+              form.venueMode === 'custom'
+                ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+            ]"
+            @click="form.venueMode = 'custom'"
+          >
+            Type custom
+          </button>
+        </div>
         <select
+          v-if="form.venueMode === 'select'"
           v-model="form.venueId"
           class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
         >
-          <option v-if="!venues.length" value="" disabled>No venues — ask offices to add venues</option>
+          <option value="" disabled>
+            {{ venues.length ? "Select venue" : "No venues listed — use Type custom" }}
+          </option>
           <option v-for="v in venues" :key="v.id" :value="v.id">{{ v.name }}</option>
         </select>
+        <input
+          v-else
+          v-model="form.customVenue"
+          type="text"
+          placeholder="e.g. Barangay Covered Court"
+          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+        />
+        <p v-if="form.venueMode === 'custom'" class="text-xs text-slate-500">
+          Custom venues are saved on this request only and are not added to the Venue database.
+        </p>
       </div>
       <div>
         <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">

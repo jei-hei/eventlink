@@ -6,7 +6,7 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { fetchMyProfile, updateMyProfile } from "@/services/profilesDb";
 import { fetchProfileActivityStats } from "@/services/profileActivityDb";
 import { useAuthStore } from "./auth";
-import { portalRoleToAppRole } from "@/types/appRole";
+import { appRoleLabel, portalRoleToAppRole } from "@/types/appRole";
 import { getProfileAvatarPublicUrl, uploadProfileAvatar } from "@/services/profileAvatarStorage";
 
 export interface ProfileState {
@@ -96,8 +96,10 @@ export const useProfileStore = defineStore("profile", () => {
     notifyEmail.value = row.notify_email ?? true;
     themePreference.value = row.theme_preference ?? "system";
 
-    if (useAuthStore().role) {
-      role.value = useAuthStore().role!;
+    const authRole = useAuthStore().appRole;
+    if (authRole) {
+      role.value = authRole;
+      roleLabel.value = appRoleLabel(authRole);
     } else {
       role.value = d.roleLabel;
     }
@@ -137,18 +139,15 @@ export const useProfileStore = defineStore("profile", () => {
 
     if (auth.displayName) {
       displayName.value = auth.displayName;
-    } else if (displayName.value === "Guest") {
-      displayName.value = "Juan Dela Cruz";
     }
 
     if (auth.email) {
       email.value = auth.email;
-    } else if (!email.value) {
-      email.value = "juan.delacruz@isu.edu.ph";
     }
 
-    if (auth.role) {
-      role.value = auth.role;
+    if (auth.appRole) {
+      role.value = auth.appRole;
+      roleLabel.value = appRoleLabel(auth.appRole);
     } else {
       role.value = d.roleLabel;
     }

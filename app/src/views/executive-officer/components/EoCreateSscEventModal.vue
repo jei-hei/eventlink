@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { onMounted, reactive, ref, watch } from "vue";
 import { CheckCircle, X } from "lucide-vue-next";
-import { fetchCollegesWithOrganizations, fetchOrganizations, type OrganizationOption } from "@/services/organizationsDb";
+import { fetchCollegesWithOrganizations } from "@/services/organizationsDb";
 
 export type EoCreateDirectPayload = {
-  eventKind: "student" | "faculty";
+  eventKind: "faculty";
   organizationId: string | null;
   organizationName: string;
   activity: string;
@@ -19,12 +19,9 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ "update:open": [v: boolean]; submit: [payload: EoCreateDirectPayload] }>();
 
-const organizations = ref<OrganizationOption[]>([]);
 const colleges = ref<Array<{ id: string; name: string }>>([]);
 
 const form = reactive({
-  eventKind: "student" as "student" | "faculty",
-  organizationId: "",
   collegeName: "",
   activity: "",
   startDate: "",
@@ -33,13 +30,7 @@ const form = reactive({
   endTime: "17:00",
 });
 
-const chosenOrganizationName = computed(() => {
-  return organizations.value.find((o) => o.id === form.organizationId)?.name ?? "";
-});
-
 function resetForm() {
-  form.eventKind = "student";
-  form.organizationId = "";
   form.collegeName = "";
   form.activity = "";
   form.startDate = "";
@@ -57,11 +48,9 @@ watch(
 
 onMounted(async () => {
   try {
-    const [orgRows, collegeRows] = await Promise.all([fetchOrganizations(), fetchCollegesWithOrganizations()]);
-    organizations.value = orgRows;
+    const collegeRows = await fetchCollegesWithOrganizations();
     colleges.value = collegeRows.map((c) => ({ id: c.id, name: c.name }));
   } catch {
-    organizations.value = [];
     colleges.value = [];
   }
 });
@@ -77,7 +66,6 @@ function parseTimeInput(value: string): string {
 }
 
 function onSubmit() {
-  const isStudent = form.eventKind === "student";
   if (!form.activity.trim()) {
     window.alert("Please enter the activity name.");
     return;
@@ -86,18 +74,14 @@ function onSubmit() {
     window.alert("Please select start date.");
     return;
   }
-  if (isStudent && !form.organizationId) {
-    window.alert("Please select an organization for student event.");
-    return;
-  }
-  if (!isStudent && !form.collegeName.trim()) {
-    window.alert("Please select a college for faculty event.");
+  if (!form.collegeName.trim()) {
+    window.alert("Please select a college for this event.");
     return;
   }
   emit("submit", {
-    eventKind: form.eventKind,
-    organizationId: isStudent ? form.organizationId : null,
-    organizationName: isStudent ? chosenOrganizationName.value : form.collegeName.trim(),
+    eventKind: "faculty",
+    organizationId: null,
+    organizationName: form.collegeName.trim(),
     activity: form.activity.trim(),
     startDate: form.startDate,
     endDate: form.endDate || form.startDate,
@@ -124,46 +108,6 @@ function onSubmit() {
 
       <div class="p-6 space-y-4">
         <div>
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Event type *</label>
-          <div class="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              :class="[
-                'rounded-lg border px-3 py-2 text-sm font-semibold transition',
-                form.eventKind === 'student'
-                  ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
-                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
-              ]"
-              @click="form.eventKind = 'student'"
-            >
-              Student Event
-            </button>
-            <button
-              type="button"
-              :class="[
-                'rounded-lg border px-3 py-2 text-sm font-semibold transition',
-                form.eventKind === 'faculty'
-                  ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
-                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
-              ]"
-              @click="form.eventKind = 'faculty'"
-            >
-              Faculty Event
-            </button>
-          </div>
-        </div>
-
-        <div v-if="form.eventKind === 'student'">
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Organization *</label>
-          <select
-            v-model="form.organizationId"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-          >
-            <option value="" disabled>Select organization</option>
-            <option v-for="org in organizations" :key="org.id" :value="org.id">{{ org.name }}</option>
-          </select>
-        </div>
-        <div v-else>
           <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">College *</label>
           <select
             v-model="form.collegeName"

@@ -39,6 +39,14 @@ async function invokeAdminCreateUser(body: Record<string, unknown>): Promise<Cre
   const supabase = getSupabase();
   const { data, error } = await supabase.functions.invoke("admin-create-user", { body });
 
+  const payload = data as
+    | (Partial<CreatePortalUserResult> & { error?: string })
+    | null;
+
+  if (payload?.error) {
+    throw new Error(payload.error);
+  }
+
   if (error) {
     const msg = error.message || "Could not save user account.";
     const lowered = msg.toLowerCase();
@@ -54,7 +62,6 @@ async function invokeAdminCreateUser(body: Record<string, unknown>): Promise<Cre
     throw new Error(msg);
   }
 
-  const payload = data as Partial<CreatePortalUserResult> | null;
   if (!payload?.userId || !payload?.role || !payload?.email) {
     throw new Error("User account was created, but the response was invalid.");
   }

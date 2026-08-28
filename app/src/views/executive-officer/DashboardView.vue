@@ -79,13 +79,9 @@ const nextEventId = computed(() => {
 async function onCreateSubmit(payload: EoCreateDirectPayload) {
   try {
     if (useDb.value) {
-      const purpose =
-        payload.eventKind === "faculty"
-          ? `[COLLEGE:${payload.organizationName}] Faculty event`
-          : "";
       await submitRequest({
         requestType: "eo_direct",
-        organizationId: payload.eventKind === "student" ? payload.organizationId : null,
+        organizationId: null,
         activity: payload.activity,
         startDate: payload.startDate,
         endDate: payload.endDate,
@@ -95,7 +91,7 @@ async function onCreateSubmit(payload: EoCreateDirectPayload) {
         numberOfParticipants: 1,
         sdgs: "",
         needsGso: false,
-        purpose,
+        purpose: `[COLLEGE:${payload.organizationName}] Faculty event`,
       });
       return;
     }

@@ -210,6 +210,13 @@ async function submitEdit(e: Event) {
           </p>
         </div>
 
+        <div
+          v-if="role === 'dean'"
+          class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          Each college may have only one active Dean. Changing college will fail if that college already has another Dean.
+        </div>
+
         <div v-if="isStudentRole" class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           This account is currently <strong>{{ currentRoleLabel }}</strong
           >. Student accounts are not editable from this modal.

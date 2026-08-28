@@ -177,6 +177,30 @@ Deno.serve(async (req) => {
     }
   }
 
+  if (role === "dean" && collegeId) {
+    const { data: deanRoles, error: deanRoleErr } = await admin
+      .from("user_roles")
+      .select("user_id")
+      .eq("role", "dean");
+    if (deanRoleErr) return json(500, { error: deanRoleErr.message });
+    const deanIds = (deanRoles ?? [])
+      .map((r) => r.user_id as string)
+      .filter((id) => id && id !== existingUserId);
+    if (deanIds.length) {
+      const { data: existingDean, error: deanProfileErr } = await admin
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", deanIds)
+        .eq("college_id", collegeId)
+        .limit(1)
+        .maybeSingle();
+      if (deanProfileErr) return json(500, { error: deanProfileErr.message });
+      if (existingDean?.id) {
+        return json(409, { error: "This college already has a registered Dean." });
+      }
+    }
+  }
+
   let userId = existing?.id ?? "";
   if (!existing) {
     // email_confirm: true → account is immediately login-ready (no confirmation link).

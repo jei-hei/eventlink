@@ -6,9 +6,11 @@ import { useEventRequestsStore } from "@/stores/eventRequests";
 import { useUiStore } from "@/stores/ui";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import type { StudentEvent } from "@/views/student/types";
+import type { UpdateStudentFeedPostInput } from "@/types/studentPost";
 import { formatPostedAgo } from "@/views/student/orgColor";
 import ProfileSectionCard from "@/components/profile/ProfileSectionCard.vue";
 import DeletePostConfirmModal from "@/components/portal/DeletePostConfirmModal.vue";
+import CreateStudentPostModal from "@/components/portal/CreateStudentPostModal.vue";
 
 const store = useEventRequestsStore();
 const ui = useUiStore();
@@ -16,10 +18,18 @@ const { myFeedPosts } = storeToRefs(store);
 
 const loading = ref(false);
 const deleteTarget = ref<StudentEvent | null>(null);
+const editTarget = ref<StudentEvent | null>(null);
 const deleting = ref(false);
+const saving = ref(false);
 const openMenuId = ref<string | null>(null);
 
 const posts = computed(() => myFeedPosts.value);
+const editOpen = computed({
+  get: () => !!editTarget.value,
+  set: (v: boolean) => {
+    if (!v) editTarget.value = null;
+  },
+});
 
 onMounted(async () => {
   document.addEventListener("click", closeMenus);
@@ -49,6 +59,12 @@ function toggleMenu(id: string, ev: MouseEvent) {
   openMenuId.value = openMenuId.value === id ? null : id;
 }
 
+function requestEdit(post: StudentEvent, ev: MouseEvent) {
+  ev.stopPropagation();
+  openMenuId.value = null;
+  editTarget.value = post;
+}
+
 function requestDelete(post: StudentEvent, ev: MouseEvent) {
   ev.stopPropagation();
   openMenuId.value = null;
@@ -66,6 +82,20 @@ async function confirmDelete() {
     window.alert(e instanceof Error ? e.message : String(e));
   } finally {
     deleting.value = false;
+  }
+}
+
+async function onSaveEdit(payload: UpdateStudentFeedPostInput) {
+  if (saving.value) return;
+  saving.value = true;
+  try {
+    await store.updateFeedPost(payload);
+    editTarget.value = null;
+    ui.pushToast("Post updated.", "Students will see the latest details.", "success");
+  } catch (e) {
+    window.alert(e instanceof Error ? e.message : String(e));
+  } finally {
+    saving.value = false;
   }
 }
 </script>
@@ -107,6 +137,14 @@ async function confirmDelete() {
               class="absolute right-0 z-20 mt-1 min-w-[10rem] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
               role="menu"
             >
+              <button
+                type="button"
+                class="block w-full px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                role="menuitem"
+                @click="requestEdit(post, $event)"
+              >
+                Edit Post
+              </button>
               <button
                 type="button"
                 class="block w-full px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50"
@@ -156,6 +194,14 @@ async function confirmDelete() {
       :deleting="deleting"
       @close="deleteTarget = null"
       @confirm="confirmDelete"
+    />
+
+    <CreateStudentPostModal
+      :open="editOpen"
+      :edit-post="editTarget"
+      :publishing="saving"
+      @close="editTarget = null"
+      @save="onSaveEdit"
     />
   </ProfileSectionCard>
 </template>

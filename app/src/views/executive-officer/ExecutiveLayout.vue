@@ -47,10 +47,6 @@ provide(executivePortalKey, {
 
 <template>
   <PortalShell
-    display-name="Juan Dela Cruz"
-    role-title="Executive Officer"
-    email="juan.delacruz@isu.edu.ph"
-    department="Event Management"
     @open-sidebar="sidebarOpen = true"
   >
     <template #sidebar>

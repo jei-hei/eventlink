@@ -189,7 +189,7 @@ async function onRevisionSubmit(payload: { comment: string; attachmentFile: File
           <p class="font-medium text-gray-800">{{ event.date }}</p>
         </div>
         <div>
-          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Venue</label>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Requested Venue</label>
           <p class="font-medium text-gray-800">{{ event.venue }}</p>
         </div>
         <div>

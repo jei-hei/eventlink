@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Plus, ChevronDown, ChevronUp, Trash2 } from "lucide-vue-next";
+import { Plus, ChevronDown, ChevronUp, Pencil, Trash2 } from "lucide-vue-next";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   createCollege,
   createOrganization,
   deleteOrganization,
   fetchCollegesWithOrganizations,
+  updateCollege,
   type CollegeWithOrgs,
 } from "@/services/collegesDb";
 import { UNIVERSITY_WIDE_COLLEGE_CODE } from "@/services/organizationsDb";
+import { fetchAdminPortalUsers, type AdminPortalUserRow } from "@/services/adminUsersDb";
 
 const colleges = ref<CollegeWithOrgs[]>([]);
+const portalUsers = ref<AdminPortalUserRow[]>([]);
 
 const universityWide = computed(() =>
   colleges.value.find((c) => c.code === UNIVERSITY_WIDE_COLLEGE_CODE) ?? null,
@@ -20,18 +23,38 @@ const universityWide = computed(() =>
 const collegeList = computed(() =>
   colleges.value.filter((c) => c.code !== UNIVERSITY_WIDE_COLLEGE_CODE),
 );
+
+const deanByCollegeName = computed(() => {
+  const map = new Map<string, string>();
+  for (const u of portalUsers.value) {
+    if (u.app_role !== "dean") continue;
+    const college = u.college?.trim();
+    if (!college || college === "—") continue;
+    if (!map.has(college)) map.set(college, u.display_name);
+  }
+  return map;
+});
+
 const loading = ref(false);
 const expandedCollege = ref<string | null>(null);
 const newCollegeName = ref("");
 const newCollegeCode = ref("");
 const newOrgName = ref("");
 const addingOrgFor = ref<string | null>(null);
+const editingCollegeId = ref<string | null>(null);
+const editCollegeName = ref("");
+const editCollegeCode = ref("");
 
 async function load() {
   if (!isSupabaseConfigured) return;
   loading.value = true;
   try {
-    colleges.value = await fetchCollegesWithOrganizations();
+    const [collegeRows, users] = await Promise.all([
+      fetchCollegesWithOrganizations(),
+      fetchAdminPortalUsers().catch(() => [] as AdminPortalUserRow[]),
+    ]);
+    colleges.value = collegeRows;
+    portalUsers.value = users;
   } catch (e) {
     window.alert(e instanceof Error ? e.message : String(e));
   } finally {
@@ -43,6 +66,34 @@ onMounted(() => void load());
 
 function toggleCollege(id: string) {
   expandedCollege.value = expandedCollege.value === id ? null : id;
+}
+
+function startEditCollege(college: CollegeWithOrgs, ev: MouseEvent) {
+  ev.stopPropagation();
+  editingCollegeId.value = college.id;
+  editCollegeName.value = college.name;
+  editCollegeCode.value = college.code ?? "";
+}
+
+function cancelEditCollege() {
+  editingCollegeId.value = null;
+  editCollegeName.value = "";
+  editCollegeCode.value = "";
+}
+
+async function saveEditCollege() {
+  if (!editingCollegeId.value || !editCollegeName.value.trim()) return;
+  try {
+    await updateCollege(
+      editingCollegeId.value,
+      editCollegeName.value,
+      editCollegeCode.value || editCollegeName.value.slice(0, 6),
+    );
+    cancelEditCollege();
+    await load();
+  } catch (e) {
+    window.alert(e instanceof Error ? e.message : String(e));
+  }
 }
 
 async function addCollege() {
@@ -153,10 +204,57 @@ async function removeOrg(id: string) {
           @click="toggleCollege(college.id)"
         >
           <div class="min-w-0 flex-1">
-            <h3 class="text-lg font-semibold text-gray-900">{{ college.name }}</h3>
-            <p v-if="college.code" class="text-sm text-gray-600">Code: {{ college.code }}</p>
+            <template v-if="editingCollegeId === college.id">
+              <div class="flex flex-col gap-2 sm:flex-row" @click.stop>
+                <input
+                  v-model="editCollegeName"
+                  type="text"
+                  class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="College name"
+                />
+                <input
+                  v-model="editCollegeCode"
+                  type="text"
+                  class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm sm:w-36 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Code"
+                />
+                <button
+                  type="button"
+                  class="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                  @click="saveEditCollege"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  class="rounded-lg bg-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-300"
+                  @click="cancelEditCollege"
+                >
+                  Cancel
+                </button>
+              </div>
+            </template>
+            <template v-else>
+              <h3 class="text-lg font-semibold text-gray-900">{{ college.name }}</h3>
+              <p v-if="college.code" class="text-sm text-gray-600">Code: {{ college.code }}</p>
+              <p class="mt-1 text-xs text-slate-500">
+                Dean:
+                <span class="font-medium text-slate-700">
+                  {{ deanByCollegeName.get(college.name) || "Not assigned" }}
+                </span>
+              </p>
+            </template>
           </div>
-          <div class="flex shrink-0 items-center gap-4">
+          <div class="flex shrink-0 items-center gap-2 sm:gap-4">
+            <button
+              v-if="editingCollegeId !== college.id"
+              type="button"
+              class="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+              title="Edit college"
+              @click="startEditCollege(college, $event)"
+            >
+              <Pencil class="h-4 w-4" />
+            </button>
             <span class="rounded-full bg-green-100 px-3 py-1 text-sm text-green-800">
               {{ college.organizations.length }} org{{ college.organizations.length === 1 ? "" : "s" }}
             </span>

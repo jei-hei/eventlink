@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { LogOut } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useProfileStore } from "@/stores/profile";
 import { useUiStore } from "@/stores/ui";
+import { appRoleLabel } from "@/types/appRole";
 
-defineProps<{
+const props = defineProps<{
   /** Short label under the name, e.g. "OSAS" or "Adviser" */
   portalLabel?: string;
 }>();
@@ -14,6 +16,20 @@ const router = useRouter();
 const auth = useAuthStore();
 const profile = useProfileStore();
 const ui = useUiStore();
+
+const footerName = computed(() => {
+  const fromAuth = auth.displayName?.trim();
+  if (fromAuth) return fromAuth;
+  const p = profile.displayName?.trim();
+  if (p && p !== "Guest") return p;
+  return "User";
+});
+
+const footerRole = computed(() => {
+  const fromAuth = appRoleLabel(auth.appRole);
+  if (fromAuth) return fromAuth;
+  return props.portalLabel || profile.roleLabel || profile.email || "EventLink";
+});
 
 async function onLogout() {
   await auth.signOut();
@@ -29,13 +45,11 @@ async function onLogout() {
       <div
         class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 text-sm font-bold text-white shadow-md"
       >
-        {{ profile.displayName.charAt(0).toUpperCase() || "?" }}
+        {{ footerName.charAt(0).toUpperCase() || "?" }}
       </div>
       <div class="min-w-0 flex-1">
-        <p class="truncate text-sm font-semibold text-white">{{ profile.displayName }}</p>
-        <p class="truncate text-xs text-slate-400">
-          {{ portalLabel || profile.roleLabel || profile.email || "EventLink" }}
-        </p>
+        <p class="truncate text-sm font-semibold text-white">{{ footerName }}</p>
+        <p class="truncate text-xs text-slate-400">{{ footerRole }}</p>
       </div>
     </div>
     <button

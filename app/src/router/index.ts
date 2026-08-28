@@ -33,12 +33,6 @@ const router = createRouter({
       component: () => import("@/views/profile/ProfileView.vue"),
     },
     {
-      path: "/student/monitoring",
-      name: "student-monitoring",
-      meta: { allowedRoles: ["student"] as AppRole[] },
-      component: () => import("@/views/student/MonitoringView.vue"),
-    },
-    {
       path: "/student",
       name: "student-events",
       component: () => import("@/views/student/EventsHomeView.vue"),

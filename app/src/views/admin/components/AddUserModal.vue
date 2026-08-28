@@ -202,6 +202,15 @@ async function handleSubmit(e: Event) {
             </p>
           </div>
 
+          <div
+            v-if="role === 'dean'"
+            class="rounded-lg border border-amber-200 bg-amber-50 p-4"
+          >
+            <p class="text-sm text-amber-900">
+              <strong>Note:</strong> Each college may have only one active Dean. Select the college this Dean will manage.
+            </p>
+          </div>
+
           <div v-if="requiresCollege">
             <label class="mb-2 block text-sm font-medium text-gray-700">
               College <span class="text-red-500">*</span>

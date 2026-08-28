@@ -28,10 +28,6 @@ provide(osasPortalKey, {
 
 <template>
   <PortalShell
-    display-name="Juan Dela Cruz"
-    role-title="OSAS"
-    email="juan.delacruz@isu.edu.ph"
-    department="Office of Student Affairs"
     @open-sidebar="sidebarOpen = true"
   >
     <template #sidebar>

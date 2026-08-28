@@ -1,20 +1,26 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { ImagePlus, Loader2, Megaphone, X } from "lucide-vue-next";
 import type { PortalEvent } from "@/types/portalEvent";
-import type { CreateStudentFeedPostInput } from "@/types/studentPost";
+import type { CreateStudentFeedPostInput, UpdateStudentFeedPostInput } from "@/types/studentPost";
 import { isPostImageFile } from "@/services/eventPostImageStorage";
+import type { StudentEvent } from "@/views/student/types";
 
 const props = defineProps<{
   open: boolean;
   myEvents?: PortalEvent[];
   publishing?: boolean;
+  /** When set, modal edits this post instead of creating a new one. */
+  editPost?: StudentEvent | null;
 }>();
 
 const emit = defineEmits<{
   close: [];
   publish: [payload: CreateStudentFeedPostInput];
+  save: [payload: UpdateStudentFeedPostInput];
 }>();
+
+const isEdit = computed(() => !!props.editPost?.id);
 
 const caption = ref("");
 const eventTitle = ref("");
@@ -25,7 +31,15 @@ const linkedRequestId = ref("");
 const imageFile = ref<File | null>(null);
 const imageFiles = ref<File[]>([]);
 const imagePreviews = ref<string[]>([]);
+const existingImageUrls = ref<string[]>([]);
+const imagesReplaced = ref(false);
 const imageError = ref("");
+
+function revokeLocalPreviews() {
+  imagePreviews.value.forEach((url) => {
+    if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+  });
+}
 
 function reset() {
   caption.value = "";
@@ -36,15 +50,42 @@ function reset() {
   linkedRequestId.value = "";
   imageFile.value = null;
   imageFiles.value = [];
-  imagePreviews.value.forEach((url) => URL.revokeObjectURL(url));
+  revokeLocalPreviews();
   imagePreviews.value = [];
+  existingImageUrls.value = [];
+  imagesReplaced.value = false;
+  imageError.value = "";
+}
+
+function fillFromEdit(post: StudentEvent) {
+  caption.value = post.caption ?? "";
+  eventTitle.value = post.title ?? "";
+  eventDate.value = post.date && post.date !== "Date TBA" ? post.date : "";
+  eventTime.value = post.time && post.time !== "TBA" ? post.time : "";
+  venue.value = post.venue && post.venue !== "TBA" ? post.venue : "";
+  linkedRequestId.value = post.requestId ?? "";
+  imageFile.value = null;
+  imageFiles.value = [];
+  revokeLocalPreviews();
+  const urls = post.imageUrls?.length ? [...post.imageUrls] : post.imageUrl ? [post.imageUrl] : [];
+  existingImageUrls.value = urls;
+  imagePreviews.value = [...urls];
+  imagesReplaced.value = false;
   imageError.value = "";
 }
 
 watch(
-  () => props.open,
-  (isOpen) => {
-    if (!isOpen) reset();
+  () => [props.open, props.editPost?.id] as const,
+  ([isOpen]) => {
+    if (!isOpen) {
+      reset();
+      return;
+    }
+    if (props.editPost) {
+      fillFromEdit(props.editPost);
+    } else {
+      reset();
+    }
   },
 );
 
@@ -88,23 +129,32 @@ function onImageChange(ev: Event) {
     }
     valid.push(file);
   }
-  imagePreviews.value.forEach((url) => URL.revokeObjectURL(url));
+  revokeLocalPreviews();
   imageFile.value = valid[0] ?? null;
   imageFiles.value = valid;
   imagePreviews.value = valid.map((file) => URL.createObjectURL(file));
+  imagesReplaced.value = true;
+  existingImageUrls.value = [];
 }
 
 function removeImage(index: number) {
-  if (index < 0 || index >= imageFiles.value.length) return;
-  const nextFiles = [...imageFiles.value];
-  const nextPreviews = [...imagePreviews.value];
-  const [removedPreview] = nextPreviews.splice(index, 1);
-  nextFiles.splice(index, 1);
-  if (removedPreview) URL.revokeObjectURL(removedPreview);
-  imageFiles.value = nextFiles;
-  imagePreviews.value = nextPreviews;
-  imageFile.value = null;
-  imageFile.value = imageFiles.value[0] ?? null;
+  if (index < 0 || index >= imagePreviews.value.length) return;
+  if (imagesReplaced.value || imageFiles.value.length) {
+    const nextFiles = [...imageFiles.value];
+    const nextPreviews = [...imagePreviews.value];
+    const [removedPreview] = nextPreviews.splice(index, 1);
+    nextFiles.splice(index, 1);
+    if (removedPreview?.startsWith("blob:")) URL.revokeObjectURL(removedPreview);
+    imageFiles.value = nextFiles;
+    imagePreviews.value = nextPreviews;
+    imageFile.value = imageFiles.value[0] ?? null;
+    imagesReplaced.value = true;
+  } else {
+    const next = [...existingImageUrls.value];
+    next.splice(index, 1);
+    existingImageUrls.value = next;
+    imagePreviews.value = [...next];
+  }
   imageError.value = "";
 }
 
@@ -120,6 +170,25 @@ function submit() {
     window.alert("Write a caption for your post.");
     return;
   }
+
+  if (isEdit.value && props.editPost) {
+    const payload: UpdateStudentFeedPostInput = {
+      postId: props.editPost.id,
+      caption: text,
+      eventTitle: title,
+      eventDate: eventDate.value.trim() || undefined,
+      eventTime: eventTime.value.trim() || undefined,
+      venue: venue.value.trim() || undefined,
+      requestId: linkedRequestId.value || null,
+    };
+    if (imagesReplaced.value) {
+      payload.imageFiles = imageFiles.value;
+      payload.imageFile = imageFile.value;
+    }
+    emit("save", payload);
+    return;
+  }
+
   emit("publish", {
     caption: text,
     eventTitle: title,
@@ -153,8 +222,12 @@ function submit() {
               <Megaphone :size="18" />
             </div>
             <div>
-              <h2 id="create-student-post-title" class="text-base font-bold text-gray-900">Create post</h2>
-              <p class="text-xs text-gray-500">Caption and optional photo for the student feed</p>
+              <h2 id="create-student-post-title" class="text-base font-bold text-gray-900">
+                {{ isEdit ? "Edit post" : "Create post" }}
+              </h2>
+              <p class="text-xs text-gray-500">
+                {{ isEdit ? "Update details shown on the student feed" : "Caption and optional photo for the student feed" }}
+              </p>
             </div>
           </div>
           <button
@@ -168,7 +241,7 @@ function submit() {
         </div>
 
         <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          <div v-if="myEvents?.length">
+          <div v-if="!isEdit && myEvents?.length">
             <label for="link-request" class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-600">
               Link to your event request (optional)
             </label>
@@ -258,22 +331,34 @@ function submit() {
             <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-600">
               Photo (optional)
             </label>
-            <div v-if="imagePreviews.length" class="grid grid-cols-2 gap-2">
-              <div
-                v-for="(preview, idx) in imagePreviews"
-                :key="preview"
-                class="relative overflow-hidden rounded-lg border border-gray-200"
-              >
-                <img :src="preview" alt="Post preview" class="h-32 w-full object-cover" />
-                <button
-                  type="button"
-                  class="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
-                  aria-label="Remove image"
-                  @click="removeImage(idx)"
+            <div v-if="imagePreviews.length" class="space-y-2">
+              <div class="grid grid-cols-2 gap-2">
+                <div
+                  v-for="(preview, idx) in imagePreviews"
+                  :key="preview"
+                  class="relative overflow-hidden rounded-lg border border-gray-200"
                 >
-                  <X :size="14" />
-                </button>
+                  <img :src="preview" alt="Post preview" class="h-32 w-full object-cover" />
+                  <button
+                    type="button"
+                    class="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                    aria-label="Remove image"
+                    @click="removeImage(idx)"
+                  >
+                    <X :size="14" />
+                  </button>
+                </div>
               </div>
+              <label class="inline-flex cursor-pointer text-xs font-semibold text-emerald-700 hover:underline">
+                Replace photos…
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  multiple
+                  class="sr-only"
+                  @change="onImageChange"
+                />
+              </label>
             </div>
             <label
               v-else
@@ -309,7 +394,15 @@ function submit() {
             @click="submit"
           >
             <Loader2 v-if="publishing" :size="16" class="animate-spin" />
-            {{ publishing ? "Posting…" : "Post to students" }}
+            {{
+              publishing
+                ? isEdit
+                  ? "Saving…"
+                  : "Posting…"
+                : isEdit
+                  ? "Save changes"
+                  : "Post to students"
+            }}
           </button>
         </div>
       </div>

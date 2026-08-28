@@ -21,10 +21,6 @@ provide(itPortalKey, { events, approvedEvents, scheduledEvents, handleApprove, h
 
 <template>
   <PortalShell
-    display-name="IT Officer"
-    role-title="IT Infrastructure"
-    email="it@eventlink.local"
-    department="IT Infrastructure"
     @open-sidebar="sidebarOpen = true"
   >
     <template #sidebar>

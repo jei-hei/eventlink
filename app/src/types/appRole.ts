@@ -57,3 +57,23 @@ export function portalRoleToAppRole(role: PortalRoleKey): AppRole {
   if (role === "sports-office") return "sports_office";
   return role as AppRole;
 }
+
+/** Human-readable labels for topbars / profile (from auth role, not hardcoded demo text). */
+export const APP_ROLE_LABEL: Record<AppRole, string> = {
+  student: "Student",
+  student_officer: "Student Officer",
+  ssc: "SSC",
+  adviser: "Adviser",
+  dean: "Dean",
+  osas: "OSAS",
+  eo: "Executive Officer",
+  gso: "GSO",
+  it_infrastructure: "IT Infrastructure",
+  sports_office: "Sports Office",
+  admin: "Admin",
+};
+
+export function appRoleLabel(role: AppRole | null | undefined): string {
+  if (!role) return "";
+  return APP_ROLE_LABEL[role] ?? role;
+}

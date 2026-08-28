@@ -25,7 +25,8 @@ const profile = useProfileStore();
 const ui = useUiStore();
 const mobileNav = ref(false);
 
-const adminName = computed(() => auth.displayName ?? "Admin");
+const adminName = computed(() => auth.displayName?.trim() || profile.displayName?.trim() || "Admin");
+const adminRoleLabel = computed(() => "Admin");
 const adminEmail = computed(() => auth.email ?? "");
 
 async function onLogout() {
@@ -111,7 +112,8 @@ function closeMobile() {
           </div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-semibold text-white">{{ adminName }}</p>
-            <p class="truncate text-xs text-slate-400">{{ adminEmail || "Administrator" }}</p>
+            <p class="truncate text-xs text-slate-400">{{ adminRoleLabel }}</p>
+            <p v-if="adminEmail" class="truncate text-[11px] text-slate-500">{{ adminEmail }}</p>
           </div>
         </div>
         <button
@@ -136,7 +138,10 @@ function closeMobile() {
         >
           <Menu :size="22" />
         </button>
-        <span class="min-w-0 truncate text-sm font-semibold">Admin</span>
+        <div class="min-w-0 flex-1 text-left sm:text-center">
+          <p class="truncate text-sm font-semibold text-white">{{ adminName }}</p>
+          <p class="truncate text-[11px] font-medium text-emerald-100/95">{{ adminRoleLabel }}</p>
+        </div>
         <NotificationDropdown />
       </header>
 

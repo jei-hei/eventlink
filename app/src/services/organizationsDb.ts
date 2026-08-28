@@ -118,6 +118,22 @@ export async function createCollege(name: string, code: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function updateCollege(
+  id: string,
+  name: string,
+  code: string,
+): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("colleges")
+    .update({
+      name: name.trim(),
+      code: code.trim().toUpperCase() || null,
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
 export async function createOrganization(
   collegeId: string,
   name: string,

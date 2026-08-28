@@ -7,6 +7,7 @@ import type {
   CreateStudentFeedPostInput,
   StudentFeedPosterProfile,
   StudentFeedPostRow,
+  UpdateStudentFeedPostInput,
 } from "@/types/studentPost";
 import type { StudentEvent } from "@/views/student/types";
 
@@ -251,6 +252,80 @@ export async function createStudentFeedPost(
   }
 
   const [withPoster] = await attachPosterProfiles([inserted as StudentFeedPostRow]);
+  return withPoster!;
+}
+
+export async function updateStudentFeedPost(
+  input: UpdateStudentFeedPostInput,
+  actorId: string,
+): Promise<StudentFeedPostRow> {
+  const caption = input.caption.trim();
+  const eventTitle = input.eventTitle.trim();
+  if (!caption) throw new Error("Please write a caption for your post.");
+  if (!eventTitle) throw new Error("Please enter an event title.");
+
+  const supabase = getSupabase();
+  const { data: existing, error: fetchErr } = await supabase
+    .from("student_feed_posts")
+    .select("id, submitted_by, image_path, image_paths")
+    .eq("id", input.postId)
+    .maybeSingle();
+  if (fetchErr) throw fetchErr;
+  if (!existing) throw new Error("Post not found.");
+  if (existing.submitted_by !== actorId) {
+    throw new Error("You can only edit your own posts.");
+  }
+
+  const patch: Record<string, unknown> = {
+    caption,
+    event_title: eventTitle,
+    event_date: input.eventDate?.trim() || null,
+    event_time: input.eventTime?.trim() || null,
+    venue: input.venue?.trim() || null,
+  };
+  if (input.requestId !== undefined) {
+    patch.request_id = input.requestId || null;
+  }
+
+  const replaceImages = input.imageFiles !== undefined || input.imageFile !== undefined;
+  const files = replaceImages
+    ? input.imageFiles?.length
+      ? input.imageFiles
+      : input.imageFile
+        ? [input.imageFile]
+        : []
+    : null;
+
+  if (files && files.length) {
+    const uploadedPaths: string[] = [];
+    for (const file of files) {
+      const imagePath = await uploadEventPostImage(file, actorId, input.postId);
+      uploadedPaths.push(imagePath);
+    }
+    patch.image_path = uploadedPaths[0] ?? null;
+    patch.image_paths = uploadedPaths;
+
+    const oldPaths = [
+      ...((existing.image_paths as string[] | null) ?? []),
+      ...((existing.image_path as string | null) ? [existing.image_path as string] : []),
+    ];
+    const uniqueOld = [...new Set(oldPaths.filter(Boolean))];
+    if (uniqueOld.length) {
+      const { deleteEventPostImages } = await import("@/services/eventPostImageStorage");
+      await deleteEventPostImages(uniqueOld).catch(() => undefined);
+    }
+  }
+
+  const { data: updated, error: updateErr } = await supabase
+    .from("student_feed_posts")
+    .update(patch)
+    .eq("id", input.postId)
+    .eq("submitted_by", actorId)
+    .select(FEED_SELECT_WITH_LETTER)
+    .single();
+  if (updateErr) throw updateErr;
+
+  const [withPoster] = await attachPosterProfiles([updated as StudentFeedPostRow]);
   return withPoster!;
 }
 

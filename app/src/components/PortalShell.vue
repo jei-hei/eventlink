@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { Menu, User } from "lucide-vue-next";
 import { useProfileStore } from "@/stores/profile";
 import { useAuthStore } from "@/stores/auth";
+import { appRoleLabel } from "@/types/appRole";
 import NotificationDropdown from "@/components/portal/NotificationDropdown.vue";
 
 const props = defineProps<{
@@ -20,10 +21,10 @@ const profile = useProfileStore();
 const auth = useAuthStore();
 
 const headerName = computed(() => {
-  const p = profile.displayName?.trim();
-  if (p && p !== "Guest") return p;
   const fromAuth = auth.displayName?.trim();
   if (fromAuth) return fromAuth;
+  const p = profile.displayName?.trim();
+  if (p && p !== "Guest") return p;
   const mail = auth.email?.trim();
   if (mail) {
     const local = mail.split("@")[0];
@@ -32,9 +33,13 @@ const headerName = computed(() => {
   return props.displayName?.trim() || p || "User";
 });
 
-const headerRole = computed(
-  () => profile.roleLabel?.trim() || props.roleTitle?.trim() || "",
-);
+const headerRole = computed(() => {
+  const fromAuth = appRoleLabel(auth.appRole);
+  if (fromAuth) return fromAuth;
+  const fromProfile = profile.roleLabel?.trim();
+  if (fromProfile && fromProfile !== "BSIT Student") return fromProfile;
+  return props.roleTitle?.trim() || "";
+});
 </script>
 
 <template>

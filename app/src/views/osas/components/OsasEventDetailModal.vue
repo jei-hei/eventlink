@@ -59,12 +59,8 @@ async function onRevisionSubmit(payload: { comment: string; attachmentFile: File
           <p class="text-gray-800 font-medium">{{ event.eventType ?? "N/A" }}</p>
         </div>
 
-        <template v-if="event.createdBy !== 'EO' && event.requesterName">
+        <template v-if="event.createdBy !== 'EO' && event.requesterRole">
           <div>
-            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Requester Name</label>
-            <p class="text-gray-800 font-medium">{{ event.requesterName }}</p>
-          </div>
-          <div v-if="event.requesterRole">
             <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Requester Role</label>
             <p class="text-gray-800 font-medium">{{ event.requesterRole }}</p>
           </div>

@@ -19,6 +19,15 @@ export async function submitEventFeedback(input: SubmitEventFeedbackInput): Prom
   if (!comment) throw new Error("Please choose a comment.");
 
   const supabase = getSupabase();
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+  if (authErr) throw authErr;
+  if (!user) {
+    throw new Error("Please log in to submit feedback.");
+  }
+
   const { error } = await supabase.from("event_feedback").insert({
     feed_post_id: input.feedPostId,
     request_id: input.requestId ?? null,

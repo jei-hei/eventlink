@@ -54,10 +54,6 @@ provide(officerPortalKey, {
 
 <template>
   <PortalShell
-    display-name="Juan Dela Cruz"
-    role-title="Student Officer"
-    email="juan.delacruz@isu.edu.ph"
-    department="Supreme Student Council"
     @open-sidebar="sidebarOpen = true"
   >
     <template #sidebar>

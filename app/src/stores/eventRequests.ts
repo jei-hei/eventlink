@@ -27,7 +27,7 @@ import {
   fetchFeedPostsBySubmitter,
   mapFeedPostToStudentEvent,
 } from "@/services/studentFeedPostsDb";
-import type { CreateStudentFeedPostInput, StudentFeedPostRow } from "@/types/studentPost";
+import type { CreateStudentFeedPostInput, StudentFeedPostRow, UpdateStudentFeedPostInput } from "@/types/studentPost";
 import type { StudentEvent } from "@/views/student/types";
 import type { EventRequestRow } from "@/types/eventRequest";
 import type { PortalEvent } from "@/types/portalEvent";
@@ -239,6 +239,24 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     myFeedPostRows.value = myFeedPostRows.value.filter((r) => r.id !== postId);
   }
 
+  async function updateFeedPost(input: UpdateStudentFeedPostInput) {
+    const auth = useAuthStore();
+    if (!auth.userId) throw new Error("You must be signed in.");
+    const { updateStudentFeedPost } = await import("@/services/studentFeedPostsDb");
+    const row = await updateStudentFeedPost(input, auth.userId);
+    const patchList = (list: StudentFeedPostRow[]) => {
+      const idx = list.findIndex((r) => r.id === row.id);
+      if (idx === -1) return list;
+      const next = [...list];
+      next[idx] = row;
+      return next;
+    };
+    feedPostRows.value = patchList(feedPostRows.value);
+    myFeedPostRows.value = patchList(myFeedPostRows.value);
+    void loadForStudentDashboard(true).catch(() => undefined);
+    return row;
+  }
+
   function pendingForRole(role: AppRole, userId: string): PortalEvent[] {
     const auth = useAuthStore();
     return filterPendingForRole(rows.value, role, userId, {
@@ -413,6 +431,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     loadMoreForStudentDashboard,
     loadMyFeedPosts,
     createFeedPost,
+    updateFeedPost,
     deleteFeedPost,
     studentBoardLoaded,
     pendingForRole,

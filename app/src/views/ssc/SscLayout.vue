@@ -63,13 +63,7 @@ provide(sscPortalKey, {
 
 <template>
   <div>
-    <PortalShell
-      display-name="Juan Dela Cruz"
-      role-title="President"
-      email="juan.delacruz@isu.edu.ph"
-      department="Supreme Student Council"
-      @open-sidebar="sidebarOpen = true"
-    >
+    <PortalShell @open-sidebar="sidebarOpen = true">
       <template #sidebar>
         <SscSidebar :open="sidebarOpen" @close="sidebarOpen = false" />
       </template>

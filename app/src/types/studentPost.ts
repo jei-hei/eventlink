@@ -11,6 +11,19 @@ export type CreateStudentFeedPostInput = {
   organizationId?: string | null;
 };
 
+export type UpdateStudentFeedPostInput = {
+  postId: string;
+  caption: string;
+  eventTitle: string;
+  eventDate?: string;
+  eventTime?: string;
+  venue?: string;
+  requestId?: string | null;
+  /** When provided (including empty), replaces post images. Omit to keep existing images. */
+  imageFiles?: File[];
+  imageFile?: File | null;
+};
+
 /** @deprecated use CreateStudentFeedPostInput */
 export type PublishStudentPostInput = Pick<CreateStudentFeedPostInput, "caption" | "imageFile">;
 

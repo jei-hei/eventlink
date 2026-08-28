@@ -28,10 +28,6 @@ provide(gsoPortalKey, {
 
 <template>
   <PortalShell
-    display-name="Juan Dela Cruz"
-    role-title="GSO"
-    email="juan.delacruz@isu.edu.ph"
-    department="General Services Office"
     @open-sidebar="sidebarOpen = true"
   >
     <template #sidebar>
