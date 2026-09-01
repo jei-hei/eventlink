@@ -3,6 +3,9 @@ import { computed, onMounted, ref } from "vue";
 import { TrendingUp, CalendarDays, CheckCircle2, BarChart2, Clock } from "lucide-vue-next";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import { fetchAnalyticsOverview } from "@/services/analyticsDb";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
 
 const eventStatusData = ref([
   { name: "Approved" as const, value: 0, color: "#4ADE80" },
@@ -16,7 +19,11 @@ const analyticsError = ref<string | null>(null);
 
 async function loadAnalytics() {
   try {
-    const data = await fetchAnalyticsOverview("dean");
+    const data = await fetchAnalyticsOverview("dean", {
+      collegeId: auth.collegeId,
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+    });
     eventStatusData.value = data.eventStatusData;
     recentActivity.value = data.recentActivity;
     totals.value = {

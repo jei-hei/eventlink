@@ -24,7 +24,7 @@ const analyticsError = ref<string | null>(null);
 
 async function loadAnalytics() {
   try {
-    const data = await fetchAnalyticsOverview("gso");
+    const data = await fetchAnalyticsOverview("it_infrastructure");
     monthlyEvents.value = data.monthlyEvents.length ? data.monthlyEvents : monthlyEvents.value;
     eventStatusData.value = data.eventStatusData;
     recentActivity.value = data.recentActivity;

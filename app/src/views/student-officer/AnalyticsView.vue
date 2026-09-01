@@ -4,6 +4,9 @@ import { TrendingUp, CalendarDays, CheckCircle2, BarChart2, Clock } from "lucide
 import OrgFeedbackSection from "@/components/portal/OrgFeedbackSection.vue";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import { fetchAnalyticsOverview, type ActivityItem } from "@/services/analyticsDb";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
 
 const monthlyEvents = ref([
   { id: "m1", month: "Jan", events: 0, approved: 0, rejected: 0 },
@@ -29,7 +32,11 @@ const analyticsError = ref<string | null>(null);
 
 async function loadAnalytics() {
   try {
-    const data = await fetchAnalyticsOverview("student_officer");
+    const data = await fetchAnalyticsOverview("student_officer", {
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+      collegeId: auth.collegeId,
+    });
     monthlyEvents.value = data.monthlyEvents;
     eventStatusData.value = data.eventStatusData;
     recentActivity.value = data.recentActivity;

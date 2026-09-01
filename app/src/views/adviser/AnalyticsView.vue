@@ -3,6 +3,9 @@ import { computed, onMounted, ref } from "vue";
 import { TrendingUp, CalendarDays, CheckCircle2, BarChart2, Clock } from "lucide-vue-next";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import { fetchAnalyticsOverview } from "@/services/analyticsDb";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
 
 const monthlyEvents = ref([
   { id: "m1", month: "Jan", events: 0, approved: 0, rejected: 0 },
@@ -19,7 +22,11 @@ const analyticsError = ref<string | null>(null);
 
 async function loadAnalytics() {
   try {
-    const data = await fetchAnalyticsOverview("adviser");
+    const data = await fetchAnalyticsOverview("adviser", {
+      collegeId: auth.collegeId,
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+    });
     monthlyEvents.value = data.monthlyEvents.length ? data.monthlyEvents : monthlyEvents.value;
     eventStatusData.value = data.eventStatusData;
     recentActivity.value = data.recentActivity;

@@ -23,7 +23,7 @@ const analyticsError = ref<string | null>(null);
 
 async function loadAnalytics() {
   try {
-    const data = await fetchAnalyticsOverview("gso");
+    const data = await fetchAnalyticsOverview("sports_office");
     monthlyEvents.value = data.monthlyEvents.length ? data.monthlyEvents : monthlyEvents.value;
     eventStatusData.value = data.eventStatusData;
     totals.value = data.totals;

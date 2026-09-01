@@ -41,7 +41,7 @@ const navItems = [
   { to: "/admin/users", name: "admin-users", label: "Users", icon: Users },
   { to: "/admin/students", name: "admin-students", label: "Students", icon: IdCard },
   { to: "/admin/colleges", name: "admin-colleges", label: "Colleges", icon: Building2 },
-  { to: "/admin/reports", name: "admin-reports", label: "Reports", icon: BarChart3 },
+  { to: "/admin/reports", name: "admin-reports", label: "Reports & Analytics", icon: BarChart3 },
   { to: "/admin/settings", name: "admin-settings", label: "Settings", icon: Settings },
   { to: "/admin/profile", name: "admin-profile", label: "Profile", icon: UserCircle },
 ] as const;

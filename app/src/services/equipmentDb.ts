@@ -39,6 +39,16 @@ export async function fetchActiveEquipment(): Promise<EquipmentRow[]> {
   return (data ?? []).map((r) => mapEquipment(r as Record<string, unknown>));
 }
 
+export async function fetchAllEquipment(): Promise<EquipmentRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("equipment")
+    .select(EQUIPMENT_SELECT)
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((r) => mapEquipment(r as Record<string, unknown>));
+}
+
 export async function fetchEquipmentForOffice(office: ResourceOffice): Promise<EquipmentRow[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
