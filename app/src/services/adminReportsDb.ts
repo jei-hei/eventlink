@@ -247,10 +247,15 @@ export async function fetchAdminReportsData(
   const archivedStudentsRes =
     settled[4].status === "fulfilled" ? settled[4].value : { count: 0, error: null };
 
-  let eventRes =
+  type EventQueryResult = {
+    data: unknown;
+    error: { message: string } | null;
+  };
+
+  let eventRes: EventQueryResult =
     settled[5].status === "fulfilled"
       ? settled[5].value
-      : { data: null as null, error: { message: "event_requests query failed" } };
+      : { data: null, error: { message: "event_requests query failed" } };
 
   if (eventRes.error) {
     const retry = await supabase
@@ -265,7 +270,7 @@ export async function fetchAdminReportsData(
           "Could not load event requests for reports.",
       );
     }
-    eventRes = retry;
+    eventRes = { data: retry.data, error: null };
   }
 
   if (settled[0].status === "rejected") {
