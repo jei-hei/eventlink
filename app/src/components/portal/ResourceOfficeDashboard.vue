@@ -24,19 +24,17 @@ const emit = defineEmits<{
 const eventsLoading = useEventsTableLoading();
 const selectedEvent = ref<PortalEvent | null>(null);
 
-const resourceKindFilter = computed(() => {
-  if (props.office === "it_infrastructure") return "equipment" as const;
-  if (props.office === "sports_office") return "venue" as const;
-  return null;
-});
+const resourceKindFilter = computed(() => null as "venue" | "equipment" | null);
 
-const resourceColumnLabel = computed(() => {
-  if (props.office === "it_infrastructure") return "Equipment";
-  if (props.office === "sports_office") return "Venue";
-  return "Assigned resources";
-});
+const resourceColumnLabel = computed(() => "Assigned resources");
 
-const showQuantity = computed(() => props.office === "it_infrastructure");
+const showQuantity = computed(() =>
+  props.events.some((e) =>
+    (e.resourceAssignments ?? []).some(
+      (a) => a.assignedOffice === props.office && a.resourceKind === "equipment",
+    ),
+  ),
+);
 
 function officeAssignments(event: PortalEvent) {
   const kind = resourceKindFilter.value;
@@ -86,9 +84,9 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
 
 <template>
   <div class="dash-page">
-    <div class="dash-split lg:flex-col xl:flex-row xl:items-start">
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 sm:gap-4 xl:flex-[0_0_68%]">
-        <div class="dash-card flex min-h-[min(220px,45vh)] flex-1 flex-col">
+    <div class="dash-split">
+      <div class="flex min-h-0 min-w-0 flex-col">
+        <div class="dash-card dash-card-fill">
           <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2.5 sm:px-4">
             <Calendar :size="18" class="text-emerald-600" />
             <h2 class="text-xs font-bold uppercase tracking-wide text-slate-800 sm:text-sm">{{ title }}</h2>
@@ -171,8 +169,8 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
         </div>
       </div>
 
-      <div class="flex min-h-0 min-w-0 flex-col gap-3 lg:max-w-none xl:flex-[0_0_32%]">
-        <ScheduledEventsCalendar :events="calendarEvents" class="min-h-0" />
+      <div class="flex min-h-0 min-w-0 flex-col">
+        <ScheduledEventsCalendar :events="calendarEvents" class="h-full min-h-0" />
       </div>
     </div>
 

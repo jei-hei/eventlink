@@ -10,16 +10,34 @@ import type {
   UpdateStudentFeedPostInput,
 } from "@/types/studentPost";
 import type { StudentEvent } from "@/views/student/types";
+import { getEventSchedulePhase } from "@/utils/eventSchedulePhase";
+import { hashFeedbackAccessCode } from "@/utils/hashFeedbackAccessCode";
+
+/** Public feed columns — never select feedback_access_code_hash. */
+const FEED_PUBLIC_COLUMNS = `
+  id,
+  organization_id,
+  submitted_by,
+  request_id,
+  caption,
+  image_path,
+  image_paths,
+  event_title,
+  event_date,
+  event_time,
+  venue,
+  require_feedback_access_code,
+  posted_at,
+  created_at
+`;
 
 const FEED_SELECT = `
-  *,
-  organizations ( name )
+  ${FEED_PUBLIC_COLUMNS},
+  organizations ( name ),
+  event_requests ( letter_path, start_date, end_date, start_time, end_time )
 `;
 
-const FEED_SELECT_WITH_LETTER = `
-  ${FEED_SELECT},
-  event_requests ( letter_path )
-`;
+const FEED_SELECT_WITH_LETTER = FEED_SELECT;
 
 const POSTER_PROFILE_SELECT = `
   id,
@@ -91,6 +109,17 @@ export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent
   const posterName = (poster?.display_name ?? "").trim();
   const posterOrg = (poster?.organizations?.name ?? "").trim();
   const posterCollege = (poster?.colleges?.name ?? "").trim();
+  const linkedRaw = row.event_requests;
+  const linked = Array.isArray(linkedRaw) ? (linkedRaw[0] ?? null) : linkedRaw;
+  const feedbackAvailable =
+    !!row.request_id &&
+    !!linked &&
+    getEventSchedulePhase({
+      startDate: linked.start_date,
+      endDate: linked.end_date,
+      startTime: linked.start_time,
+      endTime: linked.end_time,
+    }) === "completed";
   return {
     id: row.id,
     title: row.event_title,
@@ -108,12 +137,14 @@ export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent
     imageUrls,
     postedAt: row.posted_at,
     requestId: row.request_id,
-    letterPath: row.event_requests?.letter_path ?? null,
+    letterPath: linked?.letter_path ?? null,
     submittedBy: row.submitted_by,
     imagePaths: [
       ...(row.image_paths ?? []),
       ...(row.image_path && !(row.image_paths ?? []).includes(row.image_path) ? [row.image_path] : []),
     ],
+    feedbackAvailable,
+    requireFeedbackAccessCode: feedbackAvailable && !!row.require_feedback_access_code,
   };
 }
 
@@ -147,13 +178,17 @@ export async function fetchStudentFeedPostsPage(
   };
 }
 
-export async function fetchFeedPostsBySubmitter(userId: string): Promise<StudentFeedPostRow[]> {
+export async function fetchFeedPostsBySubmitter(
+  userId: string,
+  limit = 20,
+): Promise<StudentFeedPostRow[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("student_feed_posts")
     .select(FEED_SELECT_WITH_LETTER)
     .eq("submitted_by", userId)
-    .order("posted_at", { ascending: false });
+    .order("posted_at", { ascending: false })
+    .limit(Math.min(100, Math.max(1, limit)));
   if (error) throw error;
   return attachPosterProfiles((data ?? []) as StudentFeedPostRow[]);
 }
@@ -182,6 +217,77 @@ async function resolveOrganizationId(
   return null;
 }
 
+function formatTimeRange(startTime?: string | null, endTime?: string | null): string {
+  const fmt = (t: string) => {
+    const parts = t.split(":");
+    if (parts.length < 2) return t;
+    let h = parseInt(parts[0] ?? "0", 10);
+    const m = parts[1] ?? "00";
+    const am = h < 12;
+    if (h === 0) h = 12;
+    else if (h > 12) h -= 12;
+    return `${h}:${m} ${am ? "AM" : "PM"}`;
+  };
+  const start = startTime ? fmt(startTime) : "";
+  const end = endTime ? fmt(endTime) : "";
+  if (start && end) return `${start} – ${end}`;
+  return start || end || "";
+}
+
+function formatShortDate(iso: string): string {
+  const d = new Date(iso + "T12:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatDateRange(start: string, end: string): string {
+  if (start === end) return formatShortDate(start);
+  return `${formatShortDate(start)} – ${formatShortDate(end)}`;
+}
+
+async function resolveLinkedEventFields(requestId: string | null | undefined): Promise<{
+  eventDate: string | null;
+  eventTime: string | null;
+  venue: string | null;
+  feedbackAvailable: boolean;
+}> {
+  if (!requestId) {
+    return { eventDate: null, eventTime: null, venue: null, feedbackAvailable: false };
+  }
+
+  const supabase = getSupabase();
+  const { data: row, error } = await supabase
+    .from("event_requests")
+    .select("start_date, end_date, start_time, end_time, venue, status")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) throw new Error("Linked event request was not found.");
+
+  const phase = getEventSchedulePhase({
+    startDate: row.start_date as string,
+    endDate: row.end_date as string,
+    startTime: row.start_time as string,
+    endTime: row.end_time as string,
+  });
+  if (phase === "upcoming") {
+    throw new Error(
+      "This linked event has not started yet. You can post for evaluation only after the event is completed.",
+    );
+  }
+  if (phase === "ongoing") {
+    throw new Error(
+      "This linked event is still ongoing. Wait until it finishes before posting for evaluation.",
+    );
+  }
+
+  return {
+    eventDate: formatDateRange(String(row.start_date), String(row.end_date)),
+    eventTime: formatTimeRange(row.start_time as string, row.end_time as string) || null,
+    venue: (row.venue as string)?.trim() || null,
+    feedbackAvailable: phase === "completed",
+  };
+}
+
 export async function createStudentFeedPost(
   input: CreateStudentFeedPostInput,
   actorId: string,
@@ -205,6 +311,15 @@ export async function createStudentFeedPost(
       ? [input.imageFile]
       : [];
 
+  const linked = await resolveLinkedEventFields(input.requestId);
+  const requireCode = linked.feedbackAvailable && !!input.requireFeedbackAccessCode;
+  let codeHash: string | null = null;
+  if (requireCode) {
+    const code = input.feedbackAccessCode?.trim();
+    if (!code) throw new Error("Enter an access code for feedback, or turn off the access-code requirement.");
+    codeHash = await hashFeedbackAccessCode(code);
+  }
+
   const { data: inserted, error: insertErr } = await supabase
     .from("student_feed_posts")
     .insert({
@@ -216,9 +331,11 @@ export async function createStudentFeedPost(
       image_path: null,
       image_paths: [],
       event_title: eventTitle,
-      event_date: input.eventDate?.trim() || null,
-      event_time: input.eventTime?.trim() || null,
-      venue: input.venue?.trim() || null,
+      event_date: linked.eventDate ?? (input.eventDate?.trim() || null),
+      event_time: linked.eventTime ?? (input.eventTime?.trim() || null),
+      venue: linked.venue ?? (input.venue?.trim() || null),
+      require_feedback_access_code: requireCode,
+      feedback_access_code_hash: codeHash,
     })
     .select(FEED_SELECT_WITH_LETTER)
     .single();

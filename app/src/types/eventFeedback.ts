@@ -19,6 +19,8 @@ export type SubmitEventFeedbackInput = {
   rating: number;
   comment: string;
   improvementTags?: string[];
+  /** Required when the post has require_feedback_access_code enabled. */
+  accessCode?: string;
 };
 
 export type FeedbackSummary = {

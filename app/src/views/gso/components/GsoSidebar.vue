@@ -9,10 +9,10 @@ const emit = defineEmits<{ close: [] }>();
 const route = useRoute();
 
 const navItems = [
-  { label: "Dashboard", to: "/gso", name: "gso-dashboard", icon: LayoutDashboard },
+  { label: "Dashboard", to: "/gso/analytics", name: "gso-analytics", icon: BarChart2 },
+  { label: "Event Management", to: "/gso", name: "gso-dashboard", icon: LayoutDashboard },
   { label: "Venues", to: "/gso/venues", name: "gso-venues", icon: MapPin },
   { label: "Equipment", to: "/gso/equipment", name: "gso-equipment", icon: Package },
-  { label: "Analytics", to: "/gso/analytics", name: "gso-analytics", icon: BarChart2 },
   { label: "Settings", to: "/gso/settings", name: "gso-settings", icon: Settings },
   { label: "Profile", to: "/gso/profile", name: "gso-profile", icon: UserCircle },
 ] as const;

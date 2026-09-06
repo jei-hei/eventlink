@@ -22,6 +22,8 @@ type RoleValue =
   | "gso"
   | "it_infrastructure"
   | "sports_office"
+  | "infirmary"
+  | "nstp"
   | "admin";
 
 const role = ref<RoleValue>("");
@@ -44,6 +46,8 @@ const roleOptions: Array<{ label: string; value: Exclude<RoleValue, ""> }> = [
   { label: "GSO", value: "gso" },
   { label: "IT Infrastructure", value: "it_infrastructure" },
   { label: "Sports Office", value: "sports_office" },
+  { label: "Infirmary", value: "infirmary" },
+  { label: "NSTP", value: "nstp" },
   { label: "Admin", value: "admin" },
 ];
 

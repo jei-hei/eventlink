@@ -9,8 +9,8 @@ const emit = defineEmits<{ close: [] }>();
 const route = useRoute();
 
 const navItems = [
-  { label: "Dashboard", to: "/ssc", name: "ssc-dashboard", icon: LayoutDashboard },
-  { label: "Analytics", to: "/ssc/analytics", name: "ssc-analytics", icon: BarChart2 },
+  { label: "Dashboard", to: "/ssc/analytics", name: "ssc-analytics", icon: BarChart2 },
+  { label: "Event Management", to: "/ssc", name: "ssc-dashboard", icon: LayoutDashboard },
   { label: "Event Monitoring", to: "/ssc/events", name: "ssc-events", icon: Radar },
   { label: "Venue", to: "/ssc/venues", name: "ssc-venues", icon: MapPin },
   { label: "Profile", to: "/ssc/profile", name: "ssc-profile", icon: UserCircle },

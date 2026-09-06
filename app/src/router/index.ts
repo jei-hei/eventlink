@@ -18,8 +18,7 @@ const router = createRouter({
     },
     {
       path: "/signup",
-      name: "signup",
-      component: () => import("@/views/auth/SignupView.vue"),
+      redirect: { name: "login", query: { notice: "signup-disabled" } },
     },
     {
       path: "/forgot-password",
@@ -27,15 +26,13 @@ const router = createRouter({
       component: () => import("@/views/auth/ForgotPasswordView.vue"),
     },
     {
-      path: "/student/profile",
-      name: "student-profile",
-      meta: { portalRole: "student", profileStandalone: true, allowedRoles: ["student"] as AppRole[] },
-      component: () => import("@/views/profile/ProfileView.vue"),
+      path: "/events",
+      name: "public-events",
+      component: () => import("@/views/student/EventsHomeView.vue"),
     },
     {
       path: "/student",
-      name: "student-events",
-      component: () => import("@/views/student/EventsHomeView.vue"),
+      redirect: "/events",
     },
     {
       path: "/student-officer",
@@ -155,6 +152,34 @@ const router = createRouter({
       ],
     },
     {
+      path: "/infirmary",
+      meta: { allowedRoles: ["infirmary"] as AppRole[] },
+      component: () => import("@/views/infirmary/InfirmaryLayout.vue"),
+      children: [
+        { path: "", name: "infirmary-dashboard", component: () => import("@/views/infirmary/DashboardView.vue") },
+        {
+          path: "profile",
+          name: "infirmary-profile",
+          meta: { portalRole: "infirmary" },
+          component: () => import("@/views/profile/ProfileView.vue"),
+        },
+      ],
+    },
+    {
+      path: "/nstp",
+      meta: { allowedRoles: ["nstp"] as AppRole[] },
+      component: () => import("@/views/nstp/NstpLayout.vue"),
+      children: [
+        { path: "", name: "nstp-dashboard", component: () => import("@/views/nstp/DashboardView.vue") },
+        {
+          path: "profile",
+          name: "nstp-profile",
+          meta: { portalRole: "nstp" },
+          component: () => import("@/views/profile/ProfileView.vue"),
+        },
+      ],
+    },
+    {
       path: "/osas",
       meta: { allowedRoles: ["osas"] as AppRole[] },
       component: () => import("@/views/osas/OsasLayout.vue"),
@@ -244,7 +269,6 @@ const router = createRouter({
       children: [
         { path: "", name: "admin-dashboard", component: () => import("@/views/admin/DashboardView.vue") },
         { path: "users", name: "admin-users", component: () => import("@/views/admin/UsersView.vue") },
-        { path: "students", name: "admin-students", component: () => import("@/views/admin/StudentsView.vue") },
         { path: "ssc", name: "admin-ssc", component: () => import("@/views/admin/SscView.vue") },
         { path: "colleges", name: "admin-colleges", component: () => import("@/views/admin/CollegesView.vue") },
         { path: "reports", name: "admin-reports", component: () => import("@/views/admin/ReportsView.vue") },

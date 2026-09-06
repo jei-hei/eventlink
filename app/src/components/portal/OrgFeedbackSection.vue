@@ -78,7 +78,7 @@ async function load() {
     </p>
 
     <p v-else-if="summary.byPost.length === 0" class="text-sm text-gray-500 py-6 text-center">
-      No feedback yet. Students submit ratings from the event post on <strong>/student</strong>.
+      No feedback yet. Visitors submit ratings from the event post on <strong>/events</strong>.
     </p>
 
     <ul v-else class="space-y-2 max-h-80 overflow-y-auto">

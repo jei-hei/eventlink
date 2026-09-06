@@ -40,8 +40,8 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
 <template>
   <div class="dash-page">
     <div class="dash-split">
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[0_0_68%]">
-        <div class="dash-card flex min-h-[min(220px,45vh)] flex-1 flex-col">
+      <div class="flex min-h-0 min-w-0 flex-col">
+        <div class="dash-card dash-card-fill">
           <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2.5 sm:px-4">
             <Calendar :size="18" class="text-emerald-600" />
             <h2 class="text-xs font-bold uppercase tracking-wide text-slate-800 sm:text-sm">Pending Events Table</h2>
@@ -147,8 +147,8 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
         </div>
       </div>
 
-      <div class="flex min-h-0 min-w-0 flex-col lg:flex-[0_0_32%]">
-        <ScheduledEventsCalendar :events="calendarEvents" class="min-h-0" />
+      <div class="flex min-h-0 min-w-0 flex-col">
+        <ScheduledEventsCalendar :events="calendarEvents" class="h-full min-h-0" />
       </div>
     </div>
 

@@ -1,8 +1,7 @@
 import type { PortalRoleKey } from "@/types/portalProfile";
 
-/** Matches Postgres `public.app_role`. */
+/** Matches Postgres `public.app_role` (excluding deprecated `student`). */
 export type AppRole =
-  | "student"
   | "student_officer"
   | "ssc"
   | "adviser"
@@ -12,10 +11,14 @@ export type AppRole =
   | "gso"
   | "it_infrastructure"
   | "sports_office"
+  | "infirmary"
+  | "nstp"
   | "admin";
 
+/** Public campus events feed — no portal role required. */
+export const PUBLIC_EVENTS_PATH = "/events";
+
 export const APP_ROLES: AppRole[] = [
-  "student",
   "student_officer",
   "ssc",
   "adviser",
@@ -25,11 +28,12 @@ export const APP_ROLES: AppRole[] = [
   "gso",
   "it_infrastructure",
   "sports_office",
+  "infirmary",
+  "nstp",
   "admin",
 ];
 
 export const ROLE_HOME_PATH: Record<AppRole, string> = {
-  student: "/student",
   student_officer: "/student-officer",
   ssc: "/ssc",
   adviser: "/adviser",
@@ -39,6 +43,8 @@ export const ROLE_HOME_PATH: Record<AppRole, string> = {
   gso: "/gso",
   it_infrastructure: "/it-infrastructure",
   sports_office: "/sports-office",
+  infirmary: "/infirmary",
+  nstp: "/nstp",
   admin: "/admin",
 };
 
@@ -60,7 +66,6 @@ export function portalRoleToAppRole(role: PortalRoleKey): AppRole {
 
 /** Human-readable labels for topbars / profile (from auth role, not hardcoded demo text). */
 export const APP_ROLE_LABEL: Record<AppRole, string> = {
-  student: "Student",
   student_officer: "Student Officer",
   ssc: "SSC",
   adviser: "Adviser",
@@ -70,10 +75,20 @@ export const APP_ROLE_LABEL: Record<AppRole, string> = {
   gso: "GSO",
   it_infrastructure: "IT Infrastructure",
   sports_office: "Sports Office",
+  infirmary: "Infirmary",
+  nstp: "NSTP",
   admin: "Admin",
 };
 
 export function appRoleLabel(role: AppRole | null | undefined): string {
   if (!role) return "";
   return APP_ROLE_LABEL[role] ?? role;
+}
+
+/** Legacy DB value — may still appear in admin user lists; not assignable in the app. */
+export const LEGACY_STUDENT_ROLE = "student" as const;
+
+export function normalizeLoadedAppRole(raw: string | null | undefined): AppRole | null {
+  if (!raw || raw === LEGACY_STUDENT_ROLE) return null;
+  return (APP_ROLES as readonly string[]).includes(raw) ? (raw as AppRole) : null;
 }

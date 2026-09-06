@@ -25,4 +25,8 @@ export interface StudentEvent {
   submittedBy?: string | null;
   /** Storage paths for post-only images. */
   imagePaths?: string[];
+  /** True when post is linked to a completed event and accepts feedback. */
+  feedbackAvailable?: boolean;
+  /** When true, feedback submitters must enter the access code. */
+  requireFeedbackAccessCode?: boolean;
 }

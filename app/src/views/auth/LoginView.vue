@@ -57,6 +57,13 @@ onMounted(() => {
   clockTimer = setInterval(() => {
     nowMs.value = Date.now();
   }, 1000);
+  if (route.query.notice === "signup-disabled") {
+    ui.pushToast(
+      "Student signup removed",
+      "Campus events are public at /events. Staff sign in here.",
+      "info",
+    );
+  }
 });
 
 onUnmounted(() => {
@@ -134,7 +141,7 @@ async function resendConfirmation() {
 
 async function completeLogin() {
   const name = auth.displayName ?? "User";
-  profile.setFromAuth(name, auth.email ?? email.value.trim(), auth.appRole ?? "student");
+  profile.setFromAuth(name, auth.email ?? email.value.trim(), auth.appRole ?? "");
   notifications.push({
     title: "Signed in",
     body: `Hello, ${name}. Workflow and event alerts will appear here.`,
@@ -157,6 +164,8 @@ async function onSubmit() {
   }
   loading.value = true;
   try {
+    const { assertRateLimitAllowed } = await import("@/services/rateLimitDb");
+    await assertRateLimitAllowed("login", email.value.trim().toLowerCase());
     await auth.signIn(email.value.trim(), password.value, { provisional: true });
     clearLockoutState(email.value);
     const skipOtp =
@@ -381,17 +390,11 @@ function cancelOtpFlow() {
           </div>
         </form>
 
-        <p class="mt-6 text-center text-sm text-slate-600">
-          New student?
-          <RouterLink to="/signup" class="font-semibold text-emerald-700 hover:text-emerald-800 hover:underline"
-            >Create an account</RouterLink
-          >
-        </p>
-      </div>
-
       <p class="mt-8 text-center text-xs text-slate-500">
-        <RouterLink to="/student" class="font-medium text-emerald-800 hover:underline">Browse events</RouterLink>
+        <RouterLink to="/events" class="font-medium text-emerald-800 hover:underline">Browse campus events</RouterLink>
+        — no sign-in required
       </p>
+      </div>
     </div>
   </div>
 </template>

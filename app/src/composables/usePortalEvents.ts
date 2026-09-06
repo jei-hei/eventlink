@@ -108,6 +108,30 @@ export function usePortalEvents(
     return store.scheduledEvents;
   });
 
+  function handleCalendarMonthChange(payload: {
+    year: number;
+    month: number;
+    startDate: string;
+    endDate: string;
+  }) {
+    if (!useDb.value) return;
+    void store.loadCalendarRange(payload.startDate, payload.endDate);
+  }
+
+  // Prime current month calendar window after portal load.
+  watch(
+    () => store.loaded,
+    (ok) => {
+      if (!ok || !useDb.value) return;
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const fmt = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      void store.loadCalendarRange(fmt(start), fmt(end));
+    },
+  );
+
   const busy = ref(false);
 
   async function runAction(fn: () => Promise<void>, successToast?: { title: string; description?: string }) {
@@ -321,6 +345,7 @@ export function usePortalEvents(
     handleCancelScheduled,
     handleResubmitDeclined,
     submitRequest,
+    handleCalendarMonthChange,
     useDb,
     busy,
     store,

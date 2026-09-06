@@ -22,22 +22,6 @@ export async function fetchProfileActivityStats(role: AppRole, userId: string): 
     ];
   }
 
-  if (role === "student") {
-    const [{ count: postedCount }, { count: calendarCount }, { count: notifCount }] = await Promise.all([
-      supabase.from("event_requests").select("id", { head: true, count: "exact" }).eq("status", "posted"),
-      supabase
-        .from("event_requests")
-        .select("id", { head: true, count: "exact" })
-        .not("calendar_posted_at", "is", null),
-      supabase.from("notifications").select("id", { head: true, count: "exact" }).eq("user_id", userId),
-    ]);
-    return [
-      makeStat("joined", "Posted events", postedCount ?? 0, "CalendarCheck"),
-      makeStat("saved", "Calendar events", calendarCount ?? 0, "Bookmark"),
-      makeStat("feedback", "Your notifications", notifCount ?? 0, "MessageSquare"),
-    ];
-  }
-
   const [{ count: approvedCount }, { count: pendingCount }, { count: scheduledCount }] = await Promise.all([
     supabase
       .from("event_request_history")

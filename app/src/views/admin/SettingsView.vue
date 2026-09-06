@@ -36,7 +36,6 @@ import { ShieldCheck, Database, Bell } from "lucide-vue-next";
         <ul class="space-y-2 text-sm text-slate-700">
           <li>Create staff users from <span class="font-semibold">Admin - Users - Add user</span>.</li>
           <li>Reset credentials from the Users table action menu.</li>
-          <li>Student registry import and management is in <span class="font-semibold">Admin - Students</span>.</li>
           <li>College/organization setup is in <span class="font-semibold">Admin - Colleges</span>.</li>
         </ul>
       </section>

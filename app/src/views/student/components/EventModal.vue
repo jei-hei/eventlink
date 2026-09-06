@@ -158,12 +158,16 @@ function onFeedbackSubmitted() {
           Thank you — your feedback was submitted.
         </p>
         <button
+          v-if="event.feedbackAvailable"
           type="button"
           class="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-6 rounded-lg font-semibold transition-colors"
           @click="feedbackOpen = true"
         >
           💬 Leave feedback
         </button>
+        <p v-else class="text-center text-sm text-gray-500">
+          Feedback is not available for this post.
+        </p>
       </div>
     </div>
 
@@ -172,6 +176,8 @@ function onFeedbackSubmitted() {
       :event-title="event.title"
       :feed-post-id="event.id"
       :request-id="event.requestId"
+      :feedback-available="event.feedbackAvailable"
+      :require-feedback-access-code="event.requireFeedbackAccessCode"
       @close="feedbackOpen = false"
       @submitted="onFeedbackSubmitted"
     />

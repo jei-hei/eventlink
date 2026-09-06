@@ -22,7 +22,12 @@ import {
 } from "@/services/eventRequestWorkflow";
 import type { DbWorkflowStep } from "@/types/eventRequest";
 import type { ResourceAssignmentInput, ResourceOffice } from "@/types/resourceOffice";
-import { resourceOfficeLabel } from "@/types/resourceOffice";
+import {
+  EQUIPMENT_OFFICES,
+  VENUE_OFFICES,
+  isResourceOffice,
+  resourceOfficeLabel,
+} from "@/types/resourceOffice";
 
 function formatTime(t: string): string {
   if (!t) return "";
@@ -44,6 +49,19 @@ function formatShortDate(iso: string): string {
 function formatDateRange(start: string, end: string): string {
   if (start === end) return formatShortDate(start);
   return `${formatShortDate(start)} – ${formatShortDate(end)}`;
+}
+
+function formatEventScheduleSnippet(row: {
+  start_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  venue: string;
+}): string {
+  const when = formatDateRange(row.start_date, row.end_date);
+  const time = [formatTime(row.start_time), formatTime(row.end_time)].filter(Boolean).join(" – ");
+  const venue = row.venue?.trim() || "TBA";
+  return `${when}${time ? ` · ${time}` : ""} · ${venue}`;
 }
 
 type NotificationPayload = {
@@ -85,6 +103,17 @@ async function notifyUser(payload: NotificationPayload): Promise<void> {
   } catch {
     // best effort only; in-app notification is primary channel
   }
+}
+
+async function notifyUsersWithRole(
+  role: ResourceOffice,
+  payload: Omit<NotificationPayload, "userId">,
+): Promise<void> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("user_roles").select("user_id").eq("role", role);
+  if (error || !data?.length) return;
+  const uniqueIds = [...new Set(data.map((r) => r.user_id).filter(Boolean))];
+  await Promise.all(uniqueIds.map((userId) => notifyUser({ ...payload, userId })));
 }
 
 function roleLabel(role: string): string {
@@ -161,7 +190,7 @@ export function mapRowToPortalEvent(
       : row.status === "declined"
       ? "Rejected"
       : row.status === "posted" || (row.status === "approved" && row.calendar_posted_at)
-        ? "Scheduled"
+        ? "Approved"
         : row.current_step === "resource_offices"
           ? (workflowStatusForResourceOffices(pendingOffices) as PortalEvent["workflowStatus"])
           : row.current_step === "eo_publish"
@@ -347,7 +376,7 @@ const EVENT_REQUEST_LIST_BARE_SELECT = `
   event_request_equipment ( quantity_requested, equipment ( id, name ) )
 `;
 
-const PORTAL_LIST_LIMIT = 200;
+const PORTAL_LIST_LIMIT = 100;
 
 const ASSIGNMENT_LIST_SELECT =
   "id, request_id, resource_kind, venue_id, equipment_id, resource_name, quantity, assigned_office, status, decline_reason";
@@ -493,7 +522,8 @@ export async function fetchPortalEventRequestsForRole(
           "and(status.eq.pending,current_step.in.(eo_schedule,eo_publish,resource_offices)),status.in.(cancelled,revision_requested),calendar_posted_at.not.is.null",
         ),
       );
-    case "student":
+    case "infirmary":
+    case "nstp":
       return runEventRequestListQuery(EVENT_REQUEST_LIST_SELECT, (q) =>
         q.or(
           "status.in.(posted,cancelled),and(status.eq.approved,calendar_posted_at.not.is.null)",
@@ -548,14 +578,21 @@ export async function checkVenueAvailable(
   startDate: string,
   endDate: string,
   excludeId?: string,
+  startTime?: string,
+  endTime?: string,
 ): Promise<boolean> {
   const supabase = getSupabase();
-  const { data, error } = await supabase.rpc("check_venue_availability", {
+  const payload: Record<string, unknown> = {
     p_venue: venue,
     p_start: startDate,
     p_end: endDate,
     p_exclude_id: excludeId ?? null,
-  });
+  };
+  if (startTime && endTime) {
+    payload.p_start_time = startTime.length === 5 ? `${startTime}:00` : startTime;
+    payload.p_end_time = endTime.length === 5 ? `${endTime}:00` : endTime;
+  }
+  const { data, error } = await supabase.rpc("check_venue_availability", payload);
   if (error) throw error;
   return Boolean(data);
 }
@@ -564,6 +601,9 @@ export async function createEventRequest(
   input: CreateEventRequestInput,
   submittedBy: string,
 ): Promise<string> {
+  const { assertRateLimitAllowed } = await import("@/services/rateLimitDb");
+  await assertRateLimitAllowed("event_submit");
+
   if (
     (input.requestType === "student_officer" || input.requestType === "ssc") &&
     !input.letterFile
@@ -571,9 +611,18 @@ export async function createEventRequest(
     throw new Error("Please upload your PDF proposal (.pdf).");
   }
 
-  const available = await checkVenueAvailable(input.venue, input.startDate, input.endDate);
+  const available = await checkVenueAvailable(
+    input.venue,
+    input.startDate,
+    input.endDate,
+    undefined,
+    input.startTime,
+    input.endTime,
+  );
   if (!available) {
-    throw new Error("This venue is already booked for the selected date range.");
+    throw new Error(
+      "This venue is already booked for an overlapping date and time. Choose a different time or venue.",
+    );
   }
 
   const initialStep = getInitialStep(input.requestType);
@@ -642,6 +691,29 @@ export async function createEventRequest(
   }
 
   if (input.equipment?.length) {
+    const eqIds = input.equipment.map((e) => e.equipmentId);
+    const { data: stockRows, error: stockErr } = await supabase
+      .from("equipment")
+      .select("id, name, quantity_available")
+      .in("id", eqIds);
+    if (stockErr) throw stockErr;
+    const stockById = new Map(
+      (stockRows ?? []).map((r) => [String(r.id), r as { id: string; name: string; quantity_available: number }]),
+    );
+    for (const line of input.equipment) {
+      const stock = stockById.get(line.equipmentId);
+      const available = Math.max(0, Number(stock?.quantity_available ?? 0));
+      if (available <= 0) {
+        throw new Error(
+          `This equipment is currently unavailable${stock?.name ? `: ${stock.name}` : ""}.`,
+        );
+      }
+      if (line.quantity > available) {
+        throw new Error(
+          `Requested quantity for ${stock?.name ?? "equipment"} exceeds available stock (${available}).`,
+        );
+      }
+    }
     const { error: eqErr } = await supabase.from("event_request_equipment").insert(
       input.equipment.map((e) => ({
         request_id: requestId,
@@ -663,10 +735,22 @@ export async function createEventRequest(
   await notifyUser({
     userId: submittedBy,
     title: "Request submitted",
-    body: `${input.activity.trim()} was submitted and is now awaiting ${stepLabel(initialStep)}.`,
+    body: `"${input.activity.trim()}" was submitted (${formatEventScheduleSnippet({
+      start_date: input.startDate,
+      end_date: input.endDate,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      venue: input.venue,
+    })}). Awaiting ${stepLabel(initialStep)}.`,
     category: "approval",
     emailSubject: "EventLink: Request submitted",
-    emailText: `Your event request "${input.activity.trim()}" was submitted successfully and is awaiting ${stepLabel(initialStep)}.`,
+    emailText: `Your event request "${input.activity.trim()}" was submitted successfully.\nSchedule: ${formatEventScheduleSnippet({
+      start_date: input.startDate,
+      end_date: input.endDate,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      venue: input.venue,
+    })}\nNext: ${stepLabel(initialStep)}.`,
   });
 
   return requestId;
@@ -797,18 +881,19 @@ export async function approveEventRequest(
   });
 
   const nextLabel = next ? stepLabel(next) : "final processing";
+  const schedule = formatEventScheduleSnippet(row);
   await notifyUser({
     userId: row.submitted_by,
     title: "Request approved",
-    body: `${row.activity} was approved at ${stepLabel(row.current_step)}. Next: ${nextLabel}.`,
+    body: `"${row.activity}" was approved at ${stepLabel(row.current_step)}. Next: ${nextLabel}. Scheduled: ${schedule}.`,
     category: "approval",
     emailSubject: "EventLink: Request approved",
-    emailText: `Your request "${row.activity}" was approved at ${stepLabel(row.current_step)}. Next step: ${nextLabel}.`,
+    emailText: `Your request "${row.activity}" was approved at ${stepLabel(row.current_step)}.\nSchedule: ${schedule}\nNext step: ${nextLabel}.`,
   });
 }
 
 /**
- * EO assigns each requested resource to a responsible office and forwards.
+ * EO assigns each requested resource to one or more responsible offices and forwards.
  * Does not schedule — resource offices complete the workflow.
  */
 export async function approveAndForwardEventRequest(
@@ -816,13 +901,41 @@ export async function approveAndForwardEventRequest(
   actorId: string,
   assignments: ResourceAssignmentInput[],
 ): Promise<void> {
-  const row = await getRow(id);
+  const { assertRateLimitAllowed } = await import("@/services/rateLimitDb");
+  await assertRateLimitAllowed("event_mutate", id);  const row = await getRow(id);
   if (row.status !== "pending" || row.current_step !== "eo_schedule") {
     throw new Error("Only requests pending EO review can be forwarded to resource offices.");
   }
   if (!assignments.length) {
     throw new Error("Assign a responsible office to every requested resource before forwarding.");
   }
+
+  const venueAssignments = assignments.filter((a) => a.resourceKind === "venue");
+  const equipmentAssignments = assignments.filter((a) => a.resourceKind === "equipment");
+  const venueOffices = [...new Set(venueAssignments.map((a) => a.assignedOffice))];
+  const equipmentOffices = [...new Set(equipmentAssignments.map((a) => a.assignedOffice))];
+
+  if (!venueAssignments.length || !venueOffices.length) {
+    throw new Error("Select at least one venue responsible office before forwarding.");
+  }
+  for (const office of venueOffices) {
+    if (!VENUE_OFFICES.includes(office) || !isResourceOffice(office)) {
+      throw new Error(`Invalid venue office: ${office}`);
+    }
+  }
+  for (const office of equipmentOffices) {
+    if (!EQUIPMENT_OFFICES.includes(office) || !isResourceOffice(office)) {
+      throw new Error(`Invalid resource office: ${office}`);
+    }
+  }
+
+  const hasRequestedEquipment =
+    (row.event_request_equipment?.length ?? 0) > 0 || equipmentAssignments.length > 0;
+
+  if (hasRequestedEquipment && !equipmentOffices.length) {
+    throw new Error("Select at least one resource/equipment responsible office before forwarding.");
+  }
+
   for (const a of assignments) {
     if (!a.assignedOffice) {
       throw new Error(`Missing responsible office for ${a.resourceName}.`);
@@ -832,6 +945,22 @@ export async function approveAndForwardEventRequest(
     }
   }
 
+  // Deduplicate identical office+resource rows so EO cannot create duplicate work items.
+  const seen = new Set<string>();
+  const deduped = assignments.filter((a) => {
+    const key = [
+      a.resourceKind,
+      a.assignedOffice,
+      a.venueId ?? "",
+      a.equipmentId ?? "",
+      a.resourceName.trim().toLowerCase(),
+      a.quantity,
+    ].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
   const supabase = getSupabase();
   const { error: deleteErr } = await supabase
     .from("event_request_resource_assignments")
@@ -839,7 +968,7 @@ export async function approveAndForwardEventRequest(
     .eq("request_id", id);
   if (deleteErr) throw deleteErr;
 
-  const rows = assignments.map((a) => ({
+  const rows = deduped.map((a) => ({
     request_id: id,
     resource_kind: a.resourceKind,
     venue_id: a.venueId ?? null,
@@ -859,12 +988,12 @@ export async function approveAndForwardEventRequest(
     .from("event_requests")
     .update({
       current_step: "resource_offices",
-      needs_gso: assignments.some((a) => a.assignedOffice === "gso"),
+      needs_gso: deduped.some((a) => a.assignedOffice === "gso"),
     })
     .eq("id", id);
   if (error) throw error;
 
-  const officeList = [...new Set(assignments.map((a) => resourceOfficeLabel(a.assignedOffice)))].join(", ");
+  const officeList = [...new Set(deduped.map((a) => resourceOfficeLabel(a.assignedOffice)))].join(", ");
   await supabase.from("event_request_history").insert({
     request_id: id,
     actor_id: actorId,
@@ -876,11 +1005,24 @@ export async function approveAndForwardEventRequest(
   await notifyUser({
     userId: row.submitted_by,
     title: "Sent to resource offices",
-    body: `${row.activity} was forwarded by EO to: ${officeList}.`,
+    body: `"${row.activity}" (${formatEventScheduleSnippet(row)}) was forwarded by EO to: ${officeList}.`,
     category: "approval",
     emailSubject: "EventLink: Sent to resource offices",
-    emailText: `Your request "${row.activity}" was forwarded to: ${officeList}.`,
+    emailText: `Your request "${row.activity}" was forwarded to: ${officeList}.\nSchedule: ${formatEventScheduleSnippet(row)}.`,
   });
+
+  const notifiedOffices = [...new Set(deduped.map((a) => a.assignedOffice))];
+  await Promise.all(
+    notifiedOffices.map((office) =>
+      notifyUsersWithRole(office, {
+        title: "Resource review required",
+        body: `"${row.activity}" needs ${resourceOfficeLabel(office)} review (${formatEventScheduleSnippet(row)}).`,
+        category: "approval",
+        emailSubject: "EventLink: Resource review required",
+        emailText: `An event request requires ${resourceOfficeLabel(office)} review.\nEvent: ${row.activity}\nSchedule: ${formatEventScheduleSnippet(row)}.`,
+      }),
+    ),
+  );
 }
 
 async function autoScheduleAfterResourceApprovals(requestId: string, actorId: string): Promise<void> {
@@ -890,6 +1032,28 @@ async function autoScheduleAfterResourceApprovals(requestId: string, actorId: st
   if (assignments.some((a) => a.status !== "approved")) return;
 
   const supabase = getSupabase();
+
+  // Deduct equipment stock once per unique equipment item after all offices approve.
+  const equipmentQtyById = new Map<string, number>();
+  for (const a of assignments) {
+    if (a.resource_kind !== "equipment" || !a.equipment_id) continue;
+    const qty = Math.max(1, Number(a.quantity ?? 1));
+    equipmentQtyById.set(a.equipment_id, Math.max(equipmentQtyById.get(a.equipment_id) ?? 0, qty));
+  }
+  for (const [equipmentId, qty] of equipmentQtyById) {
+    const { data: eqRow, error: eqFetchError } = await supabase
+      .from("equipment")
+      .select("id, quantity_available")
+      .eq("id", equipmentId)
+      .single();
+    if (eqFetchError || !eqRow) continue;
+    const current = Math.max(0, Number(eqRow.quantity_available ?? 0));
+    await supabase
+      .from("equipment")
+      .update({ quantity_available: Math.max(0, current - qty) })
+      .eq("id", equipmentId);
+  }
+
   const now = new Date().toISOString();
   const { error } = await supabase
     .from("event_requests")
@@ -912,10 +1076,10 @@ async function autoScheduleAfterResourceApprovals(requestId: string, actorId: st
   await notifyUser({
     userId: row.submitted_by,
     title: "Event scheduled",
-    body: `${row.activity} was automatically scheduled after all resource offices approved.`,
+    body: `"${row.activity}" is scheduled on the staff calendar (${formatEventScheduleSnippet(row)}).`,
     category: "calendar",
     emailSubject: "EventLink: Event scheduled",
-    emailText: `Your event "${row.activity}" is now scheduled on the staff calendar.`,
+    emailText: `Your event "${row.activity}" is now scheduled.\n${formatEventScheduleSnippet(row)}.`,
   });
 }
 
@@ -932,12 +1096,8 @@ export async function approveResourceAssignment(
     throw new Error("This request is not awaiting resource-office approval.");
   }
 
-  const kind = office === "it_infrastructure" ? "equipment" : office === "sports_office" ? "venue" : null;
   const mine = (row.event_request_resource_assignments ?? []).filter(
-    (a) =>
-      a.assigned_office === office &&
-      a.status === "pending" &&
-      (kind == null || a.resource_kind === kind),
+    (a) => a.assigned_office === office && a.status === "pending",
   );
   if (!mine.length) {
     throw new Error("No pending resources are assigned to your office for this request.");
@@ -956,22 +1116,6 @@ export async function approveResourceAssignment(
       })
       .eq("id", a.id);
     if (error) throw error;
-
-    if (a.resource_kind === "equipment" && a.equipment_id) {
-      const qty = Math.max(1, Number(a.quantity ?? 1));
-      const { data: eqRow, error: eqFetchError } = await supabase
-        .from("equipment")
-        .select("id, quantity_available")
-        .eq("id", a.equipment_id)
-        .single();
-      if (!eqFetchError && eqRow) {
-        const current = Math.max(0, Number(eqRow.quantity_available ?? 0));
-        await supabase
-          .from("equipment")
-          .update({ quantity_available: Math.max(0, current - qty) })
-          .eq("id", a.equipment_id);
-      }
-    }
   }
 
   await supabase.from("event_request_history").insert({
@@ -1002,12 +1146,8 @@ export async function declineResourceAssignment(
     throw new Error("This request is not awaiting resource-office approval.");
   }
 
-  const kind = office === "it_infrastructure" ? "equipment" : office === "sports_office" ? "venue" : null;
   const mine = (row.event_request_resource_assignments ?? []).filter(
-    (a) =>
-      a.assigned_office === office &&
-      a.status === "pending" &&
-      (kind == null || a.resource_kind === kind),
+    (a) => a.assigned_office === office && a.status === "pending",
   );
   if (!mine.length) {
     throw new Error("No pending resources are assigned to your office for this request.");
@@ -1050,10 +1190,10 @@ export async function declineResourceAssignment(
   await notifyUser({
     userId: row.submitted_by,
     title: "Request declined by resource office",
-    body: `${row.activity} was declined by ${resourceOfficeLabel(office)}. Reason: ${cleanReason}`,
+    body: `"${row.activity}" (${formatEventScheduleSnippet(row)}) was declined by ${resourceOfficeLabel(office)}. Reason: ${cleanReason}`,
     category: "approval",
     emailSubject: "EventLink: Resource office declined",
-    emailText: `Your request "${row.activity}" was declined by ${resourceOfficeLabel(office)}.\nReason: ${cleanReason}\n\nYou can edit and resubmit from the Events page.`,
+    emailText: `Your request "${row.activity}" was declined by ${resourceOfficeLabel(office)}.\nReason: ${cleanReason}\nSchedule: ${formatEventScheduleSnippet(row)}\n\nYou can edit and resubmit from the Events page.`,
   });
 }
 
@@ -1092,10 +1232,10 @@ export async function declineEventRequest(
   await notifyUser({
     userId: row.submitted_by,
     title: "Request declined",
-    body: `${row.activity} was declined at ${stepLabel(row.current_step)}. Reason: ${cleanReason}`,
+    body: `"${row.activity}" (${formatEventScheduleSnippet(row)}) was declined at ${stepLabel(row.current_step)}. Reason: ${cleanReason}`,
     category: "approval",
     emailSubject: "EventLink: Request declined",
-    emailText: `Your request "${row.activity}" was declined at ${stepLabel(row.current_step)}.\nReason: ${cleanReason}\n\nYou can edit and resend your request from the Events page.`,
+    emailText: `Your request "${row.activity}" was declined at ${stepLabel(row.current_step)}.\nReason: ${cleanReason}\nSchedule: ${formatEventScheduleSnippet(row)}\n\nYou can edit and resend your request from the Events page.`,
   });
 }
 
@@ -1162,10 +1302,10 @@ export async function postEventToStudents(
   await notifyUser({
     userId: row.submitted_by,
     title: "Published to student feed",
-    body: `${row.activity} is now live on the student dashboard.`,
+    body: `"${row.activity}" is now live on the student dashboard (${formatEventScheduleSnippet(row)}).`,
     category: "system",
     emailSubject: "EventLink: Posted to students",
-    emailText: `Your event "${row.activity}" is now published on the student dashboard feed.`,
+    emailText: `Your event "${row.activity}" is now published on the student dashboard feed.\n${formatEventScheduleSnippet(row)}.`,
   });
 }
 
@@ -1197,10 +1337,10 @@ export async function postEventToStaffCalendar(id: string, actorId: string): Pro
   await notifyUser({
     userId: row.submitted_by,
     title: "Published to staff calendar",
-    body: `${row.activity} was posted to the staff schedule calendar by EO.`,
+    body: `"${row.activity}" was posted to the staff schedule calendar (${formatEventScheduleSnippet(row)}).`,
     category: "calendar",
     emailSubject: "EventLink: Posted to staff calendar",
-    emailText: `Your event "${row.activity}" was posted to the staff schedule calendar.`,
+    emailText: `Your event "${row.activity}" was posted to the staff schedule calendar.\n${formatEventScheduleSnippet(row)}.`,
   });
 }
 
@@ -1269,23 +1409,13 @@ export function filterPendingForRole(
   });
 }
 
-function officePendingKind(office: ResourceOffice): "venue" | "equipment" | null {
-  if (office === "it_infrastructure") return "equipment";
-  if (office === "sports_office") return "venue";
-  return null;
-}
-
 function hasPendingAssignmentForOffice(row: EventRequestRow, office: ResourceOffice): boolean {
   if (row.status !== "pending") return false;
   // Legacy GSO step without assignments
   if (office === "gso" && row.current_step === "gso") return true;
   if (row.current_step !== "resource_offices") return false;
-  const kind = officePendingKind(office);
   return (row.event_request_resource_assignments ?? []).some(
-    (a) =>
-      a.assigned_office === office &&
-      a.status === "pending" &&
-      (kind == null || a.resource_kind === kind),
+    (a) => a.assigned_office === office && a.status === "pending",
   );
 }
 
@@ -1354,6 +1484,64 @@ export function filterCalendarEvents(rows: EventRequestRow[]): EventRequestRow[]
   return rows.filter((r) => r.calendar_posted_at != null && r.status !== "cancelled");
 }
 
+const CALENDAR_LIST_SELECT = `
+  id, request_type, status, current_step, organization_id, submitted_by,
+  activity, start_date, end_date, start_time, end_time, venue, venue_id,
+  number_of_participants, sdgs, purpose, needs_gso,
+  letter_path, decline_reason, declined_at_step,
+  posted_at, calendar_posted_at, student_post_caption, student_post_image_path,
+  created_at, updated_at,
+  organizations ( id, name, college_id )
+`;
+
+/**
+ * Load only scheduled events overlapping a date window (month/week/day views).
+ * Does not pull the full event_requests table.
+ */
+export async function fetchCalendarEventsInRange(params: {
+  startDate: string;
+  endDate: string;
+  limit?: number;
+}): Promise<EventRequestRow[]> {
+  const start = params.startDate.trim();
+  const end = params.endDate.trim();
+  if (!start || !end) return [];
+  const limit = Math.min(200, Math.max(1, params.limit ?? 100));
+  const supabase = getSupabase();
+
+  const { data, error } = await supabase
+    .from("event_requests")
+    .select(CALENDAR_LIST_SELECT)
+    .not("calendar_posted_at", "is", null)
+    .neq("status", "cancelled")
+    .lte("start_date", end)
+    .gte("end_date", start)
+    .order("start_date", { ascending: true })
+    .limit(limit);
+
+  if (error) throw error;
+  return (data ?? []) as unknown as EventRequestRow[];
+}
+
+/** Compact upcoming list for calendar side panels. */
+export async function fetchUpcomingCalendarEvents(limit = 10): Promise<EventRequestRow[]> {
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const dd = String(today.getDate()).padStart(2, "0");
+  const start = `${yyyy}-${mm}-${dd}`;
+  const endDate = new Date(today);
+  endDate.setDate(endDate.getDate() + 60);
+  const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`;
+
+  const rows = await fetchCalendarEventsInRange({
+    startDate: start,
+    endDate: end,
+    limit: Math.min(50, Math.max(1, limit)),
+  });
+  return rows.slice(0, Math.min(50, Math.max(1, limit)));
+}
+
 /**
  * Cancel a scheduled event (EO). Does not delete the row — status becomes cancelled.
  */
@@ -1393,15 +1581,23 @@ export async function cancelScheduledEventRequest(
     action: "cancelled",
     step: null,
     comment: cleanReason,
+    metadata: {
+      previous_start_date: row.start_date,
+      previous_end_date: row.end_date,
+      previous_start_time: row.start_time,
+      previous_end_time: row.end_time,
+      previous_venue: row.venue,
+      cancellation_reason: cleanReason,
+    },
   });
 
   await notifyUser({
     userId: row.submitted_by,
     title: "Event cancelled",
-    body: `${row.activity} was cancelled by the Executive Officer. Reason: ${cleanReason}`,
+    body: `"${row.activity}" (${formatEventScheduleSnippet(row)}) was cancelled by the Executive Officer. Reason: ${cleanReason}`,
     category: "system",
     emailSubject: "EventLink: Event cancelled",
-    emailText: `Your event "${row.activity}" was cancelled. Reason: ${cleanReason}`,
+    emailText: `Your event "${row.activity}" was cancelled.\nSchedule: ${formatEventScheduleSnippet(row)}\nReason: ${cleanReason}`,
   });
 }
 
@@ -1414,13 +1610,6 @@ export function filterMonitoringForRole(
 ): EventRequestRow[] {
   return rows.filter((r) => {
     if (role === "admin" || role === "osas") return true;
-    if (role === "student") {
-      return (
-        r.status === "posted" ||
-        r.status === "cancelled" ||
-        (r.status === "approved" && !!r.calendar_posted_at)
-      );
-    }
     if (role === "adviser") {
       if (!scope?.organizationId) return false;
       return r.organization_id === scope.organizationId;
@@ -1524,10 +1713,10 @@ export async function requestRevision(
   await notifyUser({
     userId: row.submitted_by,
     title: "Revision requested for your event request.",
-    body: `${row.activity}: ${cleanComment}`,
+    body: `"${row.activity}" (${formatEventScheduleSnippet(row)}): ${cleanComment}`,
     category: "approval",
     emailSubject: "EventLink: Revision requested",
-    emailText: `Revision requested for your event request "${row.activity}".\n\n${cleanComment}\n\nOpen Event Monitoring to review the comment and resubmit.`,
+    emailText: `Revision requested for your event request "${row.activity}".\nSchedule: ${formatEventScheduleSnippet(row)}\n\n${cleanComment}\n\nOpen Event Monitoring to review the comment and resubmit.`,
   });
 }
 
@@ -1536,9 +1725,20 @@ export async function updateEventRequest(
   input: UpdateEventRequestInput,
   actorId: string,
 ): Promise<void> {
-  const available = await checkVenueAvailable(input.venue, input.startDate, input.endDate, id);
+  const row = await getRow(id);
+
+  const available = await checkVenueAvailable(
+    input.venue,
+    input.startDate,
+    input.endDate,
+    id,
+    input.startTime,
+    input.endTime,
+  );
   if (!available) {
-    throw new Error("This venue is already booked for the selected date range.");
+    throw new Error(
+      "This venue is already booked for an overlapping date and time. Choose a different time or venue.",
+    );
   }
 
   const supabase = getSupabase();
@@ -1559,12 +1759,41 @@ export async function updateEventRequest(
 
   if (error) throw error;
 
+  const newSchedule = formatEventScheduleSnippet({
+    start_date: input.startDate,
+    end_date: input.endDate,
+    start_time: input.startTime,
+    end_time: input.endTime,
+    venue: input.venue.trim(),
+  });
+
   await supabase.from("event_request_history").insert({
     request_id: id,
     actor_id: actorId,
     action: "updated",
     step: "eo_publish",
     comment: "Schedule details updated by Executive Officer",
+    metadata: {
+      previous_start_date: row.start_date,
+      previous_end_date: row.end_date,
+      previous_start_time: row.start_time,
+      previous_end_time: row.end_time,
+      previous_venue: row.venue,
+      new_start_date: input.startDate,
+      new_end_date: input.endDate,
+      new_start_time: input.startTime,
+      new_end_time: input.endTime,
+      new_venue: input.venue.trim(),
+    },
+  });
+
+  await notifyUser({
+    userId: row.submitted_by,
+    title: "Event schedule updated",
+    body: `"${row.activity}" schedule was updated. New: ${newSchedule}.`,
+    category: "calendar",
+    emailSubject: "EventLink: Schedule updated",
+    emailText: `The schedule for "${row.activity}" was updated.\nNew: ${newSchedule}\nPrevious: ${formatEventScheduleSnippet(row)}.`,
   });
 }
 
@@ -1588,9 +1817,18 @@ export async function resubmitDeclinedEventRequest(
     throw new Error("This request is not an SSC request.");
   }
 
-  const available = await checkVenueAvailable(input.venue, input.startDate, input.endDate, id);
+  const available = await checkVenueAvailable(
+    input.venue,
+    input.startDate,
+    input.endDate,
+    id,
+    input.startTime,
+    input.endTime,
+  );
   if (!available) {
-    throw new Error("This venue is already booked for the selected date range.");
+    throw new Error(
+      "This venue is already booked for an overlapping date and time. Choose a different time or venue.",
+    );
   }
 
   const wasRevision = row.status === "revision_requested";
@@ -1653,9 +1891,21 @@ export async function resubmitDeclinedEventRequest(
   await notifyUser({
     userId: row.submitted_by,
     title: "Event resubmitted successfully.",
-    body: `${input.activity.trim()} was resubmitted. It is now awaiting ${stepLabel(resumeStep)}.`,
+    body: `"${input.activity.trim()}" was resubmitted (${formatEventScheduleSnippet({
+      start_date: input.startDate,
+      end_date: input.endDate,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      venue: input.venue,
+    })}). Awaiting ${stepLabel(resumeStep)}.`,
     category: "approval",
     emailSubject: "EventLink: Request resubmitted",
-    emailText: `Your request "${input.activity.trim()}" was resubmitted. It is now awaiting ${stepLabel(resumeStep)}.`,
+    emailText: `Your request "${input.activity.trim()}" was resubmitted.\nSchedule: ${formatEventScheduleSnippet({
+      start_date: input.startDate,
+      end_date: input.endDate,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      venue: input.venue,
+    })}\nNext: ${stepLabel(resumeStep)}.`,
   });
 }

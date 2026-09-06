@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { watch } from "vue";
 import { RouterView } from "vue-router";
 import PortalToastHost from "@/components/portal/PortalToastHost.vue";
-import { useStudentRegistryStore } from "@/stores/studentRegistry";
 import { usePageVisibility } from "@/composables/usePageVisibility";
 import { useAuthStore } from "@/stores/auth";
 import { useEventRequestsStore } from "@/stores/eventRequests";
@@ -10,6 +9,7 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useProfileStore } from "@/stores/profile";
 import { useUiStore } from "@/stores/ui";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { appRoleToPortalRole } from "@/types/appRole";
 import type { PortalRoleKey } from "@/types/portalProfile";
 
 const auth = useAuthStore();
@@ -24,32 +24,10 @@ let lastResumeToastAt = 0;
 let hiddenAt = Date.now();
 const FORCE_AFTER_HIDDEN_MS = 30_000;
 
-function portalRoleFromAuth(): PortalRoleKey {
-  const r = auth.appRole;
-  if (r === "student_officer") return "student-officer";
-  if (r === "it_infrastructure") return "it-infrastructure";
-  if (r === "sports_office") return "sports-office";
-  if (
-    r === "student" ||
-    r === "ssc" ||
-    r === "adviser" ||
-    r === "dean" ||
-    r === "osas" ||
-    r === "eo" ||
-    r === "gso" ||
-    r === "admin"
-  ) {
-    return r;
-  }
-  return "student";
+function portalRoleFromAuth(): PortalRoleKey | null {
+  if (!auth.appRole) return null;
+  return appRoleToPortalRole(auth.appRole);
 }
-
-onMounted(() => {
-  const registry = useStudentRegistryStore();
-  if (!registry.useSupabase) {
-    registry.seedDemo();
-  }
-});
 
 watch(visible, (isVisible) => {
   if (!isVisible) {
@@ -71,10 +49,7 @@ watch(visible, (isVisible) => {
       let failed = false;
 
       try {
-        if (auth.appRole === "student") {
-          await events.loadForStudentDashboard(forceData);
-          updated = true;
-        } else if (auth.userId && auth.appRole) {
+        if (auth.userId && auth.appRole) {
           updated = (await events.load(forceData)) || updated;
         }
       } catch {
@@ -89,8 +64,9 @@ watch(visible, (isVisible) => {
       }
 
       try {
-        if (auth.userId && auth.appRole) {
-          await profile.ensureHydrated(portalRoleFromAuth());
+        const portalRole = portalRoleFromAuth();
+        if (auth.userId && portalRole) {
+          await profile.ensureHydrated(portalRole);
         }
       } catch {
         // profile is best-effort on resume

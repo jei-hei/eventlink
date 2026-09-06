@@ -5,6 +5,7 @@ import type { PortalEvent } from "@/types/portalEvent";
 import type { CreateStudentFeedPostInput, UpdateStudentFeedPostInput } from "@/types/studentPost";
 import { isPostImageFile } from "@/services/eventPostImageStorage";
 import type { StudentEvent } from "@/views/student/types";
+import { getEventSchedulePhase } from "@/utils/eventSchedulePhase";
 
 const props = defineProps<{
   open: boolean;
@@ -24,16 +25,44 @@ const isEdit = computed(() => !!props.editPost?.id);
 
 const caption = ref("");
 const eventTitle = ref("");
-const eventDate = ref("");
-const eventTime = ref("");
-const venue = ref("");
 const linkedRequestId = ref("");
+const requireFeedbackCode = ref(false);
+const feedbackAccessCode = ref("");
 const imageFile = ref<File | null>(null);
 const imageFiles = ref<File[]>([]);
 const imagePreviews = ref<string[]>([]);
 const existingImageUrls = ref<string[]>([]);
 const imagesReplaced = ref(false);
 const imageError = ref("");
+
+const postableEvents = computed(() =>
+  (props.myEvents ?? []).filter(
+    (ev) =>
+      getEventSchedulePhase({
+        startDate: ev.startDate,
+        endDate: ev.endDate,
+        startTime: ev.startTime,
+        endTime: ev.endTime,
+      }) === "completed",
+  ),
+);
+
+const selectedLinkedEvent = computed(() =>
+  props.myEvents?.find((e) => e.id === linkedRequestId.value) ?? null,
+);
+
+const linkedEventPhase = computed(() => {
+  const ev = selectedLinkedEvent.value;
+  if (!ev) return null;
+  return getEventSchedulePhase({
+    startDate: ev.startDate,
+    endDate: ev.endDate,
+    startTime: ev.startTime,
+    endTime: ev.endTime,
+  });
+});
+
+const feedbackEnabled = computed(() => linkedEventPhase.value === "completed");
 
 function revokeLocalPreviews() {
   imagePreviews.value.forEach((url) => {
@@ -44,10 +73,9 @@ function revokeLocalPreviews() {
 function reset() {
   caption.value = "";
   eventTitle.value = "";
-  eventDate.value = "";
-  eventTime.value = "";
-  venue.value = "";
   linkedRequestId.value = "";
+  requireFeedbackCode.value = false;
+  feedbackAccessCode.value = "";
   imageFile.value = null;
   imageFiles.value = [];
   revokeLocalPreviews();
@@ -60,10 +88,9 @@ function reset() {
 function fillFromEdit(post: StudentEvent) {
   caption.value = post.caption ?? "";
   eventTitle.value = post.title ?? "";
-  eventDate.value = post.date && post.date !== "Date TBA" ? post.date : "";
-  eventTime.value = post.time && post.time !== "TBA" ? post.time : "";
-  venue.value = post.venue && post.venue !== "TBA" ? post.venue : "";
   linkedRequestId.value = post.requestId ?? "";
+  requireFeedbackCode.value = !!post.requireFeedbackAccessCode;
+  feedbackAccessCode.value = "";
   imageFile.value = null;
   imageFiles.value = [];
   revokeLocalPreviews();
@@ -89,20 +116,23 @@ watch(
   },
 );
 
+watch(linkedRequestId, () => {
+  if (!feedbackEnabled.value) {
+    requireFeedbackCode.value = false;
+    feedbackAccessCode.value = "";
+  }
+  applyLinkedEvent();
+});
+
 function close() {
   reset();
   emit("close");
 }
 
 function applyLinkedEvent() {
-  const id = linkedRequestId.value;
-  if (!id) return;
-  const ev = props.myEvents?.find((e) => e.id === id);
+  const ev = selectedLinkedEvent.value;
   if (!ev) return;
   eventTitle.value = ev.name;
-  eventDate.value = ev.date ?? "";
-  eventTime.value = [ev.startTime, ev.endTime].filter(Boolean).join(" – ");
-  venue.value = ev.venue ?? "";
 }
 
 function onImageChange(ev: Event) {
@@ -171,14 +201,29 @@ function submit() {
     return;
   }
 
+  if (!isEdit.value && linkedRequestId.value && linkedEventPhase.value !== "completed") {
+    window.alert(
+      linkedEventPhase.value === "ongoing"
+        ? "This linked event is still ongoing. Wait until it finishes before posting for evaluation."
+        : "This linked event has not started yet. You can post for evaluation only after the event is completed.",
+    );
+    return;
+  }
+
+  if (!isEdit.value && requireFeedbackCode.value && !feedbackAccessCode.value.trim()) {
+    window.alert("Enter an access code for feedback, or turn off the access-code requirement.");
+    return;
+  }
+
   if (isEdit.value && props.editPost) {
+    const ev = selectedLinkedEvent.value;
     const payload: UpdateStudentFeedPostInput = {
       postId: props.editPost.id,
       caption: text,
       eventTitle: title,
-      eventDate: eventDate.value.trim() || undefined,
-      eventTime: eventTime.value.trim() || undefined,
-      venue: venue.value.trim() || undefined,
+      eventDate: ev?.date || undefined,
+      eventTime: [ev?.startTime, ev?.endTime].filter(Boolean).join(" – ") || undefined,
+      venue: ev?.venue || undefined,
       requestId: linkedRequestId.value || null,
     };
     if (imagesReplaced.value) {
@@ -189,15 +234,18 @@ function submit() {
     return;
   }
 
+  const ev = selectedLinkedEvent.value;
   emit("publish", {
     caption: text,
     eventTitle: title,
-    eventDate: eventDate.value.trim() || undefined,
-    eventTime: eventTime.value.trim() || undefined,
-    venue: venue.value.trim() || undefined,
+    eventDate: ev?.date || undefined,
+    eventTime: [ev?.startTime, ev?.endTime].filter(Boolean).join(" – ") || undefined,
+    venue: ev?.venue || undefined,
     requestId: linkedRequestId.value || null,
     imageFile: imageFile.value,
     imageFiles: imageFiles.value,
+    requireFeedbackAccessCode: feedbackEnabled.value && requireFeedbackCode.value,
+    feedbackAccessCode: requireFeedbackCode.value ? feedbackAccessCode.value.trim() : undefined,
   });
 }
 </script>
@@ -243,19 +291,31 @@ function submit() {
         <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
           <div v-if="!isEdit && myEvents?.length">
             <label for="link-request" class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-600">
-              Link to your event request (optional)
+              Link to completed event (optional)
             </label>
             <select
               id="link-request"
               v-model="linkedRequestId"
               class="input-dash w-full py-2 text-sm"
-              @change="applyLinkedEvent"
             >
-              <option value="">None — type details below</option>
-              <option v-for="ev in myEvents" :key="ev.id" :value="ev.id">
+              <option value="">None — announcement only (no feedback)</option>
+              <option v-for="ev in postableEvents" :key="ev.id" :value="ev.id">
                 {{ ev.name }} ({{ ev.date }})
               </option>
             </select>
+            <p v-if="myEvents.length && !postableEvents.length" class="mt-1 text-xs text-amber-700">
+              No completed events yet. You can still post announcements without linking an event.
+            </p>
+          </div>
+
+          <div
+            v-if="selectedLinkedEvent"
+            class="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 text-sm text-gray-700"
+          >
+            <p class="font-semibold text-gray-900">{{ selectedLinkedEvent.name }}</p>
+            <p class="mt-0.5">📅 {{ selectedLinkedEvent.date }} · {{ selectedLinkedEvent.startTime }} – {{ selectedLinkedEvent.endTime }}</p>
+            <p>📍 {{ selectedLinkedEvent.venue }}</p>
+            <p v-if="feedbackEnabled" class="mt-1 text-xs text-emerald-800">Student feedback will be enabled for this post.</p>
           </div>
 
           <div>
@@ -272,44 +332,28 @@ function submit() {
             />
           </div>
 
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label for="post-event-date" class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                Date
-              </label>
-              <input
-                id="post-event-date"
-                v-model="eventDate"
-                type="text"
-                placeholder="Mar 21, 2026"
-                class="input-dash w-full py-2.5 text-sm"
-              />
-            </div>
-            <div>
-              <label for="post-event-time" class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                Time
-              </label>
-              <input
-                id="post-event-time"
-                v-model="eventTime"
-                type="text"
-                placeholder="2:00 PM – 5:00 PM"
-                class="input-dash w-full py-2.5 text-sm"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label for="post-venue" class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-600">
-              Venue
+          <div v-if="!isEdit && feedbackEnabled" class="space-y-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+            <label class="flex cursor-pointer items-start gap-2 text-sm text-gray-800">
+              <input v-model="requireFeedbackCode" type="checkbox" class="mt-0.5" />
+              <span>
+                <span class="font-semibold">Require access code for feedback</span>
+                <span class="mt-0.5 block text-xs text-gray-500">Students must enter a code before submitting ratings.</span>
+              </span>
             </label>
-            <input
-              id="post-venue"
-              v-model="venue"
-              type="text"
-              placeholder="Gymnasium"
-              class="input-dash w-full py-2.5 text-sm"
-            />
+            <div v-if="requireFeedbackCode">
+              <label for="feedback-access-code" class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                Feedback access code
+              </label>
+              <input
+                id="feedback-access-code"
+                v-model="feedbackAccessCode"
+                type="text"
+                maxlength="64"
+                autocomplete="off"
+                placeholder="Share this code with attendees"
+                class="input-dash w-full py-2 text-sm"
+              />
+            </div>
           </div>
 
           <div>

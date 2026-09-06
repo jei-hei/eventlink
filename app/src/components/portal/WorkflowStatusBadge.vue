@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import StatusBadge from "./StatusBadge.vue";
+import { displayWorkflowStatus } from "@/composables/displayWorkflowStatus";
 
 const props = defineProps<{ status: string }>();
 
 const mapped = computed(() => {
-  const s = props.status;
-  if (s === "Approved" || s.includes("Scheduled")) return { label: s, tone: "success" as const };
-  if (s === "Rejected" || s === "Declined" || s === "Returned") return { label: s, tone: "danger" as const };
-  if (s.includes("Pending")) return { label: s, tone: "warning" as const };
-  return { label: s, tone: "neutral" as const };
+  const label = displayWorkflowStatus(props.status);
+  if (label === "Approved" || props.status.includes("Scheduled")) return { label, tone: "success" as const };
+  if (label === "Rejected" || label === "Declined" || label === "Returned") return { label, tone: "danger" as const };
+  if (label.includes("Pending")) return { label, tone: "warning" as const };
+  return { label, tone: "neutral" as const };
 });
 </script>
 

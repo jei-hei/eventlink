@@ -1,15 +1,32 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { Plus, CalendarDays, ChevronLeft, ChevronRight } from "lucide-vue-next";
+import { computed, onMounted, ref } from "vue";
+import {
+  Plus,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  BookOpen,
+  Users,
+  Dumbbell,
+  HeartPulse,
+  Calendar,
+} from "lucide-vue-next";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import { useEventRequestsStore } from "@/stores/eventRequests";
 
 export interface ScheduledCalendarEvent {
   id?: string;
   date: string;
   startDate?: string;
   endDate?: string;
+  startTime?: string;
+  endTime?: string;
   name: string;
   venue?: string;
   organization?: string;
+  eventType?: string;
+  status?: string;
+  completed?: boolean;
 }
 
 const props = withDefaults(
@@ -19,21 +36,38 @@ const props = withDefaults(
     title?: string;
     /** When true, clicking an event chip emits `select` (e.g. EO edit). */
     selectable?: boolean;
+    /** Max events shown in the compact upcoming/past side list. */
+    upcomingLimit?: number;
   }>(),
   {
     showAddButton: false,
     title: "Scheduled events",
     selectable: false,
+    upcomingLimit: 10,
   },
 );
 
-const emit = defineEmits<{ add: []; select: [event: ScheduledCalendarEvent] }>();
+const emit = defineEmits<{
+  add: [];
+  select: [event: ScheduledCalendarEvent];
+  monthChange: [payload: { year: number; month: number; startDate: string; endDate: string }];
+}>();
 
 const today = new Date();
+today.setHours(0, 0, 0, 0);
+const now = new Date();
+
 const viewYear = ref(today.getFullYear());
 const viewMonth = ref(today.getMonth());
 
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+const PASTEL_CLASSES = [
+  "bg-sky-100 border-sky-200/80",
+  "bg-emerald-100 border-emerald-200/80",
+  "bg-violet-100 border-violet-200/80",
+  "bg-orange-100 border-orange-200/80",
+] as const;
 
 const monthLabel = computed(() =>
   new Date(viewYear.value, viewMonth.value, 1).toLocaleDateString("en-US", {
@@ -66,10 +100,37 @@ type WeekBar = {
   lane: number;
 };
 
+function hashKey(event: ScheduledCalendarEvent): string {
+  return event.id ?? event.name;
+}
+
+function chipIndex(event: ScheduledCalendarEvent): number {
+  const key = hashKey(event);
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return h % PASTEL_CLASSES.length;
+}
+
+function chipClass(event: ScheduledCalendarEvent, ongoing = false, past = false) {
+  if (past || event.completed) {
+    return "bg-slate-100 border-slate-200/70 text-slate-500 opacity-75";
+  }
+  const base = PASTEL_CLASSES[chipIndex(event)];
+  if (ongoing) return `${base} ring-2 ring-emerald-500/60 border-emerald-400 shadow-md`;
+  return `${base} text-charcoal`;
+}
+
 function parseIsoDay(iso: string): { y: number; m: number; d: number } | null {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return null;
   return { y: Number(m[1]), m: Number(m[2]) - 1, d: Number(m[3]) };
+}
+
+function parseTimeToMinutes(time?: string): number | null {
+  if (!time) return null;
+  const m = time.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
 }
 
 function eventRange(event: ScheduledCalendarEvent): { start: Date; end: Date } | null {
@@ -90,6 +151,45 @@ function eventRange(event: ScheduledCalendarEvent): { start: Date; end: Date } |
   const d = parseInt(day[1]!, 10);
   const dt = new Date(viewYear.value, viewMonth.value, d);
   return { start: dt, end: dt };
+}
+
+function eventStartDate(event: ScheduledCalendarEvent): Date | null {
+  const range = eventRange(event);
+  return range?.start ?? null;
+}
+
+function eventEndDate(event: ScheduledCalendarEvent): Date | null {
+  const range = eventRange(event);
+  return range?.end ?? null;
+}
+
+function isEventPast(event: ScheduledCalendarEvent): boolean {
+  if (event.completed) return true;
+  const end = eventEndDate(event);
+  if (!end) return false;
+  const endDay = new Date(end);
+  endDay.setHours(23, 59, 59, 999);
+  const endMinutes = parseTimeToMinutes(event.endTime);
+  if (endMinutes != null) {
+    endDay.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 59, 999);
+  }
+  return endDay.getTime() < now.getTime();
+}
+
+function isEventOngoing(event: ScheduledCalendarEvent): boolean {
+  if (isEventPast(event)) return false;
+  const start = eventStartDate(event);
+  const end = eventEndDate(event);
+  if (!start || !end) return false;
+  const startDt = new Date(start);
+  const endDt = new Date(end);
+  const startMin = parseTimeToMinutes(event.startTime);
+  const endMin = parseTimeToMinutes(event.endTime);
+  if (startMin != null) startDt.setHours(Math.floor(startMin / 60), startMin % 60, 0, 0);
+  else startDt.setHours(0, 0, 0, 0);
+  if (endMin != null) endDt.setHours(Math.floor(endMin / 60), endMin % 60, 59, 999);
+  else endDt.setHours(23, 59, 59, 999);
+  return now.getTime() >= startDt.getTime() && now.getTime() <= endDt.getTime();
 }
 
 function eventOnDay(event: ScheduledCalendarEvent, day: number): boolean {
@@ -137,16 +237,153 @@ function eventHoverText(event: ScheduledCalendarEvent) {
   const parts = [event.name];
   if (event.organization) parts.push(`Organization: ${event.organization}`);
   if (event.venue) parts.push(`Venue: ${event.venue}`);
+  if (event.status) parts.push(`Status: ${event.status}`);
   return parts.join(" | ");
 }
 
-function barClass() {
-  return props.selectable
-    ? "cursor-pointer bg-emerald-500 hover:bg-emerald-600"
-    : "bg-emerald-500/95";
+function eventIcon(event: ScheduledCalendarEvent) {
+  const hay = `${event.eventType ?? ""} ${event.name}`.toLowerCase();
+  if (/sport|athlet|game|tournament|intram/.test(hay)) return Dumbbell;
+  if (/medical|health|clinic|first.?aid|wellness/.test(hay)) return HeartPulse;
+  if (/seminar|workshop|lecture|training|book|class|symposium/.test(hay)) return BookOpen;
+  if (/meet|assembly|org|club|student|social|party|fellowship/.test(hay)) return Users;
+  return Calendar;
 }
 
-const weeks = computed(() => {
+function formatEventDate(event: ScheduledCalendarEvent): string {
+  const start = eventStartDate(event);
+  if (start) {
+    return start.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  }
+  return event.date;
+}
+
+function dayDiffFromToday(date: Date): number {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / 86400000);
+}
+
+function formatGroupDateLabel(date: Date): string {
+  return date
+    .toLocaleDateString("en-US", { month: "long", day: "numeric" })
+    .toUpperCase();
+}
+
+type ListGroup = { key: string; label: string; events: ScheduledCalendarEvent[] };
+
+const groupedEventList = computed((): ListGroup[] => {
+  const sorted = [...props.events].sort((a, b) => {
+    const da = eventStartDate(a)?.getTime() ?? Number.POSITIVE_INFINITY;
+    const db = eventStartDate(b)?.getTime() ?? Number.POSITIVE_INFINITY;
+    return da - db;
+  });
+
+  const groups: ListGroup[] = [];
+  const laterByDay = new Map<string, ScheduledCalendarEvent[]>();
+  const undated: ScheduledCalendarEvent[] = [];
+  let futureCount = 0;
+  const limit = Math.max(1, props.upcomingLimit);
+
+  for (const ev of sorted) {
+    const start = eventStartDate(ev);
+    if (!start) {
+      if (futureCount >= limit) continue;
+      undated.push(ev);
+      futureCount += 1;
+      continue;
+    }
+    const diff = dayDiffFromToday(start);
+    if (isEventPast(ev) || diff < 0) {
+      continue; // compact list focuses on upcoming only
+    }
+    if (futureCount >= limit) continue;
+    futureCount += 1;
+
+    if (diff === 0) {
+      const existing = groups.find((g) => g.key === "today");
+      if (existing) existing.events.push(ev);
+      else groups.push({ key: "today", label: "TODAY", events: [ev] });
+      continue;
+    }
+    if (diff === 1) {
+      const existing = groups.find((g) => g.key === "tomorrow");
+      if (existing) existing.events.push(ev);
+      else groups.push({ key: "tomorrow", label: "TOMORROW", events: [ev] });
+      continue;
+    }
+    const key = `${start.getFullYear()}-${start.getMonth()}-${start.getDate()}`;
+    const bucket = laterByDay.get(key) ?? [];
+    bucket.push(ev);
+    laterByDay.set(key, bucket);
+  }
+
+  for (const [key, events] of laterByDay) {
+    const start = eventStartDate(events[0]!);
+    groups.push({
+      key: `day-${key}`,
+      label: start ? formatGroupDateLabel(start) : "UPCOMING",
+      events,
+    });
+  }
+
+  if (undated.length) {
+    groups.push({ key: "undated", label: "UPCOMING", events: undated });
+  }
+  return groups;
+});
+
+function emitMonthRange() {
+  const start = new Date(viewYear.value, viewMonth.value, 1);
+  const end = new Date(viewYear.value, viewMonth.value + 1, 0);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const payload = {
+    year: viewYear.value,
+    month: viewMonth.value,
+    startDate: fmt(start),
+    endDate: fmt(end),
+  };
+  emit("monthChange", payload);
+  if (isSupabaseConfigured) {
+    try {
+      const store = useEventRequestsStore();
+      void store.loadCalendarRange(payload.startDate, payload.endDate);
+    } catch {
+      // store may be unavailable outside portal contexts
+    }
+  }
+}
+
+onMounted(() => {
+  emitMonthRange();
+});
+
+function prevMonth() {
+  if (viewMonth.value === 0) {
+    viewMonth.value = 11;
+    viewYear.value -= 1;
+  } else {
+    viewMonth.value -= 1;
+  }
+  emitMonthRange();
+}
+
+function nextMonth() {
+  if (viewMonth.value === 11) {
+    viewMonth.value = 0;
+    viewYear.value += 1;
+  } else {
+    viewMonth.value += 1;
+  }
+  emitMonthRange();
+}
+
+function goToToday() {
+  viewYear.value = today.getFullYear();
+  viewMonth.value = today.getMonth();
+  emitMonthRange();
+}const weeks = computed(() => {
   const rows: Array<{ index: number; cells: WeekCell[]; bars: WeekBar[]; laneCount: number }> = [];
   for (let i = 0; i < calendarCells.value.length; i += 7) {
     const raw = calendarCells.value.slice(i, i + 7);
@@ -209,35 +446,14 @@ const weeks = computed(() => {
   }
   return rows;
 });
-
-function prevMonth() {
-  if (viewMonth.value === 0) {
-    viewMonth.value = 11;
-    viewYear.value -= 1;
-  } else {
-    viewMonth.value -= 1;
-  }
-}
-
-function nextMonth() {
-  if (viewMonth.value === 11) {
-    viewMonth.value = 0;
-    viewYear.value += 1;
-  } else {
-    viewMonth.value += 1;
-  }
-}
-
-function goToToday() {
-  viewYear.value = today.getFullYear();
-  viewMonth.value = today.getMonth();
-}
 </script>
 
 <template>
-  <div class="dash-card flex min-h-[min(320px,50vh)] flex-1 flex-col border border-slate-200/90 lg:min-h-0">
+  <div
+    class="font-sans dash-card dash-card-fill border border-slate-200/90 bg-[#faf8f5]"
+  >
     <div
-      class="flex shrink-0 flex-col gap-2 border-b border-slate-200/90 p-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2"
+      class="flex shrink-0 flex-col gap-2 border-b border-slate-200/90 bg-[#faf8f5] p-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2"
     >
       <div class="min-w-0">
         <h2 class="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-800">
@@ -247,7 +463,7 @@ function goToToday() {
         <div class="mt-2 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white/80 text-slate-700 hover:bg-white"
             aria-label="Previous month"
             @click="prevMonth"
           >
@@ -256,7 +472,7 @@ function goToToday() {
           <span class="min-w-[9rem] text-center text-sm font-semibold text-slate-800">{{ monthLabel }}</span>
           <button
             type="button"
-            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white/80 text-slate-700 hover:bg-white"
             aria-label="Next month"
             @click="nextMonth"
           >
@@ -288,16 +504,16 @@ function goToToday() {
     </div>
 
     <div class="min-h-0 flex-1 overflow-auto p-2 sm:p-3">
-      <div class="mb-1 grid grid-cols-7 gap-1">
+      <div class="mb-1 grid grid-cols-7 gap-px bg-slate-200/60">
         <div
           v-for="(d, idx) in weekdays"
           :key="idx"
-          class="py-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500"
+          class="bg-[#faf8f5] py-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500"
         >
           {{ d }}
         </div>
       </div>
-      <div class="space-y-1">
+      <div class="space-y-px bg-slate-200/60">
         <div v-for="week in weeks" :key="`week-${week.index}`" class="relative">
           <div
             v-if="week.bars.length"
@@ -309,38 +525,47 @@ function goToToday() {
               v-for="bar in week.bars"
               :key="bar.key"
               :type="selectable ? 'button' : undefined"
-              class="pointer-events-auto absolute flex items-center rounded px-1.5 text-left text-[10px] font-semibold text-white shadow-sm"
-              :class="barClass()"
+              class="pointer-events-auto absolute flex items-center gap-1 rounded border px-1.5 text-left text-[10px] font-semibold text-charcoal shadow-sm"
+              :class="[
+                chipClass(bar.event, isEventOngoing(bar.event), isEventPast(bar.event)),
+                selectable ? 'cursor-pointer hover:brightness-95' : '',
+              ]"
               :style="{
-                left: `calc(${(bar.startCol / 7) * 100}% + 2px)`,
-                width: `calc(${((bar.endCol - bar.startCol + 1) / 7) * 100}% - 4px)`,
+                left: `calc(${(bar.startCol / 7) * 100}% + 1px)`,
+                width: `calc(${((bar.endCol - bar.startCol + 1) / 7) * 100}% - 2px)`,
                 top: `${bar.lane * 18 + 2}px`,
                 height: '16px',
               }"
               :title="eventHoverText(bar.event)"
               @click="selectable ? onEventClick(bar.event) : undefined"
             >
+              <span v-if="isEventOngoing(bar.event)" class="shrink-0 rounded bg-emerald-600 px-1 text-[8px] font-bold text-white">
+                ONGOING
+              </span>
               <span class="truncate">{{ bar.event.name }}</span>
             </component>
           </div>
 
-          <div class="grid grid-cols-7 gap-1" :style="{ paddingTop: week.bars.length ? `${week.laneCount * 18 + 4}px` : '0px' }">
-            <div v-for="cell in week.cells" :key="cell.key" class="min-h-[5.5rem]">
-              <div v-if="cell.day === null" class="h-full min-h-[5.5rem]" />
+          <div
+            class="grid grid-cols-7 gap-px bg-slate-200/60"
+            :style="{ paddingTop: week.bars.length ? `${week.laneCount * 18 + 4}px` : '0px' }"
+          >
+            <div v-for="cell in week.cells" :key="cell.key" class="min-h-[5.5rem] bg-[#faf8f5]">
+              <div v-if="cell.day === null" class="h-full min-h-[5.5rem] bg-[#f5f3ef]" />
               <div
                 v-else
                 :class="[
-                  'flex h-full min-h-[5.5rem] flex-col rounded-lg border p-1',
-                  hasEvents(cell.day)
-                    ? 'border-emerald-300 bg-emerald-50/40'
-                    : 'border-slate-200 bg-slate-50/80',
-                  isToday(cell.day) ? 'ring-2 ring-emerald-500 ring-offset-1' : '',
+                  'flex h-full min-h-[5.5rem] flex-col border border-transparent p-1',
+                  hasEvents(cell.day) ? 'bg-[#f7f5f1]' : 'bg-[#faf8f5]',
+                  isToday(cell.day)
+                    ? 'rounded-lg border-emerald-400/70 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-300/50'
+                    : '',
                 ]"
               >
                 <span
                   :class="[
                     'mb-0.5 shrink-0 text-[11px] font-bold leading-none',
-                    isToday(cell.day) ? 'text-emerald-700' : 'text-slate-600',
+                    isToday(cell.day) ? 'text-emerald-800' : 'text-slate-600',
                   ]"
                 >
                   {{ cell.day }}
@@ -352,18 +577,26 @@ function goToToday() {
                     :key="(ev.id ?? ev.name) + cell.day"
                     :type="selectable ? 'button' : undefined"
                     :class="[
-                      'w-full rounded px-1 py-0.5 text-left leading-tight text-emerald-950',
-                      selectable
-                        ? 'cursor-pointer bg-emerald-200 hover:bg-emerald-300'
-                        : 'bg-emerald-200/90',
+                      'w-full rounded border px-1 py-0.5 text-left leading-tight text-charcoal',
+                      chipClass(ev, isEventOngoing(ev), isEventPast(ev)),
+                      selectable ? 'cursor-pointer hover:brightness-95' : '',
                     ]"
                     :title="eventHoverText(ev)"
                     @click="selectable ? onEventClick(ev) : undefined"
                   >
-                    <span class="block truncate text-[10px] font-semibold">{{ ev.name }}</span>
+                    <span class="flex items-center gap-0.5">
+                      <component :is="eventIcon(ev)" class="h-2.5 w-2.5 shrink-0 text-slate-600" stroke-width="2" />
+                      <span class="block truncate text-[10px] font-semibold">{{ ev.name }}</span>
+                    </span>
+                    <span
+                      v-if="isEventOngoing(ev)"
+                      class="mt-0.5 inline-block rounded bg-emerald-600 px-1 text-[7px] font-bold text-white"
+                    >
+                      ONGOING
+                    </span>
                     <span
                       v-if="ev.organization"
-                      class="block truncate text-[8px] font-medium text-emerald-800/90"
+                      class="block truncate text-[8px] font-medium text-slate-600"
                     >
                       {{ ev.organization }}
                     </span>
@@ -381,5 +614,33 @@ function goToToday() {
         </div>
       </div>
     </div>
+
+    <div
+      v-if="groupedEventList.length"
+      class="max-h-[min(36%,14rem)] shrink-0 overflow-auto border-t border-slate-200/90 bg-[#faf8f5] px-3 py-2"
+    >
+      <div v-for="group in groupedEventList" :key="group.key" class="mb-3 last:mb-0">
+        <p class="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{{ group.label }}</p>
+        <ul class="space-y-1">
+          <li
+            v-for="ev in group.events"
+            :key="`${group.key}-${ev.id ?? ev.name}`"
+            :class="[
+              'rounded-lg border px-2.5 py-1.5 text-sm',
+              chipClass(ev, isEventOngoing(ev), isEventPast(ev)),
+            ]"
+          >
+            <p class="truncate font-semibold text-charcoal">{{ ev.name }}</p>
+            <p class="mt-0.5 text-xs text-slate-600">{{ formatEventDate(ev) }}</p>
+          </li>
+        </ul>
+      </div>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.text-charcoal {
+  color: #2d2d2d;
+}
+</style>

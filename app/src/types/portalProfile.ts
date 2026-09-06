@@ -1,5 +1,4 @@
 export type PortalRoleKey =
-  | "student"
   | "student-officer"
   | "ssc"
   | "adviser"
@@ -9,6 +8,8 @@ export type PortalRoleKey =
   | "gso"
   | "it-infrastructure"
   | "sports-office"
+  | "infirmary"
+  | "nstp"
   | "admin";
 
 export type RoleBadgeTone = "green" | "blue" | "purple" | "orange" | "red" | "teal" | "slate";

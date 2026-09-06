@@ -21,7 +21,7 @@ const profile = useProfileStore();
 const auth = useAuthStore();
 const ui = useUiStore();
 
-const portalRole = computed(() => (route.meta.portalRole as PortalRoleKey | undefined) ?? "student");
+const portalRole = computed(() => route.meta.portalRole as PortalRoleKey);
 const standalone = computed(() => !!route.meta.profileStandalone);
 const showMyPosts = computed(
   () => portalRole.value === "student-officer" || portalRole.value === "ssc",
@@ -67,10 +67,8 @@ watch(editMode, (on) => {
   if (on) syncDraftFromStore();
 });
 
-/** Academic block for students / student officers only — not SSC or staff. */
-const showAcademic = computed(() =>
-  ["student", "student-officer"].includes(portalRole.value),
-);
+/** Academic block for student officers only — not SSC or staff. */
+const showAcademic = computed(() => portalRole.value === "student-officer");
 
 onMounted(async () => {
   try {
@@ -189,7 +187,7 @@ async function onLogout() {
   router.push("/login");
 }
 
-const emailEditable = computed(() => editMode.value && portalRole.value !== "student");
+const emailEditable = computed(() => editMode.value);
 
 /** Student-adjacent portals use the same tight header as standalone `/student/profile` (no tall hero card). */
 const compactProfileHeader = computed(
@@ -202,7 +200,7 @@ const compactProfileHeader = computed(
     <header v-if="standalone" class="portal-topbar shrink-0">
       <div class="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-2 sm:px-4">
         <RouterLink
-          to="/student"
+          to="/events"
           class="portal-topbar-btn inline-flex shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium"
         >
           <ArrowLeft class="h-4 w-4" />
@@ -230,12 +228,12 @@ const compactProfileHeader = computed(
               <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">My profile</h1>
             </div>
             <RouterLink
-              v-if="portalRole === 'student'"
-              to="/student"
+              v-if="portalRole === 'student-officer'"
+              to="/events"
               class="portal-btn-secondary inline-flex w-full items-center justify-center px-3 py-2 text-xs sm:w-auto"
             >
               <ArrowLeft class="h-3.5 w-3.5" />
-              Back to events
+              Back to campus events
             </RouterLink>
           </div>
 
@@ -267,9 +265,6 @@ const compactProfileHeader = computed(
             <p v-if="editMode && usesSupabaseProfile" class="mt-2 text-xs text-slate-500">
               Full name, email, and phone are saved to your account. Changing email may require confirmation from
               Supabase.
-            </p>
-            <p v-if="portalRole === 'student'" class="mt-2 text-xs text-slate-500">
-              Student email cannot be changed here. For email replacement, please visit the admin office.
             </p>
           </ProfileSectionCard>
 

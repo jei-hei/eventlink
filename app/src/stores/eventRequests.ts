@@ -9,6 +9,7 @@ import {
   fetchHistoryForRequest,
   filterApprovedForRole,
   filterCalendarEvents,
+  fetchCalendarEventsInRange,
   filterDeclinedForRole,
   filterMonitoringForRole,
   filterPendingForRole,
@@ -36,6 +37,7 @@ import { useAuthStore } from "@/stores/auth";
 
 export const useEventRequestsStore = defineStore("eventRequests", () => {
   const rows = ref<EventRequestRow[]>([]);
+  const calendarRows = ref<EventRequestRow[]>([]);
   const loading = ref(false);
   const feedLoading = ref(false);
   const error = ref<string | null>(null);
@@ -74,9 +76,35 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
 
   const postedEvents = computed<PortalEvent[]>(() => postedRows.value.map((r) => portalOf(r)));
 
-  const scheduledEvents = computed<PortalEvent[]>(() =>
-    filterCalendarEvents(rows.value).map((r) => portalOf(r)),
-  );
+  const scheduledEvents = computed<PortalEvent[]>(() => {
+    const fromCalendar = calendarRows.value.length
+      ? calendarRows.value
+      : filterCalendarEvents(rows.value);
+    return fromCalendar.map((r) => portalOf(r));
+  });
+
+  async function loadCalendarRange(startDate: string, endDate: string): Promise<void> {
+    if (!isSupabaseConfigured) return;
+    const auth = useAuthStore();
+    if (!auth.userId) return;
+    try {
+      const data = await fetchCalendarEventsInRange({ startDate, endDate, limit: 150 });
+      // Keep role/org scope when portal rows are already org-scoped.
+      if (auth.appRole === "adviser" && auth.organizationId) {
+        calendarRows.value = data.filter((r) => r.organization_id === auth.organizationId);
+      } else if (auth.appRole === "dean" && auth.collegeId) {
+        calendarRows.value = data.filter(
+          (r) => (r.organizations?.college_id ?? null) === auth.collegeId,
+        );
+      } else if (auth.appRole === "student_officer" && auth.organizationId) {
+        calendarRows.value = data.filter((r) => r.organization_id === auth.organizationId);
+      } else {
+        calendarRows.value = data;
+      }
+    } catch (e) {
+      console.warn("[calendar] range load failed", e);
+    }
+  }
 
   async function withRetry<T>(task: () => Promise<T>, retries = 2): Promise<T> {
     let lastErr: unknown = null;
@@ -427,6 +455,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     studentFeedHasMore,
     scheduledEvents,
     load,
+    loadCalendarRange,
     loadForStudentDashboard,
     loadMoreForStudentDashboard,
     loadMyFeedPosts,

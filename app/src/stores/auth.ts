@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
-import { ROLE_HOME_PATH, type AppRole } from "@/types/appRole";
+import { ROLE_HOME_PATH, normalizeLoadedAppRole, PUBLIC_EVENTS_PATH, type AppRole } from "@/types/appRole";
 import { useNotificationsStore } from "@/stores/notifications";
 import { isDevTestEmailAddress } from "@/config/devAuth";
 
@@ -46,7 +46,7 @@ export const useAuthStore = defineStore("auth", () => {
 
   const homePath = computed(() => {
     if (appRole.value) return ROLE_HOME_PATH[appRole.value] ?? "/login";
-    return "/student";
+    return PUBLIC_EVENTS_PATH;
   });
 
   let readyResolve: (() => void) | null = null;
@@ -447,7 +447,7 @@ export const useAuthStore = defineStore("auth", () => {
       .maybeSingle();
 
     if (error) throw error;
-    appRole.value = (data?.role as AppRole | undefined) ?? "student";
+    appRole.value = normalizeLoadedAppRole(data?.role as string | undefined);
   }
 
   async function repairProfileIfMissing() {
@@ -616,7 +616,7 @@ export const useAuthStore = defineStore("auth", () => {
 
   async function signIn(mail: string, password: string, opts?: { provisional?: boolean }) {
     if (useMock.value) {
-      loginMock(mail, mail.includes("admin") ? "Admin User" : "Portal User", mail.includes("admin") ? "admin" : "student");
+      loginMock(mail, mail.includes("admin") ? "Admin User" : "Portal User", mail.includes("admin") ? "admin" : "adviser");
       return { mock: true as const };
     }
 
@@ -678,7 +678,7 @@ export const useAuthStore = defineStore("auth", () => {
     fullName: string;
   }): Promise<{ needsEmailConfirmation: boolean }> {
     if (useMock.value) {
-      loginMock(opts.email, opts.fullName, "student");
+      loginMock(opts.email, opts.fullName, "adviser");
       return { needsEmailConfirmation: false };
     }
 
@@ -748,10 +748,9 @@ export const useAuthStore = defineStore("auth", () => {
     displayName.value = name;
     const roleMap: Record<string, AppRole> = {
       admin: "admin",
-      student: "student",
-      user: "student",
       "student-officer": "student_officer",
       officer: "student_officer",
+      student_officer: "student_officer",
       ssc: "ssc",
       adviser: "adviser",
       dean: "dean",
@@ -762,8 +761,10 @@ export const useAuthStore = defineStore("auth", () => {
       "it-infrastructure": "it_infrastructure",
       sports_office: "sports_office",
       "sports-office": "sports_office",
+      infirmary: "infirmary",
+      nstp: "nstp",
     };
-    appRole.value = roleMap[r] ?? "student";
+    appRole.value = roleMap[r] ?? null;
     userId.value = "mock-user";
     loadSessionPreference();
     startInactivityMonitor();

@@ -7,7 +7,10 @@ defineProps<{
   event: StudentEvent;
 }>();
 
-const emit = defineEmits<{ select: []; previewImage: [images: string[], index: number, title: string] }>();
+const emit = defineEmits<{
+  select: [];
+  previewImage: [images: string[], index: number, title: string];
+}>();
 
 function avatarLetter(event: StudentEvent) {
   const source = event.posterName || event.organization || "?";
@@ -49,10 +52,18 @@ function avatarColor(event: StudentEvent) {
           <h3 class="truncate font-semibold text-gray-900 hover:underline">
             {{ event.posterName }}
           </h3>
-          <span v-if="event.organization === 'Supreme Student Council'" class="shrink-0 text-blue-500">✓</span>
+          <span
+            v-if="event.organization === 'Supreme Student Council'"
+            class="shrink-0 text-blue-500"
+            >✓</span
+          >
         </div>
-        <p v-if="event.organization" class="truncate text-sm text-gray-600">{{ event.organization }}</p>
-        <p v-if="event.posterCollege" class="truncate text-sm text-gray-600">{{ event.posterCollege }}</p>
+        <p v-if="event.organization" class="truncate text-sm text-gray-600">
+          {{ event.organization }}
+        </p>
+        <p v-if="event.posterCollege" class="truncate text-sm text-gray-600">
+          {{ event.posterCollege }}
+        </p>
         <p class="text-xs text-gray-500">
           {{ formatPostedAgo(event.postedAt, event.day) }} · 🌐 Public
         </p>
@@ -69,7 +80,10 @@ function avatarColor(event: StudentEvent) {
     </div>
 
     <div class="px-4 pb-3">
-      <p v-if="event.caption" class="whitespace-pre-wrap text-[15px] leading-relaxed text-gray-900">
+      <p
+        v-if="event.caption"
+        class="whitespace-pre-wrap text-[15px] leading-relaxed text-gray-900"
+      >
         {{ event.caption }}
       </p>
       <p v-else class="text-[15px] leading-relaxed text-gray-800">
@@ -95,7 +109,9 @@ function avatarColor(event: StudentEvent) {
           :class="[
             'overflow-hidden',
             event.imageUrls!.length === 1 ? 'max-h-80' : 'h-40',
-            event.imageUrls!.length === 3 && idx === 0 ? 'row-span-2 h-[20.15rem]' : '',
+            event.imageUrls!.length === 3 && idx === 0
+              ? 'row-span-2 h-[20.15rem]'
+              : '',
           ]"
           :aria-label="`Preview image ${idx + 1}`"
           @click.stop="emit('previewImage', event.imageUrls!, idx, event.title)"

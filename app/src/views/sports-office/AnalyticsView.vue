@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { TrendingUp, CalendarDays, CheckCircle2, BarChart2, Clock, AlertTriangle } from "lucide-vue-next";
+import EventTrailPanel from "@/components/portal/EventTrailPanel.vue";
+import EventsLogPanel from "@/components/portal/EventsLogPanel.vue";
+import EquipmentAnalyticsPanel from "@/components/portal/EquipmentAnalyticsPanel.vue";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import { fetchAnalyticsOverview } from "@/services/analyticsDb";
 
@@ -41,8 +44,8 @@ const maxEvents = computed(() => Math.max(1, ...monthlyEvents.value.map((m) => m
   <div class="dash-page space-y-4">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-gray-800">Analytics</h1>
-        <p class="text-sm text-gray-500">Sports Office venue approval overview</p>
+        <h1 class="text-2xl font-bold text-gray-800">Dashboard</h1>
+        <p class="text-sm text-gray-500">Sports Office · Reports &amp; analytics</p>
       </div>
       <ViewAllDashboardButton to="/sports-office" />
     </div>
@@ -92,5 +95,9 @@ const maxEvents = computed(() => Math.max(1, ...monthlyEvents.value.map((m) => m
         </ul>
       </div>
     </div>
+
+    <EventsLogPanel role="sports_office" />
+    <EquipmentAnalyticsPanel office="sports_office" title="Sports equipment analytics" />
+    <EventTrailPanel role="sports_office" />
   </div>
 </template>

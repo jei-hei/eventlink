@@ -340,11 +340,30 @@ function handleSubmit() {
 
   const normalizedEquipment = equipmentRows.value
     .filter((r) => r.equipmentId)
-    .map((r) => ({
-      equipmentId: r.equipmentId,
-      equipmentName: equipment.value.find((e) => e.id === r.equipmentId)?.name ?? "Equipment",
-      quantity: Math.max(1, Math.floor(Number(r.quantity) || 1)),
-    }));
+    .map((r) => {
+      const eq = equipment.value.find((e) => e.id === r.equipmentId);
+      const available = Math.max(0, Number(eq?.quantity_available ?? 0));
+      const quantity = Math.max(1, Math.floor(Number(r.quantity) || 1));
+      return {
+        equipmentId: r.equipmentId,
+        equipmentName: eq?.name ?? "Equipment",
+        quantity,
+        available,
+      };
+    });
+
+  for (const line of normalizedEquipment) {
+    if (line.available <= 0) {
+      window.alert(`This equipment is currently unavailable: ${line.equipmentName}`);
+      return;
+    }
+    if (line.quantity > line.available) {
+      window.alert(
+        `Requested quantity for ${line.equipmentName} exceeds available stock (${line.available}).`,
+      );
+      return;
+    }
+  }
 
   emit("submit", {
     organizationId: resolvedOrganizationId || null,
@@ -360,7 +379,11 @@ function handleSubmit() {
     sdgs: formatSdgsForStorage(selectedSdgs.value),
     needsGso: form.needsGso,
     letterFile: letterFile.value,
-    equipment: normalizedEquipment,
+    equipment: normalizedEquipment.map(({ equipmentId, equipmentName, quantity }) => ({
+      equipmentId,
+      equipmentName,
+      quantity,
+    })),
   });
 }
 
@@ -579,18 +602,30 @@ defineExpose({ resetForm });
             v-for="eq in equipment"
             :key="eq.id"
             :value="eq.id"
-            :disabled="selectedEquipmentIds.has(eq.id) && eq.id !== row.equipmentId"
+            :disabled="
+              eq.quantity_available <= 0 ||
+              (selectedEquipmentIds.has(eq.id) && eq.id !== row.equipmentId)
+            "
           >
-            {{ eq.name }} ({{ eq.quantity_available }} available)
+            {{ eq.name }}
+            <template v-if="eq.quantity_available <= 0"> — unavailable</template>
+            <template v-else> ({{ eq.quantity_available }} available)</template>
           </option>
         </select>
         <input
           v-model.number="row.quantity"
           type="number"
           min="1"
+          :max="equipment.find((e) => e.id === row.equipmentId)?.quantity_available || undefined"
           class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
           placeholder="Quantity"
         />
+        <p
+          v-if="row.equipmentId && (equipment.find((e) => e.id === row.equipmentId)?.quantity_available ?? 0) <= 0"
+          class="sm:col-span-3 text-xs font-medium text-red-600"
+        >
+          This equipment is currently unavailable.
+        </p>
         <button
           type="button"
           class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100"

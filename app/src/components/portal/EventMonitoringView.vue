@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { Eye, Search } from "lucide-vue-next";
+import { Eye, Search, X } from "lucide-vue-next";
+import { displayWorkflowStatus } from "@/composables/displayWorkflowStatus";
 import { useAuthStore } from "@/stores/auth";
 import { useEventRequestsStore } from "@/stores/eventRequests";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -21,6 +22,13 @@ const ui = useUiStore();
 const loading = ref(true);
 const selected = ref<PortalEvent | null>(null);
 const search = ref("");
+const filterDateFrom = ref("");
+const filterDateTo = ref("");
+const filterOrganization = ref("");
+const filterCollege = ref("");
+const filterStatus = ref("");
+const filterVenue = ref("");
+const filterEventType = ref("");
 const resubmitEvent = ref<PortalEvent | null>(null);
 const resubmitting = ref(false);
 const feedbackOpen = ref(false);
@@ -79,22 +87,92 @@ async function openEvent(event: PortalEvent) {
 
 const events = computed(() => {
   if (!auth.userId || !auth.appRole) return [];
-  if (auth.appRole === "student") {
-    return store.monitoringForRole("student", auth.userId);
-  }
   return store.monitoringForRole(auth.appRole, auth.userId);
 });
 
+function eventIsoDate(event: PortalEvent): string | null {
+  if (event.startDate) return event.startDate.slice(0, 10);
+  const parsed = Date.parse(event.date);
+  if (!Number.isNaN(parsed)) {
+    const d = new Date(parsed);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  return null;
+}
+
+const uniqueOrganizations = computed(() =>
+  [...new Set(events.value.map((e) => e.organization).filter(Boolean))].sort() as string[],
+);
+
+const uniqueColleges = computed(() =>
+  [...new Set(events.value.map((e) => e.department).filter(Boolean))].sort() as string[],
+);
+
+const uniqueStatuses = computed(() =>
+  [...new Set(events.value.map((e) => String(e.workflowStatus ?? e.status)))].sort(),
+);
+
+const uniqueVenues = computed(() =>
+  [...new Set(events.value.map((e) => e.venue).filter(Boolean))].sort() as string[],
+);
+
+const uniqueEventTypes = computed(() =>
+  [...new Set(events.value.map((e) => e.eventType).filter(Boolean))].sort() as string[],
+);
+
+const hasActiveFilters = computed(
+  () =>
+    !!search.value.trim() ||
+    !!filterDateFrom.value ||
+    !!filterDateTo.value ||
+    !!filterOrganization.value ||
+    !!filterCollege.value ||
+    !!filterStatus.value ||
+    !!filterVenue.value ||
+    !!filterEventType.value,
+);
+
+function clearFilters() {
+  search.value = "";
+  filterDateFrom.value = "";
+  filterDateTo.value = "";
+  filterOrganization.value = "";
+  filterCollege.value = "";
+  filterStatus.value = "";
+  filterVenue.value = "";
+  filterEventType.value = "";
+}
+
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase();
-  if (!q) return events.value;
   return events.value.filter((e) => {
-    return (
-      e.name.toLowerCase().includes(q) ||
-      (e.organization ?? "").toLowerCase().includes(q) ||
-      (e.venue ?? "").toLowerCase().includes(q) ||
-      String(e.workflowStatus ?? e.status).toLowerCase().includes(q)
-    );
+    if (q) {
+      const hay = [
+        e.name,
+        e.organization,
+        e.venue,
+        e.department,
+        e.eventType,
+        String(e.workflowStatus ?? e.status),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (filterOrganization.value && e.organization !== filterOrganization.value) return false;
+    if (filterCollege.value && e.department !== filterCollege.value) return false;
+    if (filterStatus.value && String(e.workflowStatus ?? e.status) !== filterStatus.value) return false;
+    if (filterVenue.value && e.venue !== filterVenue.value) return false;
+    if (filterEventType.value && e.eventType !== filterEventType.value) return false;
+    const iso = eventIsoDate(e);
+    if (filterDateFrom.value && iso && iso < filterDateFrom.value) return false;
+    if (filterDateTo.value && iso && iso > filterDateTo.value) return false;
+    if ((filterDateFrom.value || filterDateTo.value) && !iso) return false;
+    return true;
   });
 });
 
@@ -158,28 +236,84 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="dash-page">
-    <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p class="portal-section-title">Tracking</p>
-        <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Event Monitoring</h1>
-        <p class="mt-1 text-sm text-slate-600">
-          Track where each event is in the approval workflow.
-        </p>
+  <div class="dash-page dash-page-fill">
+    <div class="mb-0 flex shrink-0 flex-col gap-3">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="portal-section-title">Tracking</p>
+          <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Event Monitoring</h1>
+          <p class="mt-1 text-sm text-slate-600">
+            Track where each event is in the approval workflow.
+          </p>
+        </div>
+        <div class="relative w-full sm:max-w-xs">
+          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            v-model="search"
+            type="search"
+            class="input-dash w-full pl-9"
+            placeholder="Search events"
+          />
+        </div>
       </div>
-      <div class="relative w-full sm:max-w-xs">
-        <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          v-model="search"
-          type="search"
-          class="input-dash w-full pl-9"
-          placeholder="Search events"
-        />
+
+      <div class="flex flex-wrap items-end gap-2">
+        <label class="flex flex-col gap-0.5 text-xs text-slate-600">
+          From
+          <input v-model="filterDateFrom" type="date" class="input-dash py-1.5 text-xs" />
+        </label>
+        <label class="flex flex-col gap-0.5 text-xs text-slate-600">
+          To
+          <input v-model="filterDateTo" type="date" class="input-dash py-1.5 text-xs" />
+        </label>
+        <label class="flex min-w-[8rem] flex-col gap-0.5 text-xs text-slate-600">
+          Organization
+          <select v-model="filterOrganization" class="input-dash py-1.5 text-xs">
+            <option value="">All</option>
+            <option v-for="org in uniqueOrganizations" :key="org" :value="org">{{ org }}</option>
+          </select>
+        </label>
+        <label v-if="uniqueColleges.length" class="flex min-w-[8rem] flex-col gap-0.5 text-xs text-slate-600">
+          College
+          <select v-model="filterCollege" class="input-dash py-1.5 text-xs">
+            <option value="">All</option>
+            <option v-for="col in uniqueColleges" :key="col" :value="col">{{ col }}</option>
+          </select>
+        </label>
+        <label class="flex min-w-[8rem] flex-col gap-0.5 text-xs text-slate-600">
+          Status
+          <select v-model="filterStatus" class="input-dash py-1.5 text-xs">
+            <option value="">All</option>
+            <option v-for="st in uniqueStatuses" :key="st" :value="st">{{ displayWorkflowStatus(st) }}</option>
+          </select>
+        </label>
+        <label class="flex min-w-[8rem] flex-col gap-0.5 text-xs text-slate-600">
+          Venue
+          <select v-model="filterVenue" class="input-dash py-1.5 text-xs">
+            <option value="">All</option>
+            <option v-for="v in uniqueVenues" :key="v" :value="v">{{ v }}</option>
+          </select>
+        </label>
+        <label v-if="uniqueEventTypes.length" class="flex min-w-[8rem] flex-col gap-0.5 text-xs text-slate-600">
+          Event type
+          <select v-model="filterEventType" class="input-dash py-1.5 text-xs">
+            <option value="">All</option>
+            <option v-for="t in uniqueEventTypes" :key="t" :value="t">{{ t }}</option>
+          </select>
+        </label>
+        <button
+          v-if="hasActiveFilters"
+          type="button"
+          class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          @click="clearFilters"
+        >
+          <X :size="12" /> Clear filters
+        </button>
       </div>
     </div>
 
-    <div class="dash-card overflow-hidden">
-      <div class="min-h-0 overflow-auto">
+    <div class="dash-card dash-card-fill">
+      <div class="min-h-0 flex-1 overflow-auto">
         <table class="w-full min-w-[48rem] text-left">
           <thead class="sticky top-0 z-10 bg-slate-50">
             <tr>
@@ -195,7 +329,9 @@ onUnmounted(() => {
           <tbody>
             <PortalTableSkeleton v-if="loading" :rows="6" :columns="7" />
             <tr v-else-if="!filtered.length">
-              <td colspan="7" class="py-12 text-center text-sm text-slate-400">No events to monitor</td>
+              <td colspan="7" class="py-12 text-center text-sm text-slate-400">
+                {{ hasActiveFilters ? "No events match your filters." : "No events to monitor" }}
+              </td>
             </tr>
             <tr
               v-for="event in filtered"
@@ -210,7 +346,7 @@ onUnmounted(() => {
               <td class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">{{ event.venue || "—" }}</td>
               <td class="border-r border-slate-100 px-3 py-2.5 text-sm">
                 <span :class="['rounded-full px-2 py-0.5 text-xs font-semibold', statusClass(String(event.workflowStatus ?? event.status))]">
-                  {{ event.workflowStatus ?? event.status }}
+                  {{ displayWorkflowStatus(String(event.workflowStatus ?? event.status)) }}
                 </span>
               </td>
               <td class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">{{ fmtUpdated(event.updatedAt) }}</td>
@@ -261,7 +397,7 @@ onUnmounted(() => {
           </div>
           <div>
             <p class="text-xs font-bold uppercase tracking-wider text-gray-500">Current status</p>
-            <p class="font-medium text-gray-800">{{ selected.workflowStatus ?? selected.status }}</p>
+            <p class="font-medium text-gray-800">{{ displayWorkflowStatus(String(selected.workflowStatus ?? selected.status)) }}</p>
           </div>
           <div>
             <p class="mb-1 text-xs font-bold uppercase tracking-wider text-gray-500">Last updated</p>

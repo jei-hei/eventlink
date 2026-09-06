@@ -1,9 +1,9 @@
 import { getSupabase } from "@/lib/supabase";
-import { fetchAdminPortalUsers, type AdminPortalUserRow } from "@/services/adminUsersDb";
+import { countAdminPortalUsers, type AdminPortalUserRow } from "@/services/adminUsersDb";
 
 export type AdminStatSnapshot = {
   totalUsers: number;
-  studentsRegistered: number;
+  portalRolesAssigned: number;
   pendingWorkflowItems: number;
   activeOrganizations: number;
 };
@@ -31,44 +31,61 @@ function relativeTime(iso: string): string {
 
 export async function fetchAdminStatsSnapshot(): Promise<AdminStatSnapshot> {
   const supabase = getSupabase();
-  const users = await fetchAdminPortalUsers();
 
-  const [{ count: studentCount }, { count: pendingCount }, orgsRes] = await Promise.all([
-    supabase.from("students").select("student_id", { count: "exact", head: true }).eq("archived", false),
+  const [totalUsers, pendingRes, orgsRes] = await Promise.all([
+    countAdminPortalUsers(),
     supabase.from("event_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
-    supabase.from("organizations").select("id").eq("active", true),
+    supabase.from("organizations").select("id", { count: "exact", head: true }).eq("active", true),
   ]);
 
   return {
-    totalUsers: users.length,
-    studentsRegistered: studentCount ?? 0,
-    pendingWorkflowItems: pendingCount ?? 0,
-    activeOrganizations: (orgsRes.data ?? []).length,
+    totalUsers,
+    portalRolesAssigned: totalUsers,
+    pendingWorkflowItems: pendingRes.count ?? 0,
+    activeOrganizations: orgsRes.count ?? 0,
   };
 }
 
 export async function fetchAdminRecentActivity(limit = 8): Promise<AdminActivityItem[]> {
   const supabase = getSupabase();
-  const users = await fetchAdminPortalUsers();
-  const userMap = new Map<string, AdminPortalUserRow>();
-  users.forEach((u) => userMap.set(u.user_id, u));
+  const safeLimit = Math.min(20, Math.max(1, limit));
 
   const { data, error } = await supabase
     .from("event_request_history")
     .select("id, action, actor_id, created_at, request_id")
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(safeLimit);
   if (error) throw error;
+
+  const actorIds = [...new Set((data ?? []).map((r) => r.actor_id).filter(Boolean))] as string[];
+  const userMap = new Map<string, AdminPortalUserRow>();
+  if (actorIds.length) {
+    // Pull a small page of users as a fallback directory; prefer profiles for names.
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, display_name, email")
+      .in("id", actorIds);
+    for (const p of profiles ?? []) {
+      userMap.set(String(p.id), {
+        user_id: String(p.id),
+        app_role: "admin",
+        display_name: String(p.display_name ?? ""),
+        email: String(p.email ?? ""),
+        student_id: "",
+        college: "",
+        program: "",
+      });
+    }
+  }
 
   return (data ?? []).map((row) => {
     const user = userMap.get(row.actor_id as string);
     const action = String(row.action ?? "updated").replace(/_/g, " ");
-    const role = user?.app_role?.replace(/_/g, " ") ?? "Staff";
     return {
       id: String(row.id),
       action: action.charAt(0).toUpperCase() + action.slice(1),
       user: user?.display_name || user?.email || "Portal user",
-      role,
+      role: "Staff",
       time: relativeTime(String(row.created_at)),
     };
   });

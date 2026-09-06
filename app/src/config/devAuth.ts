@@ -26,7 +26,7 @@ export function isDevTestEmailAddress(mail: string): boolean {
 
 /** Staff OTP after password login — skip during testing or for dummy email domains. */
 export function shouldSkipStaffEmailOtp(mail: string, role: AppRole | null | undefined): boolean {
-  if (!role || role === "student") return true;
+  if (!role) return true;
   if (DEV_SKIP_STAFF_EMAIL_OTP) return true;
   return isDevTestEmailAddress(mail);
 }

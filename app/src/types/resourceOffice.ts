@@ -5,8 +5,21 @@ export type ResourceKind = "venue" | "equipment";
 
 export type ResourceAssignmentStatus = "pending" | "approved" | "declined";
 
-export const VENUE_OFFICES: ResourceOffice[] = ["gso", "sports_office", "ssc"];
-export const EQUIPMENT_OFFICES: ResourceOffice[] = ["gso", "it_infrastructure", "ssc"];
+/** Offices EO may assign for venue validation. */
+export const VENUE_OFFICES: ResourceOffice[] = [
+  "gso",
+  "sports_office",
+  "it_infrastructure",
+  "ssc",
+];
+
+/** Offices EO may assign for equipment / resource validation. */
+export const EQUIPMENT_OFFICES: ResourceOffice[] = [
+  "gso",
+  "sports_office",
+  "it_infrastructure",
+  "ssc",
+];
 
 export const RESOURCE_OFFICE_LABEL: Record<ResourceOffice, string> = {
   gso: "GSO",
@@ -17,6 +30,10 @@ export const RESOURCE_OFFICE_LABEL: Record<ResourceOffice, string> = {
 
 export function resourceOfficeLabel(office: ResourceOffice | string): string {
   return RESOURCE_OFFICE_LABEL[office as ResourceOffice] ?? office;
+}
+
+export function isResourceOffice(value: string): value is ResourceOffice {
+  return value in RESOURCE_OFFICE_LABEL;
 }
 
 export type ResourceAssignmentInput = {

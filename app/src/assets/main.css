@@ -74,12 +74,32 @@
     @apply flex min-h-0 w-full min-w-0 flex-1 flex-col gap-3 p-3 sm:gap-4 sm:p-4 lg:mx-auto lg:max-w-[1600px] lg:p-5;
   }
 
+  /* Fill remaining main height; children scroll internally (Event Management splits, etc.) */
+  .dash-page-fill {
+    @apply overflow-hidden;
+  }
+
+  .dash-page:has(> .dash-split) {
+    @apply overflow-hidden;
+  }
+
   .dash-split {
-    @apply flex min-h-0 flex-1 flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-4;
+    @apply grid min-h-0 flex-1 grid-cols-1 content-start items-stretch gap-4 lg:grid-cols-2 lg:content-stretch;
+  }
+
+  .dash-split > * {
+    @apply flex min-h-0 min-w-0 flex-col;
+    /* Mobile: usable panel height without forcing two full viewports stacked */
+    @apply min-h-[min(22rem,52vh)] lg:min-h-0;
   }
 
   .dash-card {
     @apply rounded-xl border border-slate-200/90 bg-white/95 shadow-sm ring-1 ring-slate-900/[0.02] backdrop-blur-sm;
+  }
+
+  /* Card that stretches inside a flex/grid parent and scrolls its body */
+  .dash-card-fill {
+    @apply flex h-full min-h-0 flex-1 flex-col overflow-hidden;
   }
 
   .dash-analytics {

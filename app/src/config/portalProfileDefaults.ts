@@ -3,14 +3,6 @@ import type { PortalProfileDefaults, PortalRoleKey } from "@/types/portalProfile
 const baseMember = "";
 const baseLogin = "";
 
-function statsStudent(): PortalProfileDefaults["activityStats"] {
-  return [
-    { id: "joined", label: "Posted events", value: 0, icon: "CalendarCheck" },
-    { id: "saved", label: "Calendar events", value: 0, icon: "Bookmark" },
-    { id: "feedback", label: "Your notifications", value: 0, icon: "MessageSquare" },
-  ];
-}
-
 function statsApprover(): PortalProfileDefaults["activityStats"] {
   return [
     { id: "approved", label: "Approved requests", value: 0, icon: "CheckCircle" },
@@ -43,18 +35,6 @@ export function getProfileDefaults(role: PortalRoleKey): PortalProfileDefaults {
   };
 
   const map: Record<PortalRoleKey, PortalProfileDefaults> = {
-    student: {
-      ...common,
-      portalRole: "student",
-      roleLabel: "Student",
-      roleDescription: "Access campus events, schedules, and announcements.",
-      studentOrEmployeeId: "",
-      course: "",
-      program: "",
-      yearLevel: "",
-      organization: "",
-      activityStats: statsStudent(),
-    },
     "student-officer": {
       ...common,
       portalRole: "student-officer",
@@ -162,6 +142,28 @@ export function getProfileDefaults(role: PortalRoleKey): PortalProfileDefaults {
       position: "Sports Officer",
       activityStats: statsApprover(),
     },
+    infirmary: {
+      ...common,
+      portalRole: "infirmary",
+      roleLabel: "Infirmary",
+      roleDescription: "View campus-wide scheduled events on the calendar.",
+      studentOrEmployeeId: "EMP-IF-001",
+      department: "Infirmary",
+      office: "Campus Infirmary",
+      position: "Infirmary Staff",
+      activityStats: statsApprover(),
+    },
+    nstp: {
+      ...common,
+      portalRole: "nstp",
+      roleLabel: "NSTP",
+      roleDescription: "View campus-wide scheduled events on the calendar.",
+      studentOrEmployeeId: "EMP-NS-001",
+      department: "NSTP Office",
+      office: "NSTP Coordination",
+      position: "NSTP Staff",
+      activityStats: statsApprover(),
+    },
     admin: {
       ...common,
       portalRole: "admin",
@@ -180,7 +182,6 @@ export function getProfileDefaults(role: PortalRoleKey): PortalProfileDefaults {
 
 export function roleToBadgeTone(role: PortalRoleKey) {
   const tones: Record<PortalRoleKey, import("@/types/portalProfile").RoleBadgeTone> = {
-    student: "green",
     "student-officer": "green",
     ssc: "teal",
     adviser: "blue",
@@ -190,6 +191,8 @@ export function roleToBadgeTone(role: PortalRoleKey) {
     gso: "slate",
     "it-infrastructure": "teal",
     "sports-office": "blue",
+    infirmary: "green",
+    nstp: "green",
     admin: "red",
   };
   return tones[role];

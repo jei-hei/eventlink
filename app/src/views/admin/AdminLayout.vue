@@ -8,7 +8,6 @@ import {
   Settings,
   Menu,
   X,
-  IdCard,
   UserCircle,
   LogOut,
   LayoutDashboard,
@@ -39,7 +38,6 @@ async function onLogout() {
 const navItems = [
   { to: "/admin", name: "admin-dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/admin/users", name: "admin-users", label: "Users", icon: Users },
-  { to: "/admin/students", name: "admin-students", label: "Students", icon: IdCard },
   { to: "/admin/colleges", name: "admin-colleges", label: "Colleges", icon: Building2 },
   { to: "/admin/reports", name: "admin-reports", label: "Reports & Analytics", icon: BarChart3 },
   { to: "/admin/settings", name: "admin-settings", label: "Settings", icon: Settings },
@@ -146,7 +144,7 @@ function closeMobile() {
       </header>
 
       <main class="portal-main-scroll bg-slate-50/80">
-        <div class="mx-auto w-full max-w-[1600px] px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-5">
+        <div class="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-5">
           <RouterView />
         </div>
       </main>

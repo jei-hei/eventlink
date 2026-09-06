@@ -1,5 +1,12 @@
 import { getSupabase } from "@/lib/supabase";
 import type { ResourceOffice } from "@/types/resourceOffice";
+import {
+  buildPaginatedResult,
+  emptyPage,
+  pageToRange,
+  type PaginatedResult,
+  type PaginationParams,
+} from "@/types/pagination";
 
 export type VenueRow = {
   id: string;
@@ -30,33 +37,61 @@ function mapVenue(row: Record<string, unknown>): VenueRow {
   };
 }
 
-export async function fetchActiveVenues(): Promise<VenueRow[]> {
+/** Active venues for forms/pickers — capped intentionally. */
+export async function fetchActiveVenues(limit = 100): Promise<VenueRow[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("venues")
     .select(VENUE_SELECT)
     .eq("active", true)
-    .order("name");
+    .order("name")
+    .limit(Math.min(100, Math.max(1, limit)));
   if (error) throw error;
   return (data ?? []).map((r) => mapVenue(r as Record<string, unknown>));
 }
 
+/** @deprecated Prefer fetchVenuesPage for manager UIs. */
 export async function fetchAllVenues(): Promise<VenueRow[]> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase.from("venues").select(VENUE_SELECT).order("name");
-  if (error) throw error;
-  return (data ?? []).map((r) => mapVenue(r as Record<string, unknown>));
+  const page = await fetchVenuesPage({ page: 1, pageSize: 100 });
+  return page.rows;
 }
 
+/** @deprecated Prefer fetchVenuesPage. */
 export async function fetchVenuesForOffice(office: ResourceOffice): Promise<VenueRow[]> {
+  const page = await fetchVenuesPage({ page: 1, pageSize: 100, office });
+  return page.rows;
+}
+
+export type VenuesPageFilters = PaginationParams & {
+  office?: ResourceOffice | null;
+  search?: string;
+  activeOnly?: boolean;
+};
+
+export async function fetchVenuesPage(params: VenuesPageFilters = {}): Promise<PaginatedResult<VenueRow>> {
+  const { page, pageSize, from, to } = pageToRange(params.page, params.pageSize);
   const supabase = getSupabase();
-  const { data, error } = await supabase
+  let query = supabase
     .from("venues")
-    .select(VENUE_SELECT)
-    .eq("responsible_office", office)
-    .order("name");
+    .select(VENUE_SELECT, { count: "exact" })
+    .order("name")
+    .range(from, to);
+
+  if (params.office) query = query.eq("responsible_office", params.office);
+  if (params.activeOnly) query = query.eq("active", true);
+  const q = params.search?.trim();
+  if (q) {
+    query = query.or(`name.ilike.%${q}%,location.ilike.%${q}%,description.ilike.%${q}%`);
+  }
+
+  const { data, error, count } = await query;
   if (error) throw error;
-  return (data ?? []).map((r) => mapVenue(r as Record<string, unknown>));
+  return buildPaginatedResult(
+    (data ?? []).map((r) => mapVenue(r as Record<string, unknown>)),
+    count ?? 0,
+    page,
+    pageSize,
+  );
 }
 
 export type SaveVenueInput = {

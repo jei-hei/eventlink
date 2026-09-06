@@ -1,8 +1,8 @@
 import type { RouteLocationNormalized, Router } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import { ROLE_HOME_PATH, type AppRole } from "@/types/appRole";
+import { PUBLIC_EVENTS_PATH, ROLE_HOME_PATH, type AppRole } from "@/types/appRole";
 
-const PUBLIC_NAMES = new Set(["login", "signup", "forgot-password", "student-events"]);
+const PUBLIC_NAMES = new Set(["login", "forgot-password", "public-events"]);
 
 function allowedRolesFor(to: RouteLocationNormalized): AppRole[] | undefined {
   for (let i = to.matched.length - 1; i >= 0; i--) {
@@ -18,7 +18,7 @@ export function installRouterGuards(router: Router) {
     await auth.whenReady();
 
     if (PUBLIC_NAMES.has(String(to.name ?? ""))) {
-      if (auth.isAuthenticated && (to.name === "login" || to.name === "signup")) {
+      if (auth.isAuthenticated && to.name === "login") {
         return auth.homePath;
       }
       return true;
@@ -26,6 +26,10 @@ export function installRouterGuards(router: Router) {
 
     if (!auth.isAuthenticated) {
       return { name: "login", query: { redirect: to.fullPath } };
+    }
+
+    if (!auth.appRole) {
+      return PUBLIC_EVENTS_PATH;
     }
 
     const allowed = allowedRolesFor(to);

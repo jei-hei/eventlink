@@ -1,0 +1,713 @@
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+import type { AnalyticsScope, AnalyticsScopeOptions } from "@/services/analyticsDb";
+import { stepLabel } from "@/services/eventRequestWorkflow";
+import { appRoleLabel, type AppRole } from "@/types/appRole";
+import type { DbWorkflowStep } from "@/types/eventRequest";
+
+export type EventsLogScope = AnalyticsScopeOptions & {
+  role: AnalyticsScope;
+};
+
+export type EventsLogFilters = {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  organizationId?: string | null;
+  collegeId?: string | null;
+  status?: string | null;
+  action?: string | null;
+  venue?: string | null;
+  office?: string | null;
+};
+
+export type EventsLogEntry = {
+  id: string;
+  requestId: string;
+  eventName: string;
+  organizationId: string | null;
+  organizationName: string;
+  collegeId: string | null;
+  collegeName: string;
+  venue: string;
+  requestStatus: string;
+  requestStatusRaw: string;
+  action: string;
+  actionLabel: string;
+  previousStatus: string | null;
+  newStatus: string | null;
+  actorName: string;
+  actorRole: string | null;
+  actorRoleLabel: string;
+  office: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type EventTrailEntry = EventsLogEntry;
+
+export type RecentEventOption = {
+  id: string;
+  activity: string;
+  organizationName: string;
+  venue: string;
+  status: string;
+  updatedAt: string;
+};
+
+type ResourceOffice = "gso" | "it_infrastructure" | "sports_office";
+
+type HistoryRow = {
+  id: string;
+  request_id: string;
+  actor_id: string | null;
+  action: string;
+  step: DbWorkflowStep | null;
+  comment: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  profiles?: { display_name: string | null } | { display_name: string | null }[] | null;
+  event_requests?:
+    | {
+        id: string;
+        activity: string;
+        venue: string;
+        status: string;
+        organization_id: string | null;
+        current_step: DbWorkflowStep | null;
+        request_type: string;
+        submitted_by: string;
+        organizations?:
+          | { name: string | null; college_id: string | null }
+          | { name: string | null; college_id: string | null }[]
+          | null;
+      }
+    | {
+        id: string;
+        activity: string;
+        venue: string;
+        status: string;
+        organization_id: string | null;
+        current_step: DbWorkflowStep | null;
+        request_type: string;
+        submitted_by: string;
+        organizations?:
+          | { name: string | null; college_id: string | null }
+          | { name: string | null; college_id: string | null }[]
+          | null;
+      }[]
+    | null;
+};
+
+type RequestRow = {
+  id: string;
+  activity: string;
+  venue: string;
+  status: string;
+  organization_id: string | null;
+  current_step: DbWorkflowStep | null;
+  request_type: string;
+  submitted_by: string;
+  updated_at?: string;
+  created_at: string;
+  organizations?:
+    | { name: string | null; college_id: string | null }
+    | { name: string | null; college_id: string | null }[]
+    | null;
+};
+
+const HISTORY_SELECT = `
+  id, request_id, actor_id, action, step, comment, metadata, created_at,
+  event_requests (
+    id, activity, venue, status, organization_id, current_step, request_type, submitted_by,
+    organizations ( name, college_id )
+  )
+`;
+
+const HISTORY_SELECT_FALLBACK = `
+  id, request_id, actor_id, action, step, comment, created_at,
+  event_requests (
+    id, activity, venue, status, organization_id, current_step, request_type, submitted_by,
+    organizations ( name, college_id )
+  )
+`;
+
+const HISTORY_SELECT_PLAIN = `id, request_id, actor_id, action, step, comment, metadata, created_at`;
+const HISTORY_SELECT_PLAIN_FALLBACK = `id, request_id, actor_id, action, step, comment, created_at`;
+
+function asError(error: { message?: string } | null | undefined, fallback = "Could not load events log."): Error {
+  return new Error(error?.message?.trim() || fallback);
+}
+
+async function hydrateHistoryWithRequests(rows: HistoryRow[]): Promise<HistoryRow[]> {
+  const requestIds = [...new Set(rows.map((r) => r.request_id).filter(Boolean))];
+  if (!requestIds.length) return rows;
+
+  const supabase = getSupabase();
+  const withOrgs = await supabase
+    .from("event_requests")
+    .select(
+      "id, activity, venue, status, organization_id, current_step, request_type, submitted_by, organizations ( name, college_id )",
+    )
+    .in("id", requestIds);
+
+  let requestRows: RequestRow[] = [];
+  if (!withOrgs.error) {
+    requestRows = (withOrgs.data ?? []) as RequestRow[];
+  } else {
+    const plain = await supabase
+      .from("event_requests")
+      .select("id, activity, venue, status, organization_id, current_step, request_type, submitted_by")
+      .in("id", requestIds);
+    if (plain.error) throw asError(plain.error);
+    requestRows = (plain.data ?? []) as RequestRow[];
+  }
+
+  const byId = new Map(requestRows.map((r) => [r.id, r] as const));
+
+  return rows.map((row) => ({
+    ...row,
+    event_requests: byId.get(row.request_id) ?? null,
+  }));
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  submitted: "Submitted",
+  approved: "Approved",
+  forwarded: "Forwarded",
+  scheduled: "Scheduled",
+  declined: "Declined",
+  posted: "Published",
+  calendar_posted: "Calendar Posted",
+  cancelled: "Cancelled",
+  revision_requested: "Revision Requested",
+  updated: "Edited",
+  resubmitted: "Resubmitted",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  approved: "Approved",
+  declined: "Declined",
+  posted: "Posted",
+  cancelled: "Cancelled",
+  revision_requested: "Revision Requested",
+};
+
+function isResourceOfficeScope(scope: AnalyticsScope): scope is ResourceOffice {
+  return scope === "gso" || scope === "it_infrastructure" || scope === "sports_office";
+}
+
+function unwrapProfile(
+  profiles: HistoryRow["profiles"],
+): { display_name: string | null } | null {
+  if (!profiles) return null;
+  return Array.isArray(profiles) ? (profiles[0] ?? null) : profiles;
+}
+
+function unwrapRequest(row: HistoryRow): RequestRow | null {
+  const raw = row.event_requests;
+  if (!raw) return null;
+  const req = Array.isArray(raw) ? raw[0] : raw;
+  if (!req) return null;
+  return req as RequestRow;
+}
+
+function unwrapOrg(
+  orgs: RequestRow["organizations"],
+): { name: string | null; college_id: string | null } | null {
+  if (!orgs) return null;
+  return Array.isArray(orgs) ? (orgs[0] ?? null) : orgs;
+}
+
+function statusLabel(status: string | null | undefined): string | null {
+  if (!status) return null;
+  return STATUS_LABELS[status] ?? status.replace(/_/g, " ");
+}
+
+function metadataString(meta: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const val = meta[key];
+    if (typeof val === "string" && val.trim()) return val.trim();
+  }
+  return null;
+}
+
+function extractStatusFromMetadata(meta: Record<string, unknown>): {
+  previousStatus: string | null;
+  newStatus: string | null;
+} {
+  const prev =
+    metadataString(meta, "previous_status", "prev_status", "old_status", "status_from", "from_status") ??
+    null;
+  const next =
+    metadataString(meta, "new_status", "next_status", "status_to", "to_status") ?? null;
+  return {
+    previousStatus: prev ? statusLabel(prev) : null,
+    newStatus: next ? statusLabel(next) : null,
+  };
+}
+
+function officeFromStep(step: DbWorkflowStep | null): string | null {
+  if (!step) return null;
+  return stepLabel(step);
+}
+
+function refineActionLabel(
+  action: string,
+  step: DbWorkflowStep | null,
+  comment: string | null,
+  metadata: Record<string, unknown>,
+): string {
+  const base = ACTION_LABELS[action] ?? action.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  if (action === "submitted" && metadata.is_resubmit !== true) {
+    return "Created";
+  }
+
+  if (action === "approved" && step === "resource_offices") {
+    const lower = (comment ?? "").toLowerCase();
+    if (lower.includes("sports office") || lower.includes("venue")) return "Venue Approved";
+    if (lower.includes("it infrastructure") || lower.includes("equipment")) return "Equipment Approved";
+    if (lower.includes("gso")) return "GSO Approved";
+    return "Resource Approved";
+  }
+
+  if (action === "updated") {
+    const hasScheduleChange =
+      metadataString(metadata, "old_venue", "previous_venue", "old_start_date", "previous_start_date") ||
+      metadataString(metadata, "new_venue", "venue", "new_start_date", "start_date");
+    if (hasScheduleChange) return "Rescheduled";
+    return "Edited";
+  }
+
+  if (action === "scheduled") return "Scheduled";
+  if (action === "forwarded") return "Forwarded";
+  if (action === "calendar_posted") return "Calendar Posted";
+
+  return base;
+}
+
+async function fetchResourceOfficeRequestIds(office: ResourceOffice): Promise<string[]> {
+  const supabase = getSupabase();
+  let assignmentQuery = supabase
+    .from("event_request_resource_assignments")
+    .select("request_id")
+    .eq("assigned_office", office);
+
+  if (office === "it_infrastructure") {
+    assignmentQuery = assignmentQuery.eq("resource_kind", "equipment");
+  } else if (office === "sports_office") {
+    assignmentQuery = assignmentQuery.eq("resource_kind", "venue");
+  }
+
+  const { data: assignmentRows, error: assignmentErr } = await assignmentQuery.limit(500);
+  if (assignmentErr) throw asError(assignmentErr, "Could not load resource office assignments.");
+
+  const ids = new Set<string>(
+    ((assignmentRows ?? []) as Array<{ request_id: string | null }>)
+      .map((r) => r.request_id)
+      .filter((id): id is string => !!id),
+  );
+
+  if (office === "gso") {
+    const since = new Date();
+    since.setFullYear(since.getFullYear() - 1);
+    const { data: legacyRows, error: legacyErr } = await supabase
+      .from("event_requests")
+      .select("id")
+      .eq("current_step", "gso")
+      .gte("created_at", since.toISOString())
+      .limit(500);
+    if (legacyErr) throw asError(legacyErr, "Could not load legacy GSO requests.");
+    for (const row of (legacyRows ?? []) as Array<{ id: string }>) {
+      if (row.id) ids.add(row.id);
+    }
+  }
+
+  return [...ids];
+}
+
+async function fetchScopedRequestIds(scope: EventsLogScope): Promise<string[] | null> {
+  const collegeId = scope.collegeId?.trim() || null;
+  const organizationId = scope.organizationId?.trim() || null;
+  const userId = scope.userId?.trim() || null;
+
+  if (scope.role === "dean" && !collegeId) return [];
+  if (scope.role === "adviser" && !collegeId && !organizationId) return [];
+  if (scope.role === "student_officer" && !organizationId && !userId) return [];
+
+  const supabase = getSupabase();
+  const since = new Date();
+  since.setFullYear(since.getFullYear() - 1);
+  const sinceIso = since.toISOString();
+
+  const useInnerOrg = scope.role === "dean" || (scope.role === "adviser" && !!collegeId);
+  const orgSelect = useInnerOrg
+    ? "organizations!inner(name, college_id)"
+    : "organizations(name, college_id)";
+
+  let query = supabase
+    .from("event_requests")
+    .select(`id, ${orgSelect}`)
+    .gte("created_at", sinceIso)
+    .order("updated_at", { ascending: false })
+    .limit(500);
+
+  if (scope.role === "ssc") {
+    query = query.eq("request_type", "ssc");
+  } else if (scope.role === "student_officer") {
+    query = query.eq("request_type", "student_officer");
+    if (organizationId) query = query.eq("organization_id", organizationId);
+    else if (userId) query = query.eq("submitted_by", userId);
+  } else if (scope.role === "dean") {
+    query = query.eq("organizations.college_id", collegeId!);
+  } else if (scope.role === "adviser") {
+    if (collegeId) query = query.eq("organizations.college_id", collegeId);
+    else if (organizationId) query = query.eq("organization_id", organizationId);
+  } else if (isResourceOfficeScope(scope.role)) {
+    return fetchResourceOfficeRequestIds(scope.role);
+  }
+
+  const { data, error } = await query;
+  if (error) throw asError(error, "Could not load scoped event requests.");
+  return ((data ?? []) as Array<{ id: string }>).map((r) => r.id).filter(Boolean);
+}
+
+async function fetchCollegeNameMap(): Promise<Map<string, string>> {
+  const supabase = getSupabase();
+  const { data } = await supabase.from("colleges").select("id, name");
+  return new Map(
+    ((data ?? []) as Array<{ id: string; name: string | null }>).map((c) => [
+      c.id,
+      c.name?.trim() || "College",
+    ]),
+  );
+}
+
+async function fetchActorRoleMap(actorIds: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(actorIds.filter(Boolean))];
+  if (!unique.length) return new Map();
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("user_roles").select("user_id, role").in("user_id", unique);
+  if (error) {
+    console.warn("[eventsLog] user_roles lookup failed", error.message);
+    return new Map();
+  }
+  return new Map(
+    ((data ?? []) as Array<{ user_id: string; role: string }>).map((r) => [r.user_id, r.role]),
+  );
+}
+
+async function fetchActorNameMap(actorIds: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(actorIds.filter(Boolean))];
+  if (!unique.length) return new Map();
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("profiles").select("id, display_name").in("id", unique);
+  if (error) {
+    console.warn("[eventsLog] profiles lookup failed", error.message);
+    return new Map();
+  }
+  const map = new Map<string, string>();
+  for (const row of (data ?? []) as Array<{ id: string; display_name: string | null }>) {
+    const name = row.display_name?.trim();
+    if (name) map.set(row.id, name);
+  }
+  return map;
+}
+
+function mapHistoryRow(
+  row: HistoryRow,
+  collegeNameById: Map<string, string>,
+  actorRoleById: Map<string, string>,
+  actorNameById: Map<string, string>,
+): EventsLogEntry | null {
+  const req = unwrapRequest(row);
+  if (!req) return null;
+
+  const org = unwrapOrg(req.organizations);
+  const orgName = org?.name?.trim() || "Organization";
+  const collegeName = org?.college_id
+    ? (collegeNameById.get(org.college_id) ?? "Unassigned College")
+    : "Unassigned College";
+
+  const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+  const { previousStatus, newStatus } = extractStatusFromMetadata(metadata);
+  const actorRole = row.actor_id ? (actorRoleById.get(row.actor_id) ?? null) : null;
+  const actorName =
+    (row.actor_id ? actorNameById.get(row.actor_id) : null) ||
+    unwrapProfile(row.profiles)?.display_name?.trim() ||
+    "System";
+
+  return {
+    id: row.id,
+    requestId: row.request_id,
+    eventName: req.activity?.trim() || "Untitled event",
+    organizationId: req.organization_id,
+    organizationName: orgName,
+    collegeId: org?.college_id ?? null,
+    collegeName,
+    venue: req.venue?.trim() || "—",
+    requestStatus: statusLabel(req.status) ?? req.status,
+    requestStatusRaw: req.status,
+    action: row.action,
+    actionLabel: refineActionLabel(row.action, row.step, row.comment, metadata),
+    previousStatus,
+    newStatus,
+    actorName,
+    actorRole,
+    actorRoleLabel: actorRole
+      ? appRoleLabel(actorRole as AppRole) || actorRole.replace(/_/g, " ")
+      : "—",
+    office: officeFromStep(row.step),
+    notes: row.comment?.trim() || null,
+    metadata,
+    createdAt: row.created_at,
+  };
+}
+
+function applyFilters(entries: EventsLogEntry[], filters: EventsLogFilters): EventsLogEntry[] {
+  const dateFrom = filters.dateFrom?.trim() || null;
+  const dateTo = filters.dateTo?.trim() || null;
+  const orgId = filters.organizationId?.trim() || null;
+  const collegeId = filters.collegeId?.trim() || null;
+  const status = filters.status?.trim() || null;
+  const action = filters.action?.trim() || null;
+  const venue = filters.venue?.trim()?.toLowerCase() || null;
+  const office = filters.office?.trim()?.toLowerCase() || null;
+
+  return entries.filter((e) => {
+    const created = e.createdAt.slice(0, 10);
+    if (dateFrom && created < dateFrom) return false;
+    if (dateTo && created > dateTo) return false;
+    if (status && e.requestStatusRaw !== status) return false;
+    if (action && e.action !== action && e.actionLabel.toLowerCase() !== action.toLowerCase()) return false;
+    if (venue && !e.venue.toLowerCase().includes(venue)) return false;
+    if (office) {
+      const o = office.toLowerCase();
+      const officeText = (e.office ?? "").toLowerCase();
+      const notes = (e.notes ?? "").toLowerCase();
+      const matches =
+        officeText.includes(o) ||
+        notes.includes(o) ||
+        (o === "it" && (officeText.includes("it") || notes.includes("it infrastructure"))) ||
+        (o === "sports" && (officeText.includes("sports") || notes.includes("sports office"))) ||
+        (o === "eo" && (officeText.includes("eo") || officeText.includes("executive"))) ||
+        (o === "resource" && officeText.includes("resource"));
+      if (!matches) return false;
+    }
+    if (orgId && e.organizationId !== orgId) return false;
+    if (collegeId && e.collegeId !== collegeId) return false;
+    return true;
+  });
+}
+
+export function appRoleToEventsLogScope(role: AppRole): AnalyticsScope | null {
+  const map: Partial<Record<AppRole, AnalyticsScope>> = {
+    student_officer: "student_officer",
+    ssc: "ssc",
+    eo: "eo",
+    adviser: "adviser",
+    dean: "dean",
+    osas: "osas",
+    gso: "gso",
+    it_infrastructure: "it_infrastructure",
+    sports_office: "sports_office",
+  };
+  return map[role] ?? null;
+}
+
+export async function fetchEventsLog(
+  filters: EventsLogFilters,
+  scope: EventsLogScope,
+  pagination?: { page?: number; pageSize?: number },
+): Promise<import("@/types/pagination").PaginatedResult<EventsLogEntry>> {
+  const { buildPaginatedResult, emptyPage, pageToRange } = await import("@/types/pagination");
+  if (!isSupabaseConfigured) return emptyPage();
+
+  const { page, pageSize, from, to } = pageToRange(pagination?.page, pagination?.pageSize);
+  const requestIds = await fetchScopedRequestIds(scope);
+  if (requestIds !== null && requestIds.length === 0) return emptyPage(page, pageSize);
+
+  const supabase = getSupabase();
+
+  async function runHistoryQuery(select: string, withCount: boolean) {
+    let query = supabase
+      .from("event_request_history")
+      .select(select, withCount ? { count: "exact" } : undefined)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (requestIds !== null) {
+      query = query.in("request_id", requestIds.slice(0, 500));
+    }
+    if (filters.dateFrom?.trim()) {
+      query = query.gte("created_at", `${filters.dateFrom.trim()}T00:00:00.000Z`);
+    }
+    if (filters.dateTo?.trim()) {
+      query = query.lte("created_at", `${filters.dateTo.trim()}T23:59:59.999Z`);
+    }
+    if (filters.action?.trim()) {
+      query = query.eq("action", filters.action.trim());
+    }
+    return query;
+  }
+
+  let { data, error, count } = await runHistoryQuery(HISTORY_SELECT, true);
+  let needsHydrate = false;
+
+  if (error) {
+    ({ data, error, count } = await runHistoryQuery(HISTORY_SELECT_FALLBACK, true));
+  }
+  if (error) {
+    ({ data, error, count } = await runHistoryQuery(HISTORY_SELECT_PLAIN, true));
+    needsHydrate = !error;
+  }
+  if (error) {
+    ({ data, error, count } = await runHistoryQuery(HISTORY_SELECT_PLAIN_FALLBACK, true));
+    needsHydrate = !error;
+  }
+  if (error) throw asError(error);
+
+  let rows = (data ?? []) as unknown as HistoryRow[];
+  if (needsHydrate) {
+    rows = await hydrateHistoryWithRequests(rows);
+  }
+
+  const actorIds = rows.map((r) => r.actor_id).filter(Boolean) as string[];
+  const [collegeNameById, actorRoleById, actorNameById] = await Promise.all([
+    fetchCollegeNameMap(),
+    fetchActorRoleMap(actorIds),
+    fetchActorNameMap(actorIds),
+  ]);
+
+  const entries = rows
+    .map((row) => mapHistoryRow(row, collegeNameById, actorRoleById, actorNameById))
+    .filter((e): e is EventsLogEntry => !!e);
+
+  // Remaining filters (venue/office/org/status/college) apply to the current page only when
+  // they cannot be expressed efficiently on history alone. Date/action are server-side.
+  const filtered = applyFilters(entries, {
+    ...filters,
+    dateFrom: null,
+    dateTo: null,
+    action: null,
+  });
+
+  return buildPaginatedResult(filtered, count ?? filtered.length, page, pageSize);
+}
+
+export async function fetchEventTrail(
+  requestId: string,
+  scope?: EventsLogScope,
+  pagination?: { page?: number; pageSize?: number },
+): Promise<import("@/types/pagination").PaginatedResult<EventTrailEntry>> {
+  const { buildPaginatedResult, emptyPage, pageToRange } = await import("@/types/pagination");
+  if (!isSupabaseConfigured) return emptyPage();
+  const trimmed = requestId.trim();
+  if (!trimmed) return emptyPage();
+
+  if (scope) {
+    const requestIds = await fetchScopedRequestIds(scope);
+    if (requestIds !== null && !requestIds.includes(trimmed)) return emptyPage();
+  }
+
+  const { page, pageSize, from, to } = pageToRange(pagination?.page, pagination?.pageSize);
+  const supabase = getSupabase();
+
+  async function runTrailQuery(select: string) {
+    return supabase
+      .from("event_request_history")
+      .select(select, { count: "exact" })
+      .eq("request_id", trimmed)
+      .order("created_at", { ascending: true })
+      .range(from, to);
+  }
+
+  let { data, error, count } = await runTrailQuery(HISTORY_SELECT);
+  let needsHydrate = false;
+
+  if (error) {
+    ({ data, error, count } = await runTrailQuery(HISTORY_SELECT_FALLBACK));
+  }
+  if (error) {
+    ({ data, error, count } = await runTrailQuery(HISTORY_SELECT_PLAIN));
+    needsHydrate = !error;
+  }
+  if (error) {
+    ({ data, error, count } = await runTrailQuery(HISTORY_SELECT_PLAIN_FALLBACK));
+    needsHydrate = !error;
+  }
+  if (error) throw asError(error);
+
+  let rows = (data ?? []) as unknown as HistoryRow[];
+  if (needsHydrate) {
+    rows = await hydrateHistoryWithRequests(rows);
+  }
+
+  const actorIds = rows.map((r) => r.actor_id).filter(Boolean) as string[];
+  const [collegeNameById, actorRoleById, actorNameById] = await Promise.all([
+    fetchCollegeNameMap(),
+    fetchActorRoleMap(actorIds),
+    fetchActorNameMap(actorIds),
+  ]);
+
+  const entries = rows
+    .map((row) => mapHistoryRow(row, collegeNameById, actorRoleById, actorNameById))
+    .filter((e): e is EventTrailEntry => !!e);
+
+  return buildPaginatedResult(entries, count ?? entries.length, page, pageSize);
+}
+
+export async function fetchRecentEventsInScope(scope: EventsLogScope): Promise<RecentEventOption[]> {
+  if (!isSupabaseConfigured) return [];
+
+  const requestIds = await fetchScopedRequestIds(scope);
+  if (requestIds !== null && requestIds.length === 0) return [];
+
+  const supabase = getSupabase();
+  let query = supabase
+    .from("event_requests")
+    .select("id, activity, venue, status, updated_at, created_at, organizations(name)")
+    .order("updated_at", { ascending: false })
+    .limit(40);
+
+  if (requestIds !== null) {
+    query = query.in("id", requestIds.slice(0, 40));
+  }
+
+  const { data, error } = await query;
+  if (error) throw asError(error, "Could not load recent events.");
+
+  return ((data ?? []) as RequestRow[]).map((row) => {
+    const org = unwrapOrg(row.organizations);
+    return {
+      id: row.id,
+      activity: row.activity?.trim() || "Untitled event",
+      organizationName: org?.name?.trim() || "Organization",
+      venue: row.venue?.trim() || "—",
+      status: statusLabel(row.status) ?? row.status,
+      updatedAt: row.updated_at ?? row.created_at,
+    };
+  });
+}
+
+export const EVENT_LOG_ACTION_OPTIONS = Object.entries(ACTION_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
+
+export const EVENT_LOG_STATUS_OPTIONS = Object.entries(STATUS_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
+
+export const EVENT_LOG_OFFICE_OPTIONS: { value: string; label: string }[] = [
+  { value: "adviser", label: "Adviser" },
+  { value: "dean", label: "Dean" },
+  { value: "osas", label: "OSAS" },
+  { value: "eo", label: "Executive Officer" },
+  { value: "gso", label: "GSO" },
+  { value: "it", label: "IT Infrastructure" },
+  { value: "sports", label: "Sports Office" },
+  { value: "resource", label: "Resource Offices" },
+];

@@ -89,6 +89,7 @@ export type EventRequestHistoryRow = {
   action: string;
   step: DbWorkflowStep | null;
   comment: string | null;
+  metadata?: Record<string, unknown> | null;
   created_at: string;
   profiles?: { display_name: string } | null;
 };

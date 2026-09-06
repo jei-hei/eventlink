@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { TrendingUp, CalendarDays, CheckCircle2, BarChart2, Clock } from "lucide-vue-next";
+import EventTrailPanel from "@/components/portal/EventTrailPanel.vue";
+import EventsLogPanel from "@/components/portal/EventsLogPanel.vue";
 import OrgFeedbackSection from "@/components/portal/OrgFeedbackSection.vue";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import { fetchAnalyticsOverview, type ActivityItem } from "@/services/analyticsDb";
@@ -122,8 +124,8 @@ const pieGradient = computed(() => {
         <BarChart2 :size="18" class="text-white" />
       </div>
       <div class="min-w-0">
-        <h1 class="font-bold text-gray-800 text-base">Analytics Overview</h1>
-        <p class="text-gray-500 text-xs">Academic Year 2025–2026 · eventlink.isu.edu.ph/eo</p>
+        <h1 class="font-bold text-gray-800 text-base">Dashboard</h1>
+        <p class="text-gray-500 text-xs">SSC portal · Reports &amp; analytics</p>
       </div>
       <div
         class="sm:ml-auto flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm w-fit"
@@ -319,6 +321,9 @@ const pieGradient = computed(() => {
     </div>
 
     <OrgFeedbackSection />
+
+    <EventsLogPanel role="ssc" />
+    <EventTrailPanel role="ssc" />
 
     <div class="h-4" />
   </div>

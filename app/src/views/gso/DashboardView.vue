@@ -69,9 +69,9 @@ function onModalReject() {
 
 <template>
   <div class="dash-page">
-    <div class="dash-split lg:flex-col xl:flex-row xl:items-start">
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 sm:gap-4 xl:flex-[0_0_68%]">
-        <div class="dash-card flex min-h-[min(220px,45vh)] flex-1 flex-col">
+    <div class="dash-split">
+      <div class="flex min-h-0 min-w-0 flex-col">
+        <div class="dash-card dash-card-fill">
           <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2.5 sm:px-4">
             <Calendar :size="18" class="text-emerald-600" />
             <h2 class="text-xs font-bold uppercase tracking-wide text-slate-800 sm:text-sm">
@@ -171,8 +171,8 @@ function onModalReject() {
         </div>
       </div>
 
-      <div class="flex min-h-0 min-w-0 flex-col xl:flex-[0_0_32%] xl:self-start">
-        <ScheduledEventsCalendar :events="calendarEvents" class="min-h-[420px] lg:min-h-[460px] xl:min-h-0" />
+      <div class="flex min-h-0 min-w-0 flex-col">
+        <ScheduledEventsCalendar :events="calendarEvents" class="h-full min-h-0" />
       </div>
     </div>
 

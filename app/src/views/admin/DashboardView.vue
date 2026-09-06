@@ -10,14 +10,14 @@ const loadError = ref<string | null>(null);
 const recentActivity = ref<AdminActivityItem[]>([]);
 const statsRaw = ref({
   totalUsers: 0,
-  studentsRegistered: 0,
+  portalRolesAssigned: 0,
   pendingWorkflowItems: 0,
   activeOrganizations: 0,
 });
 
 const stats = computed(() => [
   { label: "Total Users", value: String(statsRaw.value.totalUsers), icon: Users, color: "bg-blue-500" },
-  { label: "Students Registered", value: String(statsRaw.value.studentsRegistered), icon: UserCheck, color: "bg-green-500" },
+  { label: "Portal Roles Assigned", value: String(statsRaw.value.portalRolesAssigned), icon: UserCheck, color: "bg-green-500" },
   { label: "Pending Workflow", value: String(statsRaw.value.pendingWorkflowItems), icon: Clock3, color: "bg-yellow-500" },
   { label: "Active Organizations", value: String(statsRaw.value.activeOrganizations), icon: Building2, color: "bg-purple-500" },
 ]);

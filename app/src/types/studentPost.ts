@@ -9,6 +9,10 @@ export type CreateStudentFeedPostInput = {
   /** Optional link to an event request (e.g. for letter download) */
   requestId?: string | null;
   organizationId?: string | null;
+  /** When linked to a completed event, allow student feedback on the post. */
+  requireFeedbackAccessCode?: boolean;
+  /** Plaintext access code — hashed before storage; never persisted as-is. */
+  feedbackAccessCode?: string;
 };
 
 export type UpdateStudentFeedPostInput = {
@@ -46,11 +50,27 @@ export type StudentFeedPostRow = {
   event_date: string | null;
   event_time: string | null;
   venue: string | null;
+  require_feedback_access_code?: boolean;
   posted_at: string;
   created_at: string;
   /** Org linked to the post row (event relationship); not used as poster identity. */
-  organizations?: { name: string } | null;
+  organizations?: { name: string } | { name: string }[] | null;
   /** Actual creator profile via submitted_by → profiles. */
   profiles?: StudentFeedPosterProfile | null;
-  event_requests?: { letter_path: string | null } | null;
+  event_requests?:
+    | {
+        letter_path: string | null;
+        start_date?: string;
+        end_date?: string;
+        start_time?: string;
+        end_time?: string;
+      }
+    | {
+        letter_path: string | null;
+        start_date?: string;
+        end_date?: string;
+        start_time?: string;
+        end_time?: string;
+      }[]
+    | null;
 };

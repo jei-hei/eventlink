@@ -20,7 +20,7 @@ export const useProfileStore = defineStore("profile", () => {
   const email = ref("");
   const role = ref("");
 
-  const portalRole = ref<PortalRoleKey>("student");
+  const portalRole = ref<PortalRoleKey>("student-officer");
   const roleLabel = ref("");
   const roleDescription = ref("");
   const studentOrEmployeeId = ref("");
@@ -174,7 +174,7 @@ export const useProfileStore = defineStore("profile", () => {
     routeRole: PortalRoleKey,
   ): Promise<void> {
     const auth = useAuthStore();
-    const allowEmailEdit = routeRole !== "student";
+    const allowEmailEdit = true;
     const emailToPersist = allowEmailEdit ? partial.email : undefined;
 
     if (isSupabaseConfigured && auth.userId && !auth.useMock) {
@@ -293,7 +293,7 @@ export const useProfileStore = defineStore("profile", () => {
     email.value = "";
     role.value = "";
     avatarDataUrl.value = null;
-    applyDefaults(getProfileDefaults("student"));
+    applyDefaults(getProfileDefaults("student-officer"));
   }
 
   return {

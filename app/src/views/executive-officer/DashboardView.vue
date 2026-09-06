@@ -140,8 +140,8 @@ async function onCancelScheduled(id: string, reason: string) {
 <template>
   <div class="dash-page">
     <div class="dash-split">
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[0_0_68%]">
-        <div class="dash-card flex min-h-[min(220px,45vh)] flex-1 flex-col">
+      <div class="flex min-h-0 min-w-0 flex-col">
+        <div class="dash-card dash-card-fill">
           <div class="px-4 py-3 border-b border-gray-200 flex items-center gap-2 flex-wrap">
             <Calendar :size="18" class="text-[#16A34A]" />
             <h2 class="font-bold text-sm text-gray-800 uppercase tracking-wide">Pending Events Table</h2>
@@ -150,7 +150,7 @@ async function onCancelScheduled(id: string, reason: string) {
             </span>
           </div>
 
-          <div class="flex-1 overflow-auto">
+          <div class="min-h-0 flex-1 overflow-auto">
             <table class="w-full">
               <thead class="bg-gray-50 sticky top-0 z-10">
                 <tr>
@@ -226,12 +226,12 @@ async function onCancelScheduled(id: string, reason: string) {
         </div>
       </div>
 
-      <div class="flex min-h-0 min-w-0 flex-col gap-3 lg:max-w-none lg:flex-[0_0_32%]">
+      <div class="flex min-h-0 min-w-0 flex-col">
         <ScheduledEventsCalendar
           :events="calendarEvents"
           show-add-button
           selectable
-          class="min-h-0"
+          class="h-full min-h-0"
           @add="openAddEvent"
           @select="onCalendarSelect"
         />

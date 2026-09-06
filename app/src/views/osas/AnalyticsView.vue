@@ -8,6 +8,8 @@ import {
   Clock,
   AlertTriangle,
 } from "lucide-vue-next";
+import EventTrailPanel from "@/components/portal/EventTrailPanel.vue";
+import EventsLogPanel from "@/components/portal/EventsLogPanel.vue";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import { fetchAnalyticsOverview } from "@/services/analyticsDb";
 
@@ -133,8 +135,8 @@ const pieGradient = computed(() => {
         <BarChart2 :size="18" class="text-white" />
       </div>
       <div class="min-w-0">
-        <h1 class="font-bold text-gray-800 text-base">Analytics Overview</h1>
-        <p class="text-gray-500 text-xs">OSAS portal · Live analytics</p>
+        <h1 class="font-bold text-gray-800 text-base">Dashboard</h1>
+        <p class="text-gray-500 text-xs">OSAS portal · Reports &amp; analytics</p>
       </div>
       <div
         class="sm:ml-auto flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm w-fit"
@@ -308,6 +310,9 @@ const pieGradient = computed(() => {
         <p v-if="!recentActivity.length" class="text-center text-xs text-gray-500 py-4">No recent activity yet.</p>
       </div>
     </div>
+
+    <EventsLogPanel role="osas" />
+    <EventTrailPanel role="osas" />
 
     <div class="h-4" />
   </div>

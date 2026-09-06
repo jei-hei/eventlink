@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { X } from "lucide-vue-next";
 import EventLetterLink from "@/components/EventLetterLink.vue";
 import ComplianceRevisionModal from "@/components/portal/ComplianceRevisionModal.vue";
@@ -39,54 +39,96 @@ watch(
   },
   { immediate: true },
 );
-type DraftRow = {
+
+type ResourceDraft = {
   key: string;
   resourceKind: "venue" | "equipment";
   venueId: string | null;
   equipmentId: string | null;
   resourceName: string;
   quantity: number;
-  assignedOffice: ResourceOffice | "";
 };
 
-const drafts = reactive<DraftRow[]>([]);
+const venueResources = ref<ResourceDraft[]>([]);
+const equipmentResources = ref<ResourceDraft[]>([]);
+const selectedVenueOffices = ref<ResourceOffice[]>([]);
+const selectedEquipmentOffices = ref<ResourceOffice[]>([]);
+const venuePickerOpen = ref(false);
+const equipmentPickerOpen = ref(false);
 const revisionOpen = ref(false);
 const revisionSubmitting = ref(false);
 
-function buildDrafts(event: EoEvent): DraftRow[] {
+function buildResourceDrafts(event: EoEvent): { venue: ResourceDraft[]; equipment: ResourceDraft[] } {
   if (event.resourceAssignments?.length) {
-    return event.resourceAssignments.map((a, idx) => ({
-      key: a.id || `ra-${idx}`,
-      resourceKind: a.resourceKind,
-      venueId: a.venueId,
-      equipmentId: a.equipmentId,
-      resourceName: a.resourceName,
-      quantity: a.quantity,
-      assignedOffice: a.assignedOffice,
-    }));
+    const venue: ResourceDraft[] = [];
+    const equipment: ResourceDraft[] = [];
+    const seenVenue = new Set<string>();
+    const seenEq = new Set<string>();
+    for (const [idx, a] of event.resourceAssignments.entries()) {
+      if (a.resourceKind === "venue") {
+        const key = a.venueId || a.resourceName || `venue-${idx}`;
+        if (seenVenue.has(key)) continue;
+        seenVenue.add(key);
+        venue.push({
+          key: a.id || `venue-${idx}`,
+          resourceKind: "venue",
+          venueId: a.venueId,
+          equipmentId: null,
+          resourceName: a.resourceName,
+          quantity: a.quantity,
+        });
+      } else {
+        const key = a.equipmentId || `${a.resourceName}-${a.quantity}` || `eq-${idx}`;
+        if (seenEq.has(key)) continue;
+        seenEq.add(key);
+        equipment.push({
+          key: a.id || `eq-${idx}`,
+          resourceKind: "equipment",
+          venueId: null,
+          equipmentId: a.equipmentId,
+          resourceName: a.resourceName,
+          quantity: a.quantity,
+        });
+      }
+    }
+    return {
+      venue: venue.length
+        ? venue
+        : [
+            {
+              key: `venue-${event.id}`,
+              resourceKind: "venue",
+              venueId: event.venueId ?? null,
+              equipmentId: null,
+              resourceName: event.venue || "Venue",
+              quantity: 1,
+            },
+          ],
+      equipment,
+    };
   }
 
-  const rows: DraftRow[] = [];
-  rows.push({
-    key: `venue-${event.id}`,
-    resourceKind: "venue",
-    venueId: event.venueId ?? null,
-    equipmentId: null,
-    resourceName: event.venue || "Venue",
-    quantity: 1,
-    assignedOffice: "",
-  });
+  const venue: ResourceDraft[] = [
+    {
+      key: `venue-${event.id}`,
+      resourceKind: "venue",
+      venueId: event.venueId ?? null,
+      equipmentId: null,
+      resourceName: event.venue || "Venue",
+      quantity: 1,
+    },
+  ];
 
+  const equipment: ResourceDraft[] = [];
   if (event.equipmentLines?.length) {
     event.equipmentLines.forEach((line, idx) => {
-      rows.push({
+      equipment.push({
         key: `eq-${event.id}-${idx}`,
         resourceKind: "equipment",
         venueId: null,
         equipmentId: line.equipmentId || null,
         resourceName: line.name,
         quantity: line.quantity,
-        assignedOffice: "",
       });
     });
   } else {
@@ -97,35 +139,55 @@ function buildDrafts(event: EoEvent): DraftRow[] {
         const m = part.match(/^(.*)\(x(\d+)\)\s*$/i);
         const name = (m?.[1] ?? part).trim();
         const qty = Math.max(1, Number(m?.[2] ?? 1));
-        rows.push({
+        equipment.push({
           key: `eq-${event.id}-${idx}`,
           resourceKind: "equipment",
           venueId: null,
           equipmentId: null,
           resourceName: name,
           quantity: qty,
-          assignedOffice: "",
         });
       });
     }
   }
 
-  return rows;
+  return { venue, equipment };
+}
+
+function uniqueOffices(offices: ResourceOffice[]): ResourceOffice[] {
+  return [...new Set(offices)];
 }
 
 watch(
   () => props.event.id,
   () => {
-    drafts.splice(0, drafts.length, ...buildDrafts(props.event));
+    const { venue, equipment } = buildResourceDrafts(props.event);
+    venueResources.value = venue;
+    equipmentResources.value = equipment;
+
+    if (props.event.resourceAssignments?.length) {
+      selectedVenueOffices.value = uniqueOffices(
+        props.event.resourceAssignments
+          .filter((a) => a.resourceKind === "venue")
+          .map((a) => a.assignedOffice),
+      );
+      selectedEquipmentOffices.value = uniqueOffices(
+        props.event.resourceAssignments
+          .filter((a) => a.resourceKind === "equipment")
+          .map((a) => a.assignedOffice),
+      );
+    } else {
+      selectedVenueOffices.value = [];
+      selectedEquipmentOffices.value = [];
+    }
+    venuePickerOpen.value = false;
+    equipmentPickerOpen.value = false;
   },
   { immediate: true },
 );
 
 const needsAssignment = computed(() => !!props.event.awaitingResourceAssignment);
-
-function officeOptions(kind: "venue" | "equipment") {
-  return kind === "venue" ? VENUE_OFFICES : EQUIPMENT_OFFICES;
-}
+const requiresEquipmentOffices = computed(() => equipmentResources.value.length > 0);
 
 function statusClass(status: EoEvent["status"]) {
   if (status === "Conflict") return "bg-red-100 text-red-700";
@@ -133,25 +195,72 @@ function statusClass(status: EoEvent["status"]) {
   return "bg-yellow-100 text-yellow-700";
 }
 
-function onForward() {
-  for (const d of drafts) {
-    if (!d.assignedOffice) {
-      window.alert(`Assign a responsible office for "${d.resourceName}".`);
-      return;
+function toggleOffice(list: "venue" | "equipment", office: ResourceOffice) {
+  const target = list === "venue" ? selectedVenueOffices : selectedEquipmentOffices;
+  if (target.value.includes(office)) {
+    target.value = target.value.filter((o) => o !== office);
+  } else {
+    target.value = uniqueOffices([...target.value, office]);
+  }
+}
+
+function removeOffice(list: "venue" | "equipment", office: ResourceOffice) {
+  const target = list === "venue" ? selectedVenueOffices : selectedEquipmentOffices;
+  target.value = target.value.filter((o) => o !== office);
+}
+
+function expandAssignments(): ResourceAssignmentInput[] {
+  const out: ResourceAssignmentInput[] = [];
+
+  for (const office of uniqueOffices(selectedVenueOffices.value)) {
+    for (const resource of venueResources.value) {
+      out.push({
+        resourceKind: "venue",
+        venueId: resource.venueId,
+        equipmentId: null,
+        resourceName: resource.resourceName,
+        quantity: resource.quantity,
+        assignedOffice: office,
+      });
     }
   }
-  emit(
-    "approveAndForward",
-    props.event.id,
-    drafts.map((d) => ({
-      resourceKind: d.resourceKind,
-      venueId: d.venueId,
-      equipmentId: d.equipmentId,
-      resourceName: d.resourceName,
-      quantity: d.quantity,
-      assignedOffice: d.assignedOffice as ResourceOffice,
-    })),
-  );
+
+  for (const office of uniqueOffices(selectedEquipmentOffices.value)) {
+    for (const resource of equipmentResources.value) {
+      out.push({
+        resourceKind: "equipment",
+        venueId: null,
+        equipmentId: resource.equipmentId,
+        resourceName: resource.resourceName,
+        quantity: resource.quantity,
+        assignedOffice: office,
+      });
+    }
+  }
+
+  return out;
+}
+
+function onForward() {
+  if (!selectedVenueOffices.value.length) {
+    window.alert("Select at least one venue responsible office.");
+    return;
+  }
+  if (requiresEquipmentOffices.value && !selectedEquipmentOffices.value.length) {
+    window.alert("Select at least one resource/equipment responsible office.");
+    return;
+  }
+  if (!requiresEquipmentOffices.value && selectedEquipmentOffices.value.length) {
+    selectedEquipmentOffices.value = [];
+  }
+
+  const assignments = expandAssignments();
+  if (!assignments.length) {
+    window.alert("Assign responsible offices before forwarding.");
+    return;
+  }
+
+  emit("approveAndForward", props.event.id, assignments);
 }
 
 async function onRevisionSubmit(payload: { comment: string; attachmentFile: File | null }) {
@@ -234,32 +343,125 @@ async function onRevisionSubmit(payload: { comment: string; attachmentFile: File
         </div>
 
         <div v-if="needsAssignment" class="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
-          <h4 class="mb-3 text-sm font-bold uppercase tracking-wide text-emerald-900">Resource Assignment</h4>
-          <p class="mb-3 text-xs text-emerald-800">
-            Assign each requested resource to a responsible office. Offices only receive what you assign.
+          <h4 class="mb-2 text-sm font-bold uppercase tracking-wide text-emerald-900">Resource Assignment</h4>
+          <p class="mb-4 text-xs text-emerald-800">
+            Select every office that must validate the venue and (if requested) equipment. Each selected office
+            receives its own assignment and must approve before the event is scheduled.
           </p>
-          <div v-for="d in drafts" :key="d.key" class="mb-3 rounded-lg border border-white bg-white p-3 last:mb-0">
-            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p class="text-sm font-semibold text-gray-800">{{ d.resourceName }}</p>
-                <p class="text-xs text-gray-500">
-                  Type: {{ d.resourceKind === "venue" ? "Venue" : "Equipment" }}
-                  <span v-if="d.resourceKind === 'equipment'"> · Qty: {{ d.quantity }}</span>
-                </p>
-              </div>
-            </div>
-            <label class="block text-xs font-semibold text-gray-500">
-              Responsible Office *
-              <select
-                v-model="d.assignedOffice"
-                class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800"
+
+          <div class="mb-4 rounded-lg border border-white bg-white p-3">
+            <p class="text-xs font-bold uppercase tracking-wider text-gray-500">Venue</p>
+            <ul class="mt-1 space-y-0.5 text-sm text-gray-800">
+              <li v-for="r in venueResources" :key="r.key">{{ r.resourceName }}</li>
+            </ul>
+
+            <label class="mt-3 block text-xs font-semibold text-gray-600">Venue Responsible Offices *</label>
+            <button
+              type="button"
+              class="mt-1 flex w-full items-center justify-between rounded-lg border border-gray-300 px-3 py-2 text-left text-sm text-gray-800"
+              @click="venuePickerOpen = !venuePickerOpen"
+            >
+              <span>{{ selectedVenueOffices.length ? `${selectedVenueOffices.length} selected` : "Select offices" }}</span>
+              <span class="text-gray-400">▼</span>
+            </button>
+            <div
+              v-if="venuePickerOpen"
+              class="mt-2 max-h-40 space-y-1 overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-2"
+            >
+              <label
+                v-for="o in VENUE_OFFICES"
+                :key="o"
+                class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-800 hover:bg-white"
               >
-                <option value="" disabled>Select office…</option>
-                <option v-for="o in officeOptions(d.resourceKind)" :key="o" :value="o">
+                <input
+                  type="checkbox"
+                  class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  :checked="selectedVenueOffices.includes(o)"
+                  @change="toggleOffice('venue', o)"
+                />
+                {{ resourceOfficeLabel(o) }}
+              </label>
+            </div>
+            <div v-if="selectedVenueOffices.length" class="mt-2 flex flex-wrap gap-1.5">
+              <span
+                v-for="o in selectedVenueOffices"
+                :key="`venue-chip-${o}`"
+                class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-900"
+              >
+                {{ resourceOfficeLabel(o) }}
+                <button
+                  type="button"
+                  class="rounded-full p-0.5 hover:bg-emerald-200"
+                  :aria-label="`Remove ${resourceOfficeLabel(o)}`"
+                  @click="removeOffice('venue', o)"
+                >
+                  ×
+                </button>
+              </span>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-white bg-white p-3">
+            <p class="text-xs font-bold uppercase tracking-wider text-gray-500">Resources / Equipment</p>
+            <p v-if="!requiresEquipmentOffices" class="mt-1 text-sm text-gray-500">No equipment requested.</p>
+            <ul v-else class="mt-1 space-y-0.5 text-sm text-gray-800">
+              <li v-for="r in equipmentResources" :key="r.key">
+                {{ r.resourceName }} <span class="text-gray-500">(x{{ r.quantity }})</span>
+              </li>
+            </ul>
+
+            <template v-if="requiresEquipmentOffices">
+              <label class="mt-3 block text-xs font-semibold text-gray-600">Resource Responsible Offices *</label>
+              <button
+                type="button"
+                class="mt-1 flex w-full items-center justify-between rounded-lg border border-gray-300 px-3 py-2 text-left text-sm text-gray-800"
+                @click="equipmentPickerOpen = !equipmentPickerOpen"
+              >
+                <span>
+                  {{
+                    selectedEquipmentOffices.length
+                      ? `${selectedEquipmentOffices.length} selected`
+                      : "Select offices"
+                  }}
+                </span>
+                <span class="text-gray-400">▼</span>
+              </button>
+              <div
+                v-if="equipmentPickerOpen"
+                class="mt-2 max-h-40 space-y-1 overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-2"
+              >
+                <label
+                  v-for="o in EQUIPMENT_OFFICES"
+                  :key="o"
+                  class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-800 hover:bg-white"
+                >
+                  <input
+                    type="checkbox"
+                    class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                    :checked="selectedEquipmentOffices.includes(o)"
+                    @change="toggleOffice('equipment', o)"
+                  />
                   {{ resourceOfficeLabel(o) }}
-                </option>
-              </select>
-            </label>
+                </label>
+              </div>
+              <div v-if="selectedEquipmentOffices.length" class="mt-2 flex flex-wrap gap-1.5">
+                <span
+                  v-for="o in selectedEquipmentOffices"
+                  :key="`eq-chip-${o}`"
+                  class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-900"
+                >
+                  {{ resourceOfficeLabel(o) }}
+                  <button
+                    type="button"
+                    class="rounded-full p-0.5 hover:bg-emerald-200"
+                    :aria-label="`Remove ${resourceOfficeLabel(o)}`"
+                    @click="removeOffice('equipment', o)"
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            </template>
           </div>
         </div>
       </div>

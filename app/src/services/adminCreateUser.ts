@@ -11,6 +11,8 @@ export type CreatePortalUserInput = {
     | "gso"
     | "it_infrastructure"
     | "sports_office"
+    | "infirmary"
+    | "nstp"
     | "admin";
   email: string;
   password: string;

@@ -8,9 +8,9 @@ const emit = defineEmits<{ close: [] }>();
 const route = useRoute();
 
 const navItems = [
-  { label: "Dashboard", to: "/it-infrastructure", name: "it-dashboard", icon: LayoutDashboard },
+  { label: "Dashboard", to: "/it-infrastructure/analytics", name: "it-analytics", icon: BarChart2 },
+  { label: "Event Management", to: "/it-infrastructure", name: "it-dashboard", icon: LayoutDashboard },
   { label: "Equipment", to: "/it-infrastructure/equipment", name: "it-equipment", icon: Package },
-  { label: "Analytics", to: "/it-infrastructure/analytics", name: "it-analytics", icon: BarChart2 },
   { label: "Profile", to: "/it-infrastructure/profile", name: "it-profile", icon: UserCircle },
 ] as const;
 

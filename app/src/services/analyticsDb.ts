@@ -169,7 +169,7 @@ async function fetchResourceOfficeRequestIds(office: ResourceOffice): Promise<st
     assignmentQuery = assignmentQuery.eq("resource_kind", "venue");
   }
 
-  const { data: assignmentRows, error: assignmentErr } = await assignmentQuery;
+  const { data: assignmentRows, error: assignmentErr } = await assignmentQuery.limit(500);
   if (assignmentErr) throw assignmentErr;
 
   const ids = new Set<string>(

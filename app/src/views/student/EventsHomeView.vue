@@ -10,12 +10,6 @@ import PortalFeedSkeleton from "@/components/portal/PortalFeedSkeleton.vue";
 import EventModal from "./components/EventModal.vue";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useEventRequestsStore } from "@/stores/eventRequests";
-import { appRoleLabel } from "@/types/appRole";
-import { useAuthStore } from "@/stores/auth";
-import { useProfileStore } from "@/stores/profile";
-
-const auth = useAuthStore();
-const profile = useProfileStore();
 
 const ALL_ORGANIZATIONS = "All Organizations";
 const ALL_VENUES = "All Venues";
@@ -60,27 +54,6 @@ const useLiveFeed = computed(() => isSupabaseConfigured);
 
 onMounted(() => {
   if (useLiveFeed.value) void loadFeed();
-  if (auth.isAuthenticated && auth.appRole === "student") {
-    void profile.ensureHydrated("student");
-  }
-});
-
-const profileLinkTo = computed(() =>
-  auth.isAuthenticated && auth.appRole === "student" ? "/student/profile" : "/login",
-);
-
-const profileLinkLabel = computed(() => {
-  if (!auth.isAuthenticated || auth.appRole !== "student") {
-    return "Sign in";
-  }
-  const name = auth.displayName?.trim() || profile.displayName?.trim();
-  if (name && name !== "Guest") return name;
-  return "My profile";
-});
-
-const profileRoleLabel = computed(() => {
-  if (!auth.isAuthenticated || auth.appRole !== "student") return "";
-  return appRoleLabel(auth.appRole) || profile.roleLabel || "Student";
 });
 
 async function loadFeed() {
@@ -185,16 +158,13 @@ const filteredEvents = computed(() => {
     <header class="portal-topbar shrink-0">
       <div class="mx-auto flex w-full max-w-[1400px] flex-col gap-3 px-3 py-2 sm:flex-row sm:items-center sm:gap-4 sm:px-4">
         <RouterLink
-          :to="profileLinkTo"
+          to="/login"
           class="portal-topbar-btn inline-flex max-w-[min(100%,14rem)] w-fit shrink-0 items-center gap-2 px-1 py-1 sm:max-w-xs sm:px-2"
-          :title="auth.isAuthenticated ? 'My profile' : 'Sign in to your account'"
+          title="Sign in to your staff account"
         >
           <User class="h-5 w-5 shrink-0 text-white/90" aria-hidden="true" />
           <span class="min-w-0 text-left">
-            <span class="block truncate text-sm font-semibold">{{ profileLinkLabel }}</span>
-            <span v-if="profileRoleLabel" class="block truncate text-[11px] font-medium text-emerald-100/95">
-              {{ profileRoleLabel }}
-            </span>
+            <span class="block truncate text-sm font-semibold">Sign in</span>
           </span>
         </RouterLink>
 
@@ -223,9 +193,9 @@ const filteredEvents = computed(() => {
     </header>
 
     <main class="mx-auto w-full max-w-[1400px] flex-1 px-3 py-4 sm:px-4">
-      <h1 class="mb-1 text-lg font-bold text-slate-900 sm:text-xl">Campus feed</h1>
+      <h1 class="mb-1 text-lg font-bold text-slate-900 sm:text-xl">Campus Events</h1>
       <p class="mb-3 text-sm text-slate-600">
-        Posts from student organizations and SSC — captions and photos about campus events.
+        Public feed of campus events — browse posts from student organizations and SSC.
       </p>
 
       <div

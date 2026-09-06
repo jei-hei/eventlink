@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import {
   Download,
   TrendingUp,
@@ -14,10 +14,8 @@ import {
   Wrench,
   MapPin,
 } from "lucide-vue-next";
-import { useStudentRegistryStore } from "@/stores/studentRegistry";
 import { useUiStore } from "@/stores/ui";
 import { downloadCsv } from "@/utils/downloadCsv";
-import { normalizeStudentId } from "@/types/studentRegistry";
 import { APP_ROLES, APP_ROLE_LABEL } from "@/types/appRole";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
@@ -28,7 +26,6 @@ import {
   type NameCount,
 } from "@/services/adminReportsDb";
 
-const registry = useStudentRegistryStore();
 const ui = useUiStore();
 
 const loading = ref(false);
@@ -37,28 +34,7 @@ const filters = reactive<AdminReportFilters>(defaultAdminReportFilters());
 
 const reports = ref<AdminReportsData | null>(null);
 
-const studentsByCollege = computed(() => {
-  const collegeMap = new Map<string, number>();
-  registry.students
-    .filter((s) => !s.archived)
-    .forEach((s) => {
-      const name = s.course?.trim() || "Unassigned";
-      collegeMap.set(name, (collegeMap.get(name) ?? 0) + 1);
-    });
-  return Array.from(collegeMap.entries())
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
-});
-
 const usersByRole = computed(() => reports.value?.userStats.byRole ?? []);
-
-onMounted(() => {
-  if (registry.useSupabase) {
-    registry.fetchAll().catch(() => {
-      /* optional load */
-    });
-  }
-});
 
 watch(
   () => ({ ...filters }),
@@ -91,25 +67,6 @@ function clearFilters() {
   Object.assign(filters, defaultAdminReportFilters());
 }
 
-function exportStudentRegistry() {
-  const rows = registry.students.filter((s) => !s.archived);
-  if (!rows.length) {
-    ui.pushToast("No data", "Import students under Admin → Students first.", "warning");
-    return;
-  }
-  downloadCsv("student-registry.csv", [
-    ["Student ID", "Full Name", "College", "Program", "Email"],
-    ...rows.map((s) => [
-      normalizeStudentId(s.studentId),
-      s.fullName,
-      s.course,
-      s.program,
-      s.email ?? "",
-    ]),
-  ]);
-  ui.pushToast("Downloaded", `${rows.length} student row(s) exported.`, "success");
-}
-
 function exportUsersByRole() {
   if (!usersByRole.value.length) {
     ui.pushToast("No data", "No users to export yet.", "warning");
@@ -120,18 +77,6 @@ function exportUsersByRole() {
     ...usersByRole.value.map((r) => [r.name, String(r.count)]),
   ]);
   ui.pushToast("Downloaded", "users-by-role.csv generated.", "success");
-}
-
-function exportCollegeStats() {
-  if (!studentsByCollege.value.length) {
-    ui.pushToast("No data", "No college statistics available.", "warning");
-    return;
-  }
-  downloadCsv("college-statistics.csv", [
-    ["College", "Students"],
-    ...studentsByCollege.value.map((r) => [r.name, String(r.value)]),
-  ]);
-  ui.pushToast("Downloaded", "college-statistics.csv generated.", "success");
 }
 
 function exportDetailReport() {
@@ -197,27 +142,6 @@ const maxOrgEvents = computed(() =>
 const maxCollegeEvents = computed(() =>
   Math.max(...(reports.value?.organizationStats.eventsByCollege.map((r) => r.count) ?? [0]), 1),
 );
-
-const pieTotal = computed(() => studentsByCollege.value.reduce((s, c) => s + c.value, 0));
-const pieLegend = computed(() =>
-  studentsByCollege.value.map((c, i) => ({
-    ...c,
-    color: COLORS[i % COLORS.length]!,
-    pct: pieTotal.value ? Math.round((c.value / pieTotal.value) * 100) : 0,
-  })),
-);
-const pieGradient = computed(() => {
-  if (!pieTotal.value) return "conic-gradient(#e5e7eb 0deg 360deg)";
-  let acc = 0;
-  const parts: string[] = [];
-  studentsByCollege.value.forEach((c, i) => {
-    const start = (acc / pieTotal.value) * 360;
-    acc += c.value;
-    const end = (acc / pieTotal.value) * 360;
-    parts.push(`${COLORS[i % COLORS.length]!} ${start}deg ${end}deg`);
-  });
-  return `conic-gradient(${parts.join(", ")})`;
-});
 
 const organizationOptions = computed(() => {
   const all = reports.value?.filterOptions.organizations ?? [];
@@ -617,41 +541,6 @@ function countList(items: NameCount[] | undefined): NameCount[] {
       </div>
     </div>
 
-    <!-- Students by college (preserved) -->
-    <div class="mb-8 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-      <div class="mb-6 flex items-center justify-between gap-3">
-        <h3 class="text-lg font-semibold text-gray-900">Students by College</h3>
-        <button
-          type="button"
-          class="flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white transition-colors hover:bg-blue-700"
-          @click="exportCollegeStats"
-        >
-          <Download class="h-4 w-4" />
-          Export
-        </button>
-      </div>
-      <div
-        v-if="!studentsByCollege.length"
-        class="flex min-h-[220px] items-center justify-center text-sm text-gray-500"
-      >
-        No college data yet.
-      </div>
-      <div v-else class="flex min-h-[220px] flex-col items-center justify-center gap-8 sm:flex-row">
-        <div
-          class="h-40 w-40 shrink-0 rounded-full border border-gray-200 shadow-inner"
-          :style="{ background: pieGradient }"
-          aria-hidden="true"
-        />
-        <ul class="w-full max-w-xs space-y-2">
-          <li v-for="item in pieLegend" :key="item.name" class="flex items-center gap-2 text-sm">
-            <span class="inline-block h-3 w-3 shrink-0 rounded-sm" :style="{ backgroundColor: item.color }" />
-            <span class="flex-1 text-gray-800">{{ item.name }}</span>
-            <span class="text-gray-600">{{ item.pct }}%</span>
-          </li>
-        </ul>
-      </div>
-    </div>
-
     <!-- Detailed report table -->
     <div class="mb-8 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-6 py-4">
@@ -710,15 +599,7 @@ function countList(items: NameCount[] | undefined): NameCount[] {
     <!-- Export (preserved) -->
     <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <h3 class="mb-4 text-lg font-semibold text-gray-900">Export Reports</h3>
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <button
-          type="button"
-          class="flex items-center justify-center gap-2 rounded-lg border-2 border-gray-300 px-4 py-3 text-gray-700 transition-colors hover:border-blue-500 hover:text-blue-700"
-          @click="exportStudentRegistry"
-        >
-          <Download class="h-5 w-5" />
-          Student registry (CSV)
-        </button>
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         <button
           type="button"
           class="flex items-center justify-center gap-2 rounded-lg border-2 border-gray-300 px-4 py-3 text-gray-700 transition-colors hover:border-blue-500 hover:text-blue-700"
@@ -726,14 +607,6 @@ function countList(items: NameCount[] | undefined): NameCount[] {
         >
           <Download class="h-5 w-5" />
           Users by role (CSV)
-        </button>
-        <button
-          type="button"
-          class="flex items-center justify-center gap-2 rounded-lg border-2 border-gray-300 px-4 py-3 text-gray-700 transition-colors hover:border-blue-500 hover:text-blue-700"
-          @click="exportCollegeStats"
-        >
-          <Download class="h-5 w-5" />
-          College statistics (CSV)
         </button>
         <button
           type="button"

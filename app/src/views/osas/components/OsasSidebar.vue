@@ -9,9 +9,9 @@ const emit = defineEmits<{ close: [] }>();
 const route = useRoute();
 
 const navItems = [
-  { label: "Dashboard", to: "/osas", name: "osas-dashboard", icon: LayoutDashboard },
+  { label: "Dashboard", to: "/osas/analytics", name: "osas-analytics", icon: BarChart2 },
+  { label: "Event Management", to: "/osas", name: "osas-dashboard", icon: LayoutDashboard },
   { label: "Event Monitoring", to: "/osas/monitoring", name: "osas-monitoring", icon: Radar },
-  { label: "Analytics", to: "/osas/analytics", name: "osas-analytics", icon: BarChart2 },
   { label: "Settings", to: "/osas/settings", name: "osas-settings", icon: Settings },
   { label: "Profile", to: "/osas/profile", name: "osas-profile", icon: UserCircle },
 ] as const;
