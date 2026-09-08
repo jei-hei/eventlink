@@ -27,6 +27,23 @@ In SQL Editor, run (in order):
 
 Students can then **Sign up** at `/signup` with that exact ID and any email.
 
+## Deploy database vs Edge Functions
+
+`supabase db push` applies SQL migrations only. It does **not** deploy Edge Functions.
+
+| What | Command (from repo root, project linked) |
+|------|------------------------------------------|
+| Database migrations | `supabase db push` |
+| Admin create-user function | `supabase functions deploy admin-create-user` |
+| Notification email function | `supabase functions deploy send-notification-email` |
+
+Deploy both when user creation or email notifications change. After `db push`, also deploy `admin-create-user` if that function was updated.
+
+Required functions in `supabase/functions/`:
+
+- `admin-create-user`
+- `send-notification-email`
+
 ## Create admin login
 
 From `app/` folder (uses `app/.env.seed` with **service_role** key):

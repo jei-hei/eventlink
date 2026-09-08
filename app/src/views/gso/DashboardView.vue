@@ -9,7 +9,7 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
-const { events, scheduledEvents, handleApprove, handleReject } = useGsoPortal();
+const { events, scheduledEvents, handleApprove, handleReject, busy } = useGsoPortal();
 const eventsLoading = useEventsTableLoading();
 
 const selectedEvent = ref<GsoEvent | null>(null);
@@ -20,15 +20,7 @@ function gsoAssignments(event: GsoEvent) {
   );
 }
 
-const gsoEvents = computed(() =>
-  events.value.filter((e) => {
-    if (e.status !== "Pending") return false;
-    const assigned = gsoAssignments(e);
-    if (assigned.length) return true;
-    // Legacy GSO step without EO resource assignments
-    return !e.resourceAssignments?.length && (e.venue || e.itemsEquipment);
-  }),
-);
+const gsoEvents = computed(() => events.value);
 
 const pendingCount = computed(() => gsoEvents.value.length);
 
@@ -145,7 +137,8 @@ function onModalReject() {
                     <div class="flex flex-col items-stretch gap-1.5 sm:flex-row sm:flex-wrap sm:justify-center">
                       <button
                         type="button"
-                        class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-700 px-2 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-emerald-500 hover:to-teal-600 sm:text-xs"
+                        class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-700 px-2 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-emerald-500 hover:to-teal-600 disabled:opacity-60 sm:text-xs"
+                        :disabled="busy"
                         @click="onApprove(event)"
                       >
                         <CheckCircle :size="12" />
@@ -153,7 +146,8 @@ function onModalReject() {
                       </button>
                       <button
                         type="button"
-                        class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-red-600 to-red-700 px-2 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-red-500 hover:to-red-600 sm:text-xs"
+                        class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-red-600 to-red-700 px-2 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-red-500 hover:to-red-600 disabled:opacity-60 sm:text-xs"
+                        :disabled="busy"
                         @click="handleReject(event.id)"
                       >
                         <XCircle :size="12" />

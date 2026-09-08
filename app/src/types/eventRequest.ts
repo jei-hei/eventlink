@@ -39,6 +39,9 @@ export type EventRequestRow = {
   cancellation_reason?: string | null;
   cancelled_at?: string | null;
   cancelled_by?: string | null;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  deleted_reason?: string | null;
   decline_reason: string | null;
   declined_at_step: DbWorkflowStep | null;
   posted_at: string | null;

@@ -26,6 +26,10 @@ import {
   type NameCount,
 } from "@/services/adminReportsDb";
 
+withDefaults(defineProps<{ embedded?: boolean }>(), {
+  embedded: false,
+});
+
 const ui = useUiStore();
 
 const loading = ref(false);
@@ -171,7 +175,7 @@ function countList(items: NameCount[] | undefined): NameCount[] {
 </script>
 
 <template>
-  <div class="p-8">
+  <section :class="embedded ? 'pt-10' : 'p-8'">
     <div class="mb-8">
       <h1 class="mb-2 text-3xl font-semibold text-gray-900">Reports & Analytics</h1>
       <p class="text-gray-600">System-wide EventLink statistics, filters, and detailed event reports.</p>
@@ -618,5 +622,5 @@ function countList(items: NameCount[] | undefined): NameCount[] {
         </button>
       </div>
     </div>
-  </div>
+  </section>
 </template>

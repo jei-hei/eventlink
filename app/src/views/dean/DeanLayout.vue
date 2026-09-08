@@ -12,7 +12,7 @@ const sidebarOpen = ref(false);
 const mockPending = ref<DeanEvent[]>([]);
 const mockApproved = ref<DeanEvent[]>([]);
 
-const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, handleRequestRevision, handleCreateEvent } =
+const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, handleRequestRevision, handleCreateEvent, busy } =
   usePortalEvents("dean", { events: mockPending, approvedEvents: mockApproved });
 
 provide(deanPortalKey, {
@@ -23,6 +23,7 @@ provide(deanPortalKey, {
   handleReject,
   handleRequestRevision,
   handleCreateEvent,
+  busy,
 });
 </script>
 

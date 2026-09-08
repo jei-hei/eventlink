@@ -12,7 +12,7 @@ const sidebarOpen = ref(false);
 const mockPending = ref<OsasEvent[]>([]);
 const mockApproved = ref<OsasEvent[]>([]);
 
-const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, handleRequestRevision, handleCreateEvent } =
+const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, handleRequestRevision, handleCreateEvent, busy } =
   usePortalEvents("osas", { events: mockPending, approvedEvents: mockApproved });
 
 provide(osasPortalKey, {
@@ -23,6 +23,7 @@ provide(osasPortalKey, {
   handleReject,
   handleRequestRevision,
   handleCreateEvent,
+  busy,
 });
 </script>
 

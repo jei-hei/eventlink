@@ -23,8 +23,11 @@ export interface ExecutivePortalContext {
   handleCreateEvent: (e: EoEvent) => void;
   handleUpdateEvent: (id: string, input: UpdateEventRequestInput) => Promise<void>;
   handleCancelScheduled: (id: string, reason: string) => Promise<void>;
+  handleDeleteEvent: (id: string, reason: string) => Promise<void>;
+  handleUnpostEvent: (id: string) => Promise<void>;
   submitRequest: (input: CreateEventRequestInput) => Promise<void>;
   useDb: Ref<boolean>;
+  busy: Ref<boolean>;
 }
 
 export const executivePortalKey: InjectionKey<ExecutivePortalContext> = Symbol("executivePortal");

@@ -14,6 +14,7 @@ export interface AdviserPortalContext {
     attachmentFile?: File | null,
   ) => void | Promise<void>;
   handleCreateEvent: (e: AdviserEvent) => void;
+  busy: Ref<boolean>;
 }
 
 export const adviserPortalKey: InjectionKey<AdviserPortalContext> = Symbol("adviserPortal");

@@ -14,6 +14,7 @@ export interface DeanPortalContext {
     attachmentFile?: File | null,
   ) => void | Promise<void>;
   handleCreateEvent: (e: DeanEvent) => void;
+  busy: Ref<boolean>;
 }
 
 export const deanPortalKey: InjectionKey<DeanPortalContext> = Symbol("deanPortal");

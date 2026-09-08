@@ -10,6 +10,7 @@ export interface GsoPortalContext {
   handleReject: (id: string) => void;
   handleCreateEvent: (e: GsoEvent) => void;
   useDb: Ref<boolean>;
+  busy: Ref<boolean>;
 }
 
 export const gsoPortalKey: InjectionKey<GsoPortalContext> = Symbol("gsoPortal");

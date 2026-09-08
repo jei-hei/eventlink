@@ -33,16 +33,17 @@ export const APP_ROLES: AppRole[] = [
   "admin",
 ];
 
+/** First page after login — each role's Dashboard (analytics), not Event Management. */
 export const ROLE_HOME_PATH: Record<AppRole, string> = {
-  student_officer: "/student-officer",
-  ssc: "/ssc",
-  adviser: "/adviser",
-  dean: "/dean",
-  osas: "/osas",
-  eo: "/executive-officer",
-  gso: "/gso",
-  it_infrastructure: "/it-infrastructure",
-  sports_office: "/sports-office",
+  student_officer: "/student-officer/analytics",
+  ssc: "/ssc/analytics",
+  adviser: "/adviser/analytics",
+  dean: "/dean/analytics",
+  osas: "/osas/analytics",
+  eo: "/executive-officer/analytics",
+  gso: "/gso/analytics",
+  it_infrastructure: "/it-infrastructure/analytics",
+  sports_office: "/sports-office/analytics",
   infirmary: "/infirmary",
   nstp: "/nstp",
   admin: "/admin",

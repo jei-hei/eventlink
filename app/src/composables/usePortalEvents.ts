@@ -150,6 +150,7 @@ export function usePortalEvents(
   }
 
   function handleApprove(id: string) {
+    if (!window.confirm("Are you sure you want to approve this event?")) return;
     if (useDb.value) {
       void runAction(() => store.approve(id), {
         title: "Event approved successfully.",
@@ -165,6 +166,7 @@ export function usePortalEvents(
   }
 
   function handleReject(id: string) {
+    if (!window.confirm("Are you sure you want to decline this event?")) return;
     if (useDb.value) {
       const reason = window.prompt("Reason for decline (required):") ?? "";
       if (!reason.trim()) {
@@ -181,6 +183,7 @@ export function usePortalEvents(
     id: string,
     assignments: import("@/types/resourceOffice").ResourceAssignmentInput[],
   ) {
+    if (!window.confirm("Are you sure you want to forward this event to the selected offices?")) return;
     if (useDb.value) {
       await runAction(() => store.approveAndForward(id, assignments), {
         title: "Event forwarded successfully.",
@@ -218,6 +221,7 @@ export function usePortalEvents(
   }
 
   function handlePostEvent(id: string) {
+    if (!window.confirm("Are you sure you want to post this event to the calendar?")) return;
     if (useDb.value) {
       if (canPostToCalendar.value) {
       void runAction(() => store.postToCalendar(id), {
@@ -264,6 +268,7 @@ export function usePortalEvents(
   }
 
   async function handleUpdateEvent(id: string, input: UpdateEventRequestInput) {
+    if (!window.confirm("Are you sure you want to save these event changes?")) return;
     if (useDb.value) {
       await runAction(() => store.update(id, input));
       return;
@@ -294,6 +299,25 @@ export function usePortalEvents(
     }
   }
 
+  async function handleDeleteEvent(id: string, reason: string) {
+    if (useDb.value) {
+      await runAction(() => store.softDelete(id, reason), {
+        title: "Event deleted.",
+        description: "The event was removed from calendars. History was kept.",
+      });
+    }
+  }
+
+  async function handleUnpostEvent(id: string) {
+    if (!window.confirm("Are you sure you want to unpost this event from the calendar?")) return;
+    if (useDb.value) {
+      await runAction(() => store.unpostFromCalendar(id), {
+        title: "Event unposted.",
+        description: "The event was removed from the staff calendar.",
+      });
+    }
+  }
+
   async function handleResubmitDeclined(id: string, input: UpdateEventRequestInput) {
     if (useDb.value) {
       await runAction(() => store.resubmitDeclined(id, input), {
@@ -309,6 +333,7 @@ export function usePortalEvents(
     comment: string,
     attachmentFile?: File | null,
   ) {
+    if (!window.confirm("Are you sure you want to request a revision?")) return;
     if (useDb.value) {
       await runAction(() => store.requestRevision(id, comment, attachmentFile), {
         title: "Revision request sent successfully.",
@@ -319,13 +344,21 @@ export function usePortalEvents(
   }
 
   async function submitRequest(input: CreateEventRequestInput) {
-    await store.submit(input);
-    if (input.letterFile) {
+    if (busy.value) return;
+    busy.value = true;
+    try {
+      await store.submit(input);
       ui.pushToast(
-        "PDF uploaded successfully.",
-        "Your event request was submitted with the proposal PDF.",
+        input.requestType === "eo_direct" ? "Event created successfully." : "Request submitted successfully.",
+        input.requestType === "eo_direct"
+          ? "The calendar event was saved with an Event Trail record."
+          : input.letterFile
+            ? "Your event request was submitted with the proposal PDF."
+            : "The event request entered the approval workflow.",
         "success",
       );
+    } finally {
+      busy.value = false;
     }
   }
 
@@ -343,6 +376,8 @@ export function usePortalEvents(
     handleCreateFeedPost,
     handleUpdateEvent,
     handleCancelScheduled,
+    handleDeleteEvent,
+    handleUnpostEvent,
     handleResubmitDeclined,
     submitRequest,
     handleCalendarMonthChange,

@@ -12,7 +12,7 @@ import {
 } from "@/types/resourceOffice";
 import { useEventRequestsStore } from "@/stores/eventRequests";
 
-const props = defineProps<{ event: EoEvent; canPostToCalendar?: boolean }>();
+const props = defineProps<{ event: EoEvent; canPostToCalendar?: boolean; busy?: boolean }>();
 const emit = defineEmits<{
   close: [];
   approveAndForward: [id: string, assignments: ResourceAssignmentInput[]];
@@ -205,6 +205,7 @@ function toggleOffice(list: "venue" | "equipment", office: ResourceOffice) {
 }
 
 function removeOffice(list: "venue" | "equipment", office: ResourceOffice) {
+  if (!window.confirm(`Are you sure you want to remove ${resourceOfficeLabel(office)}?`)) return;
   const target = list === "venue" ? selectedVenueOffices : selectedEquipmentOffices;
   target.value = target.value.filter((o) => o !== office);
 }
@@ -242,6 +243,7 @@ function expandAssignments(): ResourceAssignmentInput[] {
 }
 
 function onForward() {
+  if (props.busy) return;
   if (!selectedVenueOffices.value.length) {
     window.alert("Select at least one venue responsible office.");
     return;
@@ -470,20 +472,23 @@ async function onRevisionSubmit(payload: { comment: string; attachmentFile: File
         <button
           type="button"
           class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-300"
+          :disabled="busy"
           @click="emit('close')"
         >
           Close
         </button>
         <button
           type="button"
-          class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700"
+          class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:opacity-60"
+          :disabled="busy"
           @click="revisionOpen = true"
         >
           Request Revision
         </button>
         <button
           type="button"
-          class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
+          class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+          :disabled="busy"
           @click="emit('reject', event.id)"
         >
           Decline
@@ -491,7 +496,8 @@ async function onRevisionSubmit(payload: { comment: string; attachmentFile: File
         <button
           v-if="canPostToCalendar"
           type="button"
-          class="rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#15803D]"
+          class="rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#15803D] disabled:opacity-60"
+          :disabled="busy"
           @click="emit('postToCalendar', event.id)"
         >
           Post to calendar
@@ -499,7 +505,8 @@ async function onRevisionSubmit(payload: { comment: string; attachmentFile: File
         <button
           v-else-if="needsAssignment"
           type="button"
-          class="rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#15803D]"
+          class="rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#15803D] disabled:opacity-60"
+          :disabled="busy"
           @click="onForward"
         >
           Approve &amp; Forward

@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { TrendingUp, CalendarDays, CheckCircle2, BarChart2, Clock } from "lucide-vue-next";
-import EventTrailPanel from "@/components/portal/EventTrailPanel.vue";
-import EventsLogPanel from "@/components/portal/EventsLogPanel.vue";
 import OrgFeedbackSection from "@/components/portal/OrgFeedbackSection.vue";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import { fetchAnalyticsOverview, type ActivityItem } from "@/services/analyticsDb";
@@ -327,19 +325,6 @@ const pieGradient = computed(() => {
     </div>
 
     <OrgFeedbackSection />
-
-    <EventsLogPanel
-      role="student_officer"
-      :college-id="auth.collegeId"
-      :organization-id="auth.organizationId"
-      :user-id="auth.userId"
-    />
-    <EventTrailPanel
-      role="student_officer"
-      :college-id="auth.collegeId"
-      :organization-id="auth.organizationId"
-      :user-id="auth.userId"
-    />
 
     <div class="h-4" />
   </div>

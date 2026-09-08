@@ -8,7 +8,6 @@ import {
   Clock,
   AlertTriangle,
 } from "lucide-vue-next";
-import EventTrailPanel from "@/components/portal/EventTrailPanel.vue";
 import EventsLogPanel from "@/components/portal/EventsLogPanel.vue";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import { fetchAnalyticsOverview, type ActivityItem } from "@/services/analyticsDb";
@@ -374,7 +373,6 @@ const pieGradient = computed(() => {
     </div>
 
     <EventsLogPanel role="eo" />
-    <EventTrailPanel role="eo" />
 
     <div class="h-4" />
   </div>

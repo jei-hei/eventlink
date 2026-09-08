@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { TrendingUp, CalendarDays, CheckCircle2, BarChart2, Clock } from "lucide-vue-next";
-import EventTrailPanel from "@/components/portal/EventTrailPanel.vue";
-import EventsLogPanel from "@/components/portal/EventsLogPanel.vue";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import { fetchAnalyticsOverview } from "@/services/analyticsDb";
 import { useAuthStore } from "@/stores/auth";
@@ -210,19 +208,6 @@ const pieGradient = computed(() => {
         <p v-if="!recentActivity.length" class="text-center text-xs text-gray-500 py-4">No recent activity yet.</p>
       </div>
     </div>
-
-    <EventsLogPanel
-      role="dean"
-      :college-id="auth.collegeId"
-      :organization-id="auth.organizationId"
-      :user-id="auth.userId"
-    />
-    <EventTrailPanel
-      role="dean"
-      :college-id="auth.collegeId"
-      :organization-id="auth.organizationId"
-      :user-id="auth.userId"
-    />
 
     <div class="h-4" />
   </div>

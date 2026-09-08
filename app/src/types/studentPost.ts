@@ -59,14 +59,12 @@ export type StudentFeedPostRow = {
   profiles?: StudentFeedPosterProfile | null;
   event_requests?:
     | {
-        letter_path: string | null;
         start_date?: string;
         end_date?: string;
         start_time?: string;
         end_time?: string;
       }
     | {
-        letter_path: string | null;
         start_date?: string;
         end_date?: string;
         start_time?: string;

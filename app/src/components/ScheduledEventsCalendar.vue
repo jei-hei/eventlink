@@ -36,6 +36,8 @@ const props = withDefaults(
     title?: string;
     /** When true, clicking an event chip emits `select` (e.g. EO edit). */
     selectable?: boolean;
+    /** Places the compact list beside the month grid on desktop. */
+    listLayout?: "management" | "calendar-only" | "below";
     /** Max events shown in the compact upcoming/past side list. */
     upcomingLimit?: number;
   }>(),
@@ -43,7 +45,8 @@ const props = withDefaults(
     showAddButton: false,
     title: "Scheduled events",
     selectable: false,
-    upcomingLimit: 10,
+    listLayout: "management",
+    upcomingLimit: 6,
   },
 );
 
@@ -62,11 +65,11 @@ const viewMonth = ref(today.getMonth());
 
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
-const PASTEL_CLASSES = [
-  "bg-sky-100 border-sky-200/80",
-  "bg-emerald-100 border-emerald-200/80",
-  "bg-violet-100 border-violet-200/80",
-  "bg-orange-100 border-orange-200/80",
+const THEME_CLASSES = [
+  "bg-emerald-100 border-emerald-300/70 text-emerald-950",
+  "bg-teal-100 border-teal-300/70 text-teal-950",
+  "bg-green-100 border-green-300/70 text-green-950",
+  "bg-[#dcfce7] border-[#86efac]/80 text-[#14532d]",
 ] as const;
 
 const monthLabel = computed(() =>
@@ -108,16 +111,32 @@ function chipIndex(event: ScheduledCalendarEvent): number {
   const key = hashKey(event);
   let h = 0;
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  return h % PASTEL_CLASSES.length;
+  return h % THEME_CLASSES.length;
+}
+
+function isEventToday(event: ScheduledCalendarEvent): boolean {
+  const start = eventStartDate(event);
+  const end = eventEndDate(event);
+  if (!start || !end) return false;
+  const startDay = new Date(start);
+  startDay.setHours(0, 0, 0, 0);
+  const endDay = new Date(end);
+  endDay.setHours(23, 59, 59, 999);
+  return today.getTime() >= startDay.getTime() && today.getTime() <= endDay.getTime();
 }
 
 function chipClass(event: ScheduledCalendarEvent, ongoing = false, past = false) {
   if (past || event.completed) {
-    return "bg-slate-100 border-slate-200/70 text-slate-500 opacity-75";
+    return "bg-slate-200 border-slate-300 text-slate-600";
   }
-  const base = PASTEL_CLASSES[chipIndex(event)];
-  if (ongoing) return `${base} ring-2 ring-emerald-500/60 border-emerald-400 shadow-md`;
-  return `${base} text-charcoal`;
+  const base = THEME_CLASSES[chipIndex(event)];
+  if (ongoing) {
+    return `${base} ring-2 ring-emerald-700 border-emerald-600 shadow-md brightness-105`;
+  }
+  if (isEventToday(event)) {
+    return `${base} ring-2 ring-emerald-600 border-emerald-500 shadow-sm`;
+  }
+  return base;
 }
 
 function parseIsoDay(iso: string): { y: number; m: number; d: number } | null {
@@ -215,6 +234,39 @@ function allEventsOnDay(day: number) {
 
 function eventsOnDay(day: number) {
   return allEventsOnDay(day).filter((e) => !isMultiDayEvent(e));
+}
+
+const MAX_DAY_EVENTS = 2;
+const overflowDay = ref<number | null>(null);
+
+function visibleEventsOnDay(day: number) {
+  return eventsOnDay(day).slice(0, MAX_DAY_EVENTS);
+}
+
+function extraEventsOnDay(day: number) {
+  return Math.max(0, eventsOnDay(day).length - MAX_DAY_EVENTS);
+}
+
+function openDayOverflow(day: number) {
+  overflowDay.value = day;
+}
+
+function closeDayOverflow() {
+  overflowDay.value = null;
+}
+
+function overflowDayEvents() {
+  if (overflowDay.value == null) return [];
+  return allEventsOnDay(overflowDay.value);
+}
+
+function overflowDayLabel() {
+  if (overflowDay.value == null) return "";
+  return new Date(viewYear.value, viewMonth.value, overflowDay.value).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
 }
 
 function hasEvents(day: number) {
@@ -383,7 +435,9 @@ function goToToday() {
   viewYear.value = today.getFullYear();
   viewMonth.value = today.getMonth();
   emitMonthRange();
-}const weeks = computed(() => {
+}
+
+const weeks = computed(() => {
   const rows: Array<{ index: number; cells: WeekCell[]; bars: WeekBar[]; laneCount: number }> = [];
   for (let i = 0; i < calendarCells.value.length; i += 7) {
     const raw = calendarCells.value.slice(i, i + 7);
@@ -450,7 +504,12 @@ function goToToday() {
 
 <template>
   <div
-    class="font-sans dash-card dash-card-fill border border-slate-200/90 bg-[#faf8f5]"
+    :class="[
+      'relative font-sans dash-card dash-card-fill border border-slate-200/90 bg-[#faf8f5]',
+      listLayout !== 'below'
+        ? '!h-auto min-h-[44rem] !overflow-visible lg:!h-full lg:min-h-0 lg:!overflow-hidden'
+        : '',
+    ]"
   >
     <div
       class="flex shrink-0 flex-col gap-2 border-b border-slate-200/90 bg-[#faf8f5] p-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2"
@@ -503,8 +562,25 @@ function goToToday() {
       </button>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-auto p-2 sm:p-3">
-      <div class="mb-1 grid grid-cols-7 gap-px bg-slate-200/60">
+    <div
+      :class="[
+        listLayout === 'below'
+          ? 'contents'
+          : 'flex min-h-0 flex-none flex-col lg:flex-1 lg:flex-row',
+      ]"
+    >
+      <div
+        :class="[
+          'flex min-h-[32rem] min-w-0 flex-1 flex-col lg:min-h-0',
+          listLayout === 'management'
+            ? 'lg:w-3/4 lg:flex-none'
+            : listLayout === 'calendar-only'
+              ? 'lg:w-4/5 lg:flex-none'
+              : '',
+        ]"
+      >
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-3">
+      <div class="mb-1 grid shrink-0 grid-cols-7 gap-px bg-slate-200/60">
         <div
           v-for="(d, idx) in weekdays"
           :key="idx"
@@ -513,16 +589,19 @@ function goToToday() {
           {{ d }}
         </div>
       </div>
-      <div class="space-y-px bg-slate-200/60">
-        <div v-for="week in weeks" :key="`week-${week.index}`" class="relative">
+      <div
+        class="grid min-h-0 flex-1 gap-px overflow-hidden bg-slate-200/60"
+        :style="{ gridTemplateRows: `repeat(${weeks.length}, minmax(0, 1fr))` }"
+      >
+        <div v-for="week in weeks" :key="`week-${week.index}`" class="relative min-h-0 overflow-hidden">
           <div
             v-if="week.bars.length"
-            class="pointer-events-none absolute left-0 right-0 top-0 z-20"
-            :style="{ height: `${week.laneCount * 18 + 4}px` }"
+            class="pointer-events-none absolute left-0 right-0 top-0 z-20 overflow-hidden"
+            :style="{ height: `${Math.min(week.laneCount, 2) * 18 + 4}px` }"
           >
             <component
               :is="selectable ? 'button' : 'div'"
-              v-for="bar in week.bars"
+              v-for="bar in week.bars.slice(0, 2)"
               :key="bar.key"
               :type="selectable ? 'button' : undefined"
               class="pointer-events-auto absolute flex items-center gap-1 rounded border px-1.5 text-left text-[10px] font-semibold text-charcoal shadow-sm"
@@ -539,23 +618,29 @@ function goToToday() {
               :title="eventHoverText(bar.event)"
               @click="selectable ? onEventClick(bar.event) : undefined"
             >
-              <span v-if="isEventOngoing(bar.event)" class="shrink-0 rounded bg-emerald-600 px-1 text-[8px] font-bold text-white">
+              <span v-if="isEventOngoing(bar.event)" class="shrink-0 rounded bg-emerald-700 px-1 text-[8px] font-bold text-white">
                 ONGOING
+              </span>
+              <span
+                v-else-if="isEventToday(bar.event) && !isEventPast(bar.event)"
+                class="shrink-0 rounded bg-emerald-600 px-1 text-[8px] font-bold text-white"
+              >
+                TODAY
               </span>
               <span class="truncate">{{ bar.event.name }}</span>
             </component>
           </div>
 
           <div
-            class="grid grid-cols-7 gap-px bg-slate-200/60"
-            :style="{ paddingTop: week.bars.length ? `${week.laneCount * 18 + 4}px` : '0px' }"
+            class="grid h-full min-h-0 grid-cols-7 gap-px bg-slate-200/60"
+            :style="{ paddingTop: week.bars.length ? `${Math.min(week.laneCount, 2) * 18 + 4}px` : '0px' }"
           >
-            <div v-for="cell in week.cells" :key="cell.key" class="min-h-[5.5rem] bg-[#faf8f5]">
-              <div v-if="cell.day === null" class="h-full min-h-[5.5rem] bg-[#f5f3ef]" />
+            <div v-for="cell in week.cells" :key="cell.key" class="min-h-0 bg-[#faf8f5]">
+              <div v-if="cell.day === null" class="h-full min-h-0 bg-[#f5f3ef]" />
               <div
                 v-else
                 :class="[
-                  'flex h-full min-h-[5.5rem] flex-col border border-transparent p-1',
+                  'flex h-full min-h-0 flex-col overflow-hidden border border-transparent p-1',
                   hasEvents(cell.day) ? 'bg-[#f7f5f1]' : 'bg-[#faf8f5]',
                   isToday(cell.day)
                     ? 'rounded-lg border-emerald-400/70 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-300/50'
@@ -573,7 +658,7 @@ function goToToday() {
                 <div class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
                   <component
                     :is="selectable ? 'button' : 'div'"
-                    v-for="ev in eventsOnDay(cell.day).slice(0, 3)"
+                    v-for="ev in visibleEventsOnDay(cell.day)"
                     :key="(ev.id ?? ev.name) + cell.day"
                     :type="selectable ? 'button' : undefined"
                     :class="[
@@ -590,23 +675,25 @@ function goToToday() {
                     </span>
                     <span
                       v-if="isEventOngoing(ev)"
-                      class="mt-0.5 inline-block rounded bg-emerald-600 px-1 text-[7px] font-bold text-white"
+                      class="mt-0.5 inline-block rounded bg-emerald-700 px-1 text-[7px] font-bold text-white"
                     >
                       ONGOING
                     </span>
                     <span
-                      v-if="ev.organization"
-                      class="block truncate text-[8px] font-medium text-slate-600"
+                      v-else-if="isEventToday(ev) && !isEventPast(ev)"
+                      class="mt-0.5 inline-block rounded bg-emerald-600 px-1 text-[7px] font-bold text-white"
                     >
-                      {{ ev.organization }}
+                      TODAY
                     </span>
                   </component>
-                  <span
-                    v-if="eventsOnDay(cell.day).length > 3"
-                    class="px-1 text-[9px] font-medium text-slate-500"
+                  <button
+                    v-if="extraEventsOnDay(cell.day) > 0"
+                    type="button"
+                    class="px-1 text-left text-[9px] font-semibold text-emerald-800 hover:underline"
+                    @click="openDayOverflow(cell.day)"
                   >
-                    +{{ eventsOnDay(cell.day).length - 3 }} more
-                  </span>
+                    +{{ extraEventsOnDay(cell.day) }} more
+                  </button>
                 </div>
               </div>
             </div>
@@ -616,9 +703,66 @@ function goToToday() {
     </div>
 
     <div
-      v-if="groupedEventList.length"
-      class="max-h-[min(36%,14rem)] shrink-0 overflow-auto border-t border-slate-200/90 bg-[#faf8f5] px-3 py-2"
+      v-if="overflowDay != null"
+      class="absolute inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
+      @click.self="closeDayOverflow"
     >
+      <div class="max-h-[80%] w-full max-w-sm overflow-y-auto rounded-xl bg-white p-4 shadow-xl" @click.stop>
+        <div class="mb-3 flex items-start justify-between gap-2">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ overflowDayLabel() }}</p>
+            <p class="text-sm font-semibold text-slate-800">Events this day</p>
+          </div>
+          <button type="button" class="rounded-lg p-1 text-slate-500 hover:bg-slate-100" @click="closeDayOverflow">
+            Close
+          </button>
+        </div>
+        <ul class="space-y-2">
+          <li
+            v-for="ev in overflowDayEvents()"
+            :key="ev.id ?? ev.name"
+            :class="[
+              'rounded-lg border px-2.5 py-1.5 text-sm',
+              chipClass(ev, isEventOngoing(ev), isEventPast(ev)),
+              selectable ? 'cursor-pointer hover:brightness-95' : '',
+            ]"
+            @click="selectable ? onEventClick(ev) : undefined"
+          >
+            <p class="truncate font-semibold">{{ ev.name }}</p>
+            <p class="mt-0.5 text-xs text-slate-600">{{ formatEventDate(ev) }}</p>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3 border-t border-slate-200/90 bg-[#faf8f5] px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+      <span class="inline-flex items-center gap-1.5">
+        <span class="h-2.5 w-2.5 rounded-sm bg-emerald-200 ring-1 ring-emerald-400" />
+        Upcoming
+      </span>
+      <span class="inline-flex items-center gap-1.5">
+        <span class="h-2.5 w-2.5 rounded-sm bg-emerald-300 ring-2 ring-emerald-700" />
+        Today / Ongoing
+      </span>
+      <span class="inline-flex items-center gap-1.5">
+        <span class="h-2.5 w-2.5 rounded-sm bg-slate-300 ring-1 ring-slate-400" />
+        Completed / Past
+      </span>
+    </div>
+      </div>
+
+    <aside
+      v-if="groupedEventList.length"
+      :class="[
+        'shrink-0 border-t border-slate-200/90 bg-[#faf8f5] px-3 py-2',
+        listLayout === 'management'
+          ? 'lg:w-1/4 lg:border-l lg:border-t-0'
+          : listLayout === 'calendar-only'
+            ? 'lg:w-1/5 lg:border-l lg:border-t-0'
+            : '',
+      ]"
+    >
+      <p class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">List of events</p>
       <div v-for="group in groupedEventList" :key="group.key" class="mb-3 last:mb-0">
         <p class="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{{ group.label }}</p>
         <ul class="space-y-1">
@@ -630,11 +774,14 @@ function goToToday() {
               chipClass(ev, isEventOngoing(ev), isEventPast(ev)),
             ]"
           >
-            <p class="truncate font-semibold text-charcoal">{{ ev.name }}</p>
+            <p class="truncate font-semibold" :class="isEventPast(ev) ? 'text-slate-600' : 'text-charcoal'">
+              {{ ev.name }}
+            </p>
             <p class="mt-0.5 text-xs text-slate-600">{{ formatEventDate(ev) }}</p>
           </li>
         </ul>
       </div>
+    </aside>
     </div>
   </div>
 </template>

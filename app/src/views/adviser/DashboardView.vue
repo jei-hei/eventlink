@@ -9,12 +9,12 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
-const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision } = useAdviserPortal();
+const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision, busy } = useAdviserPortal();
 const eventsLoading = useEventsTableLoading();
 
 const selectedEvent = ref<AdviserEvent | null>(null);
 
-const pendingCount = computed(() => events.value.filter((e) => e.status === "Pending").length);
+const pendingCount = computed(() => events.value.length);
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.value));
 
@@ -121,7 +121,8 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
                     <div class="flex flex-col items-stretch justify-center gap-1.5 sm:flex-row sm:flex-wrap sm:justify-center">
                       <button
                         type="button"
-                        class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-700 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-emerald-500 hover:to-teal-600 sm:text-xs"
+                        class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-700 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-emerald-500 hover:to-teal-600 disabled:opacity-60 sm:text-xs"
+                        :disabled="busy"
                         @click="handleApprove(event.id)"
                       >
                         <Check :size="14" />
@@ -129,7 +130,8 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
                       </button>
                       <button
                         type="button"
-                        class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-red-600 to-red-700 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-red-500 hover:to-red-600 sm:text-xs"
+                        class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-red-600 to-red-700 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-red-500 hover:to-red-600 disabled:opacity-60 sm:text-xs"
+                        :disabled="busy"
                         @click="handleReject(event.id)"
                       >
                         <XCircle :size="14" />

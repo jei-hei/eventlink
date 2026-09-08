@@ -11,12 +11,12 @@ const sidebarOpen = ref(false);
 const mockPending = ref<SportsEvent[]>([]);
 const mockApproved = ref<SportsEvent[]>([]);
 
-const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, useDb } = usePortalEvents(
+const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, useDb, busy } = usePortalEvents(
   "sports_office",
   { events: mockPending, approvedEvents: mockApproved },
 );
 
-provide(sportsPortalKey, { events, approvedEvents, scheduledEvents, handleApprove, handleReject, useDb });
+provide(sportsPortalKey, { events, approvedEvents, scheduledEvents, handleApprove, handleReject, useDb, busy });
 </script>
 
 <template>

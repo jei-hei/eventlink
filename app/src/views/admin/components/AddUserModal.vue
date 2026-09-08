@@ -2,9 +2,10 @@
 import { ref, computed, watch } from "vue";
 import { X } from "lucide-vue-next";
 import { useUiStore } from "@/stores/ui";
-import { createPortalUser } from "@/services/adminCreateUser";
+import { createPortalUser, AdminCreateUserError } from "@/services/adminCreateUser";
 import { fetchCollegesWithOrganizations, type CollegeWithOrgs } from "@/services/collegesDb";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { ISU_EMAIL_ERROR, isOfficialIsuEmail } from "@/utils/isuEmail";
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: []; created: [] }>();
@@ -106,6 +107,18 @@ watch(collegeId, () => {
   }
 });
 
+function classifyCreateUserFailure(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes("isu email") || lower.includes("email")) return "validation";
+  if (lower.includes("invalid role")) return "enum/role";
+  if (lower.includes("already") || lower.includes("one ")) return "constraint";
+  if (lower.includes("auth") || lower.includes("create auth") || lower.includes("password")) return "auth";
+  if (lower.includes("profile")) return "profiles";
+  if (lower.includes("user_roles") || lower.includes("role")) return "user_roles";
+  if (lower.includes("rls") || lower.includes("policy") || lower.includes("permission")) return "rls";
+  return "unknown";
+}
+
 async function handleSubmit(e: Event) {
   e.preventDefault();
   if (creating.value) return;
@@ -115,6 +128,10 @@ async function handleSubmit(e: Event) {
   }
   if (!name.value.trim() || !email.value.trim() || !password.value.trim()) {
     ui.pushToast("Missing fields", "Name, email, and password are required.", "error");
+    return;
+  }
+  if (!isOfficialIsuEmail(email.value)) {
+    ui.pushToast("Invalid email", ISU_EMAIL_ERROR, "error");
     return;
   }
   if (password.value.length < 8) {
@@ -145,6 +162,9 @@ async function handleSubmit(e: Event) {
     emit("close");
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Could not create account.";
+    const source =
+      err instanceof AdminCreateUserError ? err.source : classifyCreateUserFailure(msg);
+    console.error("[admin-create-user]", source, err);
     ui.pushToast("Creation failed", msg, "error");
   } finally {
     creating.value = false;
@@ -268,9 +288,10 @@ async function handleSubmit(e: Event) {
               v-model="email"
               type="email"
               required
-              placeholder="user@university.edu"
+              placeholder="user@isu.edu.ph"
               class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <p class="mt-1 text-xs text-gray-500">Official ISU email required (@isu.edu.ph).</p>
           </div>
 
           <div>

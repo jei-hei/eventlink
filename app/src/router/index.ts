@@ -63,6 +63,10 @@ const router = createRouter({
         { path: "events", name: "eo-events", component: () => import("@/components/portal/EventMonitoringView.vue") },
         { path: "analytics", name: "eo-analytics", component: () => import("@/views/executive-officer/AnalyticsView.vue") },
         {
+          path: "event-log",
+          redirect: { name: "eo-analytics" },
+        },
+        {
           path: "settings",
           name: "eo-settings",
           component: () => import("@/views/staff/SessionSettingsView.vue"),
@@ -271,7 +275,7 @@ const router = createRouter({
         { path: "users", name: "admin-users", component: () => import("@/views/admin/UsersView.vue") },
         { path: "ssc", name: "admin-ssc", component: () => import("@/views/admin/SscView.vue") },
         { path: "colleges", name: "admin-colleges", component: () => import("@/views/admin/CollegesView.vue") },
-        { path: "reports", name: "admin-reports", component: () => import("@/views/admin/ReportsView.vue") },
+        { path: "reports", redirect: { name: "admin-dashboard" } },
         { path: "settings", name: "admin-settings", component: () => import("@/views/admin/SettingsView.vue") },
         {
           path: "profile",

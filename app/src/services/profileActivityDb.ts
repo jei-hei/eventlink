@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
+import { countPendingForRole } from "@/services/eventRequestsDb";
 import type { AppRole } from "@/types/appRole";
 import type { ActivityStatModel } from "@/types/portalProfile";
 
@@ -22,13 +23,22 @@ export async function fetchProfileActivityStats(role: AppRole, userId: string): 
     ];
   }
 
-  const [{ count: approvedCount }, { count: pendingCount }, { count: scheduledCount }] = await Promise.all([
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("college_id, organization_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const [{ count: approvedCount }, pendingCount, { count: scheduledCount }] = await Promise.all([
     supabase
       .from("event_request_history")
       .select("id", { head: true, count: "exact" })
       .eq("actor_id", userId)
       .eq("action", "approved"),
-    supabase.from("event_requests").select("id", { head: true, count: "exact" }).eq("status", "pending"),
+    countPendingForRole(role, userId, {
+      collegeId: profile?.college_id ?? null,
+      organizationId: profile?.organization_id ?? null,
+    }),
     supabase
       .from("event_requests")
       .select("id", { head: true, count: "exact" })
@@ -37,7 +47,7 @@ export async function fetchProfileActivityStats(role: AppRole, userId: string): 
 
   return [
     makeStat("approved", "Approved requests", approvedCount ?? 0, "CheckCircle"),
-    makeStat("pending", "Pending reviews", pendingCount ?? 0, "Clock"),
+    makeStat("pending", "Pending reviews", pendingCount, "Clock"),
     makeStat("scheduled", "Scheduled events", scheduledCount ?? 0, "Calendar"),
   ];
 }

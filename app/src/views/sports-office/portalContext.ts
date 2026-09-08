@@ -9,6 +9,7 @@ export interface SportsPortalContext {
   handleApprove: (id: string) => void;
   handleReject: (id: string) => void;
   useDb: Ref<boolean>;
+  busy: Ref<boolean>;
 }
 
 export const sportsPortalKey: InjectionKey<SportsPortalContext> = Symbol("sportsPortal");

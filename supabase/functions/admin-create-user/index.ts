@@ -14,8 +14,23 @@ const validRoles = new Set([
   "osas",
   "eo",
   "gso",
+  "it_infrastructure",
+  "sports_office",
+  "infirmary",
+  "nstp",
   "admin",
 ]);
+
+const ISU_EMAIL_DOMAIN = "isu.edu.ph";
+
+function isOfficialIsuEmail(email: string): boolean {
+  const trimmed = email.trim().toLowerCase();
+  const at = trimmed.lastIndexOf("@");
+  if (at <= 0 || at === trimmed.length - 1) return false;
+  const local = trimmed.slice(0, at);
+  const domain = trimmed.slice(at + 1);
+  return Boolean(local) && domain === ISU_EMAIL_DOMAIN;
+}
 
 const singletonRoles = new Set(["osas", "eo", "gso"]);
 
@@ -99,10 +114,13 @@ Deno.serve(async (req) => {
   const organizationId = String(body.organizationId ?? "").trim();
 
   if (!validRoles.has(role)) {
-    return json(400, { error: "Invalid role selected." });
+    return json(400, { error: "Invalid role selected.", source: "role_validation" });
   }
   if (!displayName) {
-    return json(400, { error: "Display name is required." });
+    return json(400, { error: "Display name is required.", source: "validation" });
+  }
+  if (!requestedUserId && !isOfficialIsuEmail(email)) {
+    return json(400, { error: "Please use a valid ISU email address.", source: "email_validation" });
   }
   const needsCollege = role === "dean" || role === "adviser" || role === "student_officer";
   const needsOrganization = role === "adviser" || role === "student_officer";
@@ -202,6 +220,7 @@ Deno.serve(async (req) => {
   }
 
   let userId = existing?.id ?? "";
+  let createdNewAuthUser = false;
   if (!existing) {
     // email_confirm: true → account is immediately login-ready (no confirmation link).
     // Required for Admin-created / dummy test emails during development.
@@ -212,9 +231,11 @@ Deno.serve(async (req) => {
       user_metadata: { display_name: displayName, portal_role: role },
     });
     if (createErr || !createData.user) {
-      return json(500, { error: createErr?.message ?? "Failed to create auth user." });
+      console.error("[admin-create-user] auth", createErr);
+      return json(500, { error: createErr?.message ?? "Failed to create auth user.", source: "auth" });
     }
     userId = createData.user.id;
+    createdNewAuthUser = true;
   } else {
     const effectiveEmail = email || (existing.email ?? "").toLowerCase();
     if (!effectiveEmail || !effectiveEmail.includes("@")) {
@@ -231,11 +252,15 @@ Deno.serve(async (req) => {
     };
     if (password) updatePayload.password = password;
     if (email && email !== (existing.email ?? "").toLowerCase()) {
+      if (!isOfficialIsuEmail(email)) {
+        return json(400, { error: "Please use a valid ISU email address.", source: "email_validation" });
+      }
       updatePayload.email = email;
     }
     const { error: updateErr } = await admin.auth.admin.updateUserById(existing.id, updatePayload);
     if (updateErr) {
-      return json(500, { error: updateErr.message });
+      console.error("[admin-create-user] auth update", updateErr);
+      return json(500, { error: updateErr.message, source: "auth" });
     }
     userId = existing.id;
   }
@@ -249,7 +274,11 @@ Deno.serve(async (req) => {
     .from("user_roles")
     .upsert({ user_id: userId, role }, { onConflict: "user_id" });
   if (roleUpsertErr) {
-    return json(500, { error: roleUpsertErr.message });
+    console.error("[admin-create-user] user_roles", roleUpsertErr);
+    if (createdNewAuthUser) {
+      await admin.auth.admin.deleteUser(userId);
+    }
+    return json(500, { error: roleUpsertErr.message, source: "user_roles" });
   }
 
   const { error: profileUpsertErr } = await admin.from("profiles").upsert(
@@ -263,7 +292,12 @@ Deno.serve(async (req) => {
     { onConflict: "id" },
   );
   if (profileUpsertErr) {
-    return json(500, { error: profileUpsertErr.message });
+    console.error("[admin-create-user] profiles", profileUpsertErr);
+    if (createdNewAuthUser) {
+      await admin.from("user_roles").delete().eq("user_id", userId);
+      await admin.auth.admin.deleteUser(userId);
+    }
+    return json(500, { error: profileUpsertErr.message, source: "profiles" });
   }
 
   return json(200, {

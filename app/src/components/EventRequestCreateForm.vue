@@ -247,6 +247,7 @@ function onLetterChange(ev: Event) {
 }
 
 function clearLetter() {
+  if (letterFile.value && !window.confirm("Are you sure you want to remove this attachment?")) return;
   letterFile.value = null;
   letterError.value = "";
 }
@@ -281,6 +282,7 @@ function addEquipmentRow() {
 }
 
 function removeEquipmentRow(idx: number) {
+  if (!window.confirm("Are you sure you want to remove this equipment?")) return;
   equipmentRows.value.splice(idx, 1);
 }
 
@@ -337,6 +339,7 @@ function handleSubmit() {
     window.alert("Please select at least one SDG.");
     return;
   }
+  if (!window.confirm("Are you sure you want to submit this event request?")) return;
 
   const normalizedEquipment = equipmentRows.value
     .filter((r) => r.equipmentId)

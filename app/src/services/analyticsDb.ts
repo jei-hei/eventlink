@@ -1,4 +1,6 @@
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+import { countPendingForRole } from "@/services/eventRequestsDb";
+import type { AppRole } from "@/types/appRole";
 
 export type AnalyticsScope =
   | "ssc"
@@ -375,7 +377,15 @@ export async function fetchAnalyticsOverview(
   } else if (isResourceOfficeScope(scope)) {
     const requestIds = await fetchResourceOfficeRequestIds(scope);
     if (!requestIds || requestIds.length === 0) {
-      return emptyOverview();
+      const overview = emptyOverview();
+      const pendingCount = await countPendingForRole(scope as AppRole, userId ?? "", {
+        collegeId,
+        organizationId,
+      });
+      overview.totals.pendingCount = pendingCount;
+      const pendingSlice = overview.eventStatusData.find((slice) => slice.name === "Pending");
+      if (pendingSlice) pendingSlice.value = pendingCount;
+      return overview;
     }
     const capped = requestIds.slice(0, 500);
     query = query.in("id", capped);
@@ -394,5 +404,13 @@ export async function fetchAnalyticsOverview(
     ]),
   );
 
-  return buildOverview(rows, collegeNameById);
+  const overview = buildOverview(rows, collegeNameById);
+  const pendingCount = await countPendingForRole(scope as AppRole, userId ?? "", {
+    collegeId,
+    organizationId,
+  });
+  overview.totals.pendingCount = pendingCount;
+  const pendingSlice = overview.eventStatusData.find((slice) => slice.name === "Pending");
+  if (pendingSlice) pendingSlice.value = pendingCount;
+  return overview;
 }

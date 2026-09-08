@@ -34,7 +34,7 @@ const FEED_PUBLIC_COLUMNS = `
 const FEED_SELECT = `
   ${FEED_PUBLIC_COLUMNS},
   organizations ( name ),
-  event_requests ( letter_path, start_date, end_date, start_time, end_time )
+  event_requests ( start_date, end_date, start_time, end_time )
 `;
 
 const FEED_SELECT_WITH_LETTER = FEED_SELECT;
@@ -111,8 +111,7 @@ export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent
   const posterCollege = (poster?.colleges?.name ?? "").trim();
   const linkedRaw = row.event_requests;
   const linked = Array.isArray(linkedRaw) ? (linkedRaw[0] ?? null) : linkedRaw;
-  const feedbackAvailable =
-    !!row.request_id &&
+  const scheduleCompleted =
     !!linked &&
     getEventSchedulePhase({
       startDate: linked.start_date,
@@ -120,6 +119,7 @@ export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent
       startTime: linked.start_time,
       endTime: linked.end_time,
     }) === "completed";
+  const feedbackAvailable = !!row.request_id && scheduleCompleted;
   return {
     id: row.id,
     title: row.event_title,
@@ -137,7 +137,7 @@ export function mapFeedPostToStudentEvent(row: StudentFeedPostRow): StudentEvent
     imageUrls,
     postedAt: row.posted_at,
     requestId: row.request_id,
-    letterPath: linked?.letter_path ?? null,
+    letterPath: null,
     submittedBy: row.submitted_by,
     imagePaths: [
       ...(row.image_paths ?? []),

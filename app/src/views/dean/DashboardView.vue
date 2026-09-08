@@ -9,12 +9,12 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
-const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision } = useDeanPortal();
+const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision, busy } = useDeanPortal();
 const eventsLoading = useEventsTableLoading();
 
 const selectedEvent = ref<DeanEvent | null>(null);
 
-const pendingCount = computed(() => events.value.filter((e) => e.status === "Pending").length);
+const pendingCount = computed(() => events.value.length);
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.value));
 
@@ -120,7 +120,8 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
                     <div class="flex items-center justify-center gap-2 flex-wrap">
                       <button
                         type="button"
-                        class="bg-[#16A34A] hover:bg-[#15803D] text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
+                        class="bg-[#16A34A] hover:bg-[#15803D] text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm disabled:opacity-60"
+                        :disabled="busy"
                         @click.stop="handleApprove(event.id)"
                       >
                         <Check :size="14" />
@@ -128,7 +129,8 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
                       </button>
                       <button
                         type="button"
-                        class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
+                        class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm disabled:opacity-60"
+                        :disabled="busy"
                         @click.stop="handleReject(event.id)"
                       >
                         <XCircle :size="14" />

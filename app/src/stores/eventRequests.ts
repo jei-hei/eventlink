@@ -12,13 +12,14 @@ import {
   fetchCalendarEventsInRange,
   filterDeclinedForRole,
   filterMonitoringForRole,
-  filterPendingForRole,
+  getPendingEventsForCurrentUser,
   filterPostedEvents,
   mapRowToPortalEvent,
   postEventToStaffCalendar,
   resubmitDeclinedEventRequest,
   updateEventRequest,
   cancelScheduledEventRequest,
+  softDeleteEventRequest,
 } from "@/services/eventRequestsDb";
 import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import type { CreateEventRequestInput } from "@/types/eventRequest";
@@ -287,7 +288,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
 
   function pendingForRole(role: AppRole, userId: string): PortalEvent[] {
     const auth = useAuthStore();
-    return filterPendingForRole(rows.value, role, userId, {
+    return getPendingEventsForCurrentUser(rows.value, role, userId, {
       collegeId: auth.collegeId,
       organizationId: auth.organizationId,
     }).map((r) => portalOf(r));
@@ -380,6 +381,27 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
       throw new Error("Only the Executive Officer can cancel scheduled events.");
     }
     await cancelScheduledEventRequest(id, auth.userId, reason);
+    await load(true);
+  }
+
+  async function softDelete(id: string, reason: string) {
+    const auth = useAuthStore();
+    if (!auth.userId) throw new Error("You must be signed in.");
+    if (auth.appRole !== "eo" && auth.appRole !== "admin") {
+      throw new Error("Only the Executive Officer can delete events.");
+    }
+    await softDeleteEventRequest(id, auth.userId, reason);
+    await load(true);
+  }
+
+  async function unpostFromCalendar(id: string) {
+    const auth = useAuthStore();
+    if (!auth.userId) throw new Error("You must be signed in.");
+    if (auth.appRole !== "eo" && auth.appRole !== "admin") {
+      throw new Error("Only the Executive Officer can unpost calendar events.");
+    }
+    const { unpostEventFromStaffCalendar } = await import("@/services/eventRequestsDb");
+    await unpostEventFromStaffCalendar(id, auth.userId);
     await load(true);
   }
 
@@ -476,6 +498,8 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     postToCalendar,
     update,
     cancelScheduled,
+    softDelete,
+    unpostFromCalendar,
     resubmitDeclined,
     getPortalEvent,
   };

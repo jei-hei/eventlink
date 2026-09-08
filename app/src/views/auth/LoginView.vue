@@ -148,8 +148,7 @@ async function completeLogin() {
     category: "system",
   });
   ui.pushToast("Signed in", "Welcome back to EventLink.", "success");
-  const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "";
-  await router.push(redirect || auth.homePath);
+  await router.push(auth.homePath);
 }
 
 async function onSubmit() {

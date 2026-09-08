@@ -10,7 +10,7 @@ const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.
 </script>
 
 <template>
-  <div class="dash-page dash-page-fill">
+  <div class="dash-page dash-page-fill calendar-only-page">
     <div class="flex shrink-0 items-center gap-2">
       <Calendar :size="20" class="text-emerald-600" />
       <div>
@@ -18,6 +18,12 @@ const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.
         <p class="text-xs text-gray-500">NSTP · scheduled events campus-wide</p>
       </div>
     </div>
-    <ScheduledEventsCalendar :events="calendarEvents" title="Scheduled events" class="h-full min-h-0 flex-1" />
+    <ScheduledEventsCalendar
+      :events="calendarEvents"
+      title="Scheduled events"
+      list-layout="calendar-only"
+      :upcoming-limit="6"
+      class="min-h-[44rem] flex-1 lg:h-full lg:min-h-0"
+    />
   </div>
 </template>

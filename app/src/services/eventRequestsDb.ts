@@ -116,6 +116,44 @@ async function notifyUsersWithRole(
   await Promise.all(uniqueIds.map((userId) => notifyUser({ ...payload, userId })));
 }
 
+type HistoryInsert = {
+  request_id: string;
+  actor_id: string | null;
+  action: string;
+  step?: DbWorkflowStep | null;
+  comment?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+async function insertHistory(row: HistoryInsert): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("event_request_history").insert({
+    request_id: row.request_id,
+    actor_id: row.actor_id,
+    action: row.action,
+    step: row.step ?? null,
+    comment: row.comment ?? null,
+    metadata: row.metadata ?? {},
+  });
+  if (error) throw error;
+}
+
+async function insertHistoryMany(rows: HistoryInsert[]): Promise<void> {
+  if (!rows.length) return;
+  const supabase = getSupabase();
+  const { error } = await supabase.from("event_request_history").insert(
+    rows.map((row) => ({
+      request_id: row.request_id,
+      actor_id: row.actor_id,
+      action: row.action,
+      step: row.step ?? null,
+      comment: row.comment ?? null,
+      metadata: row.metadata ?? {},
+    })),
+  );
+  if (error) throw error;
+}
+
 function roleLabel(role: string): string {
   const map: Record<string, string> = {
     eo: "Executive Officer",
@@ -438,6 +476,7 @@ async function runEventRequestListQuery(select: string, apply: (q: any) => any):
   const base = supabase
     .from("event_requests")
     .select(select)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(PORTAL_LIST_LIMIT);
   const { data, error } = await apply(base);
@@ -446,6 +485,7 @@ async function runEventRequestListQuery(select: string, apply: (q: any) => any):
     const fallbackBase = supabase
       .from("event_requests")
       .select(EVENT_REQUEST_LIST_FALLBACK_SELECT)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(PORTAL_LIST_LIMIT);
     const fallback = await apply(fallbackBase);
@@ -453,6 +493,7 @@ async function runEventRequestListQuery(select: string, apply: (q: any) => any):
       const bareBase = supabase
         .from("event_requests")
         .select(EVENT_REQUEST_LIST_BARE_SELECT)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(PORTAL_LIST_LIMIT);
       const bare = await apply(bareBase);
@@ -724,13 +765,29 @@ export async function createEventRequest(
     if (eqErr) throw eqErr;
   }
 
-  await supabase.from("event_request_history").insert({
-    request_id: requestId,
-    actor_id: submittedBy,
-    action: "submitted",
-    step: initialStep,
-    comment: "Event request submitted",
-  });
+  try {
+    if (input.requestType === "eo_direct") {
+      await insertHistory({
+        request_id: requestId,
+        actor_id: submittedBy,
+        action: "created",
+        step: null,
+        comment: "Manually created calendar event",
+        metadata: { source: "eo_direct" },
+      });
+    } else {
+      await insertHistory({
+        request_id: requestId,
+        actor_id: submittedBy,
+        action: "submitted",
+        step: initialStep,
+        comment: "Event request submitted",
+      });
+    }
+  } catch (historyErr) {
+    await supabase.from("event_requests").delete().eq("id", requestId);
+    throw historyErr;
+  }
 
   await notifyUser({
     userId: submittedBy,
@@ -872,12 +929,13 @@ export async function approveEventRequest(
   const { error } = await supabase.from("event_requests").update(patch).eq("id", id);
   if (error) throw error;
 
-  await supabase.from("event_request_history").insert({
+  await insertHistory({
     request_id: id,
     actor_id: actorId,
     action: "approved",
     step: row.current_step,
     comment: `Approved at ${stepLabel(row.current_step)}`,
+    metadata: { office: stepLabel(row.current_step), decision: "approved" },
   });
 
   const nextLabel = next ? stepLabel(next) : "final processing";
@@ -994,13 +1052,26 @@ export async function approveAndForwardEventRequest(
   if (error) throw error;
 
   const officeList = [...new Set(deduped.map((a) => resourceOfficeLabel(a.assignedOffice)))].join(", ");
-  await supabase.from("event_request_history").insert({
-    request_id: id,
-    actor_id: actorId,
-    action: "forwarded",
-    step: "eo_schedule",
-    comment: `EO assigned resources to: ${officeList}`,
-  });
+  await insertHistoryMany(
+    deduped.map((a) => ({
+      request_id: id,
+      actor_id: actorId,
+      action: a.resourceKind === "equipment" ? "equipment_assigned" : "venue_assigned",
+      step: "eo_schedule",
+      comment: `EO forwarded ${a.resourceKind} "${a.resourceName.trim()}" to ${resourceOfficeLabel(a.assignedOffice)}`,
+      metadata: {
+        assigned_office: a.assignedOffice,
+        office: resourceOfficeLabel(a.assignedOffice),
+        resource_kind: a.resourceKind,
+        resource_name: a.resourceName.trim(),
+        resource_id: a.venueId ?? a.equipmentId ?? null,
+        venue_id: a.venueId ?? null,
+        equipment_id: a.equipmentId ?? null,
+        decision: "assigned",
+        quantity: a.quantity,
+      },
+    })),
+  );
 
   await notifyUser({
     userId: row.submitted_by,
@@ -1065,7 +1136,7 @@ async function autoScheduleAfterResourceApprovals(requestId: string, actorId: st
     .eq("id", requestId);
   if (error) throw error;
 
-  await supabase.from("event_request_history").insert({
+  await insertHistory({
     request_id: requestId,
     actor_id: actorId,
     action: "scheduled",
@@ -1118,13 +1189,23 @@ export async function approveResourceAssignment(
     if (error) throw error;
   }
 
-  await supabase.from("event_request_history").insert({
-    request_id: requestId,
-    actor_id: actorId,
-    action: "approved",
-    step: "resource_offices",
-    comment: `${resourceOfficeLabel(office)} approved assigned resources`,
-  });
+  await insertHistoryMany(
+    mine.map((a) => ({
+      request_id: requestId,
+      actor_id: actorId,
+      action: a.resource_kind === "equipment" ? "equipment_approved" : "venue_approved",
+      step: "resource_offices",
+      comment: `${resourceOfficeLabel(office)} approved ${a.resource_kind} "${a.resource_name}"`,
+      metadata: {
+        assigned_office: office,
+        office: resourceOfficeLabel(office),
+        resource_kind: a.resource_kind,
+        resource_name: a.resource_name,
+        resource_id: a.venue_id ?? a.equipment_id ?? a.id,
+        decision: "approved",
+      },
+    })),
+  );
 
   await autoScheduleAfterResourceApprovals(requestId, actorId);
 }
@@ -1179,13 +1260,24 @@ export async function declineResourceAssignment(
     .eq("id", requestId);
   if (error) throw error;
 
-  await supabase.from("event_request_history").insert({
-    request_id: requestId,
-    actor_id: actorId,
-    action: "declined",
-    step: "resource_offices",
-    comment: `${resourceOfficeLabel(office)} declined: ${cleanReason}`,
-  });
+  await insertHistoryMany(
+    mine.map((a) => ({
+      request_id: requestId,
+      actor_id: actorId,
+      action: a.resource_kind === "equipment" ? "equipment_declined" : "venue_declined",
+      step: "resource_offices",
+      comment: `${resourceOfficeLabel(office)} declined ${a.resource_kind} "${a.resource_name}": ${cleanReason}`,
+      metadata: {
+        assigned_office: office,
+        office: resourceOfficeLabel(office),
+        resource_kind: a.resource_kind,
+        resource_name: a.resource_name,
+        resource_id: a.venue_id ?? a.equipment_id ?? a.id,
+        decision: "declined",
+        reason: cleanReason,
+      },
+    })),
+  );
 
   await notifyUser({
     userId: row.submitted_by,
@@ -1220,12 +1312,13 @@ export async function declineEventRequest(
     .eq("id", id);
   if (error) throw error;
 
-  await supabase.from("event_request_history").insert({
+  await insertHistory({
     request_id: id,
     actor_id: actorId,
     action: "declined",
     step: row.current_step,
     comment: reason.trim() || "Declined",
+    metadata: { office: stepLabel(row.current_step), decision: "declined", reason: reason.trim() || "Declined" },
   });
 
   const cleanReason = reason.trim() || "No reason provided.";
@@ -1291,7 +1384,7 @@ export async function postEventToStudents(
     .eq("id", id);
   if (error) throw error;
 
-  await supabase.from("event_request_history").insert({
+  await insertHistory({
     request_id: id,
     actor_id: actorId,
     action: "posted",
@@ -1326,7 +1419,7 @@ export async function postEventToStaffCalendar(id: string, actorId: string): Pro
     .eq("id", id);
   if (error) throw error;
 
-  await supabase.from("event_request_history").insert({
+  await insertHistory({
     request_id: id,
     actor_id: actorId,
     action: "calendar_posted",
@@ -1344,69 +1437,205 @@ export async function postEventToStaffCalendar(id: string, actorId: string): Pro
   });
 }
 
+export function isPendingForRole(
+  r: EventRequestRow,
+  role: AppRole,
+  userId: string,
+  scope?: { collegeId?: string | null; organizationId?: string | null },
+): boolean {
+  if (r.deleted_at) return false;
+  const office = appRoleToResourceOffice(role);
+
+  if (role === "student_officer") {
+    if (scope?.organizationId) {
+      return (
+        r.request_type === "student_officer" &&
+        r.organization_id === scope.organizationId &&
+        r.status === "pending" &&
+        r.current_step !== "eo_publish"
+      );
+    }
+    return (
+      r.request_type === "student_officer" &&
+      r.submitted_by === userId &&
+      r.status === "pending" &&
+      r.current_step !== "eo_publish"
+    );
+  }
+  if (role === "ssc") {
+    // Keep SSC-submitted requests visible through resource-office approval.
+    // Venue-assignment inbox stays separate via filterResourceOfficePending.
+    return (
+      r.request_type === "ssc" &&
+      r.status === "pending" &&
+      r.current_step !== "eo_publish"
+    );
+  }
+  if (r.status !== "pending" && r.status !== "approved") return false;
+  if (role === "eo") {
+    if (r.current_step === "eo_schedule") return true;
+    if (r.current_step === "eo_publish") {
+      return !r.calendar_posted_at && (r.status === "pending" || r.status === "approved");
+    }
+    return false;
+  }
+  if (office && (role === "gso" || role === "it_infrastructure" || role === "sports_office")) {
+    return hasPendingAssignmentForOffice(r, office);
+  }
+  if (role === "adviser") {
+    if (!scope?.organizationId) return false;
+    return (
+      r.status === "pending" &&
+      r.current_step === "adviser" &&
+      r.organization_id === scope.organizationId
+    );
+  }
+  if (role === "dean") {
+    if (!scope?.collegeId) return false;
+    return (
+      r.status === "pending" &&
+      r.current_step === "dean" &&
+      (r.organizations?.college_id ?? null) === scope.collegeId
+    );
+  }
+  if (role === "infirmary" || role === "nstp") return false;
+  if (role === "admin") return r.status === "pending";
+  return r.status === "pending" && roleMatchesStep(role, r.current_step);
+}
+
 export function filterPendingForRole(
   rows: EventRequestRow[],
   role: AppRole,
   userId: string,
   scope?: { collegeId?: string | null; organizationId?: string | null },
 ): EventRequestRow[] {
-  const office = appRoleToResourceOffice(role);
+  return rows.filter((r) => isPendingForRole(r, role, userId, scope));
+}
 
-  return rows.filter((r) => {
-    if (role === "student_officer") {
-      if (scope?.organizationId) {
-        return (
-          r.request_type === "student_officer" &&
-          r.organization_id === scope.organizationId &&
-          r.status === "pending" &&
-          r.current_step !== "eo_publish"
-        );
-      }
-      return (
-        r.request_type === "student_officer" &&
-        r.submitted_by === userId &&
-        r.status === "pending" &&
-        r.current_step !== "eo_publish"
-      );
-    }
-    if (role === "ssc") {
-      // Keep SSC-submitted requests visible through resource-office approval.
-      // Venue-assignment inbox stays separate via filterResourceOfficePending.
-      return (
-        r.request_type === "ssc" &&
-        r.status === "pending" &&
-        r.current_step !== "eo_publish"
-      );
-    }
-    if (r.status !== "pending" && r.status !== "approved") return false;
-    if (role === "eo") {
-      if (r.current_step === "eo_schedule") return true;
-      if (r.current_step === "eo_publish") {
-        return !r.calendar_posted_at && (r.status === "pending" || r.status === "approved");
-      }
-      return false;
-    }
-    if (office && (role === "gso" || role === "it_infrastructure" || role === "sports_office")) {
-      return hasPendingAssignmentForOffice(r, office);
-    }
-    if (role === "adviser") {
-      if (!scope?.organizationId) return false;
-      return (
-        r.status === "pending" &&
-        r.current_step === "adviser" &&
-        r.organization_id === scope.organizationId
-      );
-    }
-    if (role === "dean") {
-      if (!scope?.collegeId) return false;
-      return (
-        r.status === "pending" &&
-        r.current_step === "dean" &&
-        (r.organizations?.college_id ?? null) === scope.collegeId
-      );
-    }
-    return r.status === "pending" && roleMatchesStep(role, r.current_step);
-  });
+/** Same pending definition used by Event Management tables, badges, and dashboard counts. */
+export function getPendingEventsForCurrentUser(
+  rows: EventRequestRow[],
+  role: AppRole,
+  userId: string,
+  scope?: { collegeId?: string | null; organizationId?: string | null },
+): EventRequestRow[] {
+  return filterPendingForRole(rows, role, userId, scope);
+}
+
+async function countExact(apply: (query: any) => any): Promise<number> {
+  const supabase = getSupabase();
+  const { count, error } = await apply(
+    supabase.from("event_requests").select("id", { count: "exact", head: true }).is("deleted_at", null),
+  );
+  if (error) throw error;
+  return count ?? 0;
+}
+
+async function countPendingResourceOffice(office: ResourceOffice): Promise<number> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("event_request_resource_assignments")
+    .select("request_id")
+    .eq("assigned_office", office)
+    .eq("status", "pending")
+    .limit(500);
+  if (error) throw error;
+
+  const assignmentIds = [
+    ...new Set(
+      ((data ?? []) as Array<{ request_id: string | null }>)
+        .map((r) => r.request_id)
+        .filter((id): id is string => !!id),
+    ),
+  ];
+
+  let assignmentCount = 0;
+  if (assignmentIds.length) {
+    assignmentCount = await countExact((q) =>
+      q.in("id", assignmentIds).eq("status", "pending").eq("current_step", "resource_offices"),
+    );
+  }
+
+  if (office !== "gso") return assignmentCount;
+
+  const legacyCount = await countExact((q) => q.eq("status", "pending").eq("current_step", "gso"));
+  return assignmentCount + legacyCount;
+}
+
+/**
+ * Head-count of requests currently awaiting action from this role.
+ * Uses the same rules as `isPendingForRole` / Event Management pending tables.
+ */
+export async function countPendingForRole(
+  role: AppRole,
+  userId: string,
+  scope?: { collegeId?: string | null; organizationId?: string | null },
+): Promise<number> {
+  if (role === "infirmary" || role === "nstp") return 0;
+
+  if (role === "student_officer") {
+    return countExact((q) => {
+      let next = q
+        .eq("request_type", "student_officer")
+        .eq("status", "pending")
+        .neq("current_step", "eo_publish");
+      if (scope?.organizationId) next = next.eq("organization_id", scope.organizationId);
+      else next = next.eq("submitted_by", userId);
+      return next;
+    });
+  }
+
+  if (role === "ssc") {
+    return countExact((q) =>
+      q.eq("request_type", "ssc").eq("status", "pending").neq("current_step", "eo_publish"),
+    );
+  }
+
+  if (role === "eo") {
+    return countExact((q) =>
+      q
+        .in("status", ["pending", "approved"])
+        .or(
+          "current_step.eq.eo_schedule,and(current_step.eq.eo_publish,calendar_posted_at.is.null)",
+        ),
+    );
+  }
+
+  const office = appRoleToResourceOffice(role);
+  if (office && (role === "gso" || role === "it_infrastructure" || role === "sports_office")) {
+    return countPendingResourceOffice(office);
+  }
+
+  if (role === "adviser") {
+    if (!scope?.organizationId) return 0;
+    return countExact((q) =>
+      q.eq("status", "pending").eq("current_step", "adviser").eq("organization_id", scope.organizationId!),
+    );
+  }
+
+  if (role === "dean") {
+    if (!scope?.collegeId) return 0;
+    const supabase = getSupabase();
+    const { count, error } = await supabase
+      .from("event_requests")
+      .select("id, organizations!inner(college_id)", { count: "exact", head: true })
+      .is("deleted_at", null)
+      .eq("status", "pending")
+      .eq("current_step", "dean")
+      .eq("organizations.college_id", scope.collegeId);
+    if (error) throw error;
+    return count ?? 0;
+  }
+
+  if (role === "osas") {
+    return countExact((q) => q.eq("status", "pending").eq("current_step", "osas"));
+  }
+
+  if (role === "admin") {
+    return countExact((q) => q.eq("status", "pending"));
+  }
+
+  return 0;
 }
 
 function hasPendingAssignmentForOffice(row: EventRequestRow, office: ResourceOffice): boolean {
@@ -1481,7 +1710,7 @@ export function filterPostedEvents(rows: EventRequestRow[]): EventRequestRow[] {
 
 /** Staff schedule calendar (EO publishes here). Cancelled events stay in history but leave the calendar. */
 export function filterCalendarEvents(rows: EventRequestRow[]): EventRequestRow[] {
-  return rows.filter((r) => r.calendar_posted_at != null && r.status !== "cancelled");
+  return rows.filter((r) => r.calendar_posted_at != null && r.status !== "cancelled" && !r.deleted_at);
 }
 
 const CALENDAR_LIST_SELECT = `
@@ -1512,6 +1741,7 @@ export async function fetchCalendarEventsInRange(params: {
   const { data, error } = await supabase
     .from("event_requests")
     .select(CALENDAR_LIST_SELECT)
+    .is("deleted_at", null)
     .not("calendar_posted_at", "is", null)
     .neq("status", "cancelled")
     .lte("start_date", end)
@@ -1575,7 +1805,7 @@ export async function cancelScheduledEventRequest(
     .eq("id", id);
   if (error) throw error;
 
-  await supabase.from("event_request_history").insert({
+  await insertHistory({
     request_id: id,
     actor_id: actorId,
     action: "cancelled",
@@ -1598,6 +1828,70 @@ export async function cancelScheduledEventRequest(
     category: "system",
     emailSubject: "EventLink: Event cancelled",
     emailText: `Your event "${row.activity}" was cancelled.\nSchedule: ${formatEventScheduleSnippet(row)}\nReason: ${cleanReason}`,
+  });
+}
+
+export async function unpostEventFromStaffCalendar(
+  id: string,
+  actorId: string,
+): Promise<void> {
+  const row = await getRow(id);
+  if (!row.calendar_posted_at) {
+    throw new Error("This event is not posted to the staff calendar.");
+  }
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("event_requests")
+    .update({ calendar_posted_at: null })
+    .eq("id", id);
+  if (error) throw error;
+
+  await insertHistory({
+    request_id: id,
+    actor_id: actorId,
+    action: "unposted",
+    step: "eo_publish",
+    comment: "Removed from staff schedule calendar",
+  });
+}
+
+/**
+ * Soft-delete an event so Event Trail history is retained.
+ * Calendar, pending queues, and event lists hide the row.
+ */
+export async function softDeleteEventRequest(
+  id: string,
+  actorId: string,
+  reason: string,
+): Promise<void> {
+  const cleanReason = reason.trim();
+  if (!cleanReason) throw new Error("A deletion reason is required.");
+  const row = await getRow(id);
+  if (row.deleted_at) throw new Error("This event is already deleted.");
+
+  const supabase = getSupabase();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("event_requests")
+    .update({
+      deleted_at: now,
+      deleted_by: actorId,
+      deleted_reason: cleanReason,
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  await insertHistory({
+    request_id: id,
+    actor_id: actorId,
+    action: "deleted",
+    step: null,
+    comment: cleanReason,
+    metadata: {
+      reason: cleanReason,
+      previous_status: row.status,
+      previous_venue: row.venue,
+    },
   });
 }
 
@@ -1702,7 +1996,7 @@ export async function requestRevision(
   });
   if (commentErr) throw commentErr;
 
-  await supabase.from("event_request_history").insert({
+  await insertHistory({
     request_id: id,
     actor_id: actorId,
     action: "revision_requested",
@@ -1759,32 +2053,103 @@ export async function updateEventRequest(
 
   if (error) throw error;
 
+  const historyRows: HistoryInsert[] = [];
+  const activity = input.activity.trim();
+  const venue = input.venue.trim();
+  const purpose = input.purpose?.trim() ?? "";
+  if (activity !== row.activity.trim()) {
+    historyRows.push({
+      request_id: id,
+      actor_id: actorId,
+      action: "updated",
+      step: "eo_publish",
+      comment: "Activity name changed",
+      metadata: { affected_field: "activity", previous_value: row.activity, new_value: activity },
+    });
+  }
+  if (row.start_date !== input.startDate || row.end_date !== input.endDate) {
+    historyRows.push({
+      request_id: id,
+      actor_id: actorId,
+      action: "date_changed",
+      step: "eo_publish",
+      comment: "Event date changed",
+      metadata: {
+        affected_field: "date",
+        previous_start_date: row.start_date,
+        previous_end_date: row.end_date,
+        new_start_date: input.startDate,
+        new_end_date: input.endDate,
+        previous_value: `${row.start_date} – ${row.end_date}`,
+        new_value: `${input.startDate} – ${input.endDate}`,
+      },
+    });
+  }
+  if (row.start_time !== input.startTime || row.end_time !== input.endTime) {
+    historyRows.push({
+      request_id: id,
+      actor_id: actorId,
+      action: "time_changed",
+      step: "eo_publish",
+      comment: "Event time changed",
+      metadata: {
+        affected_field: "time",
+        previous_start_time: row.start_time,
+        previous_end_time: row.end_time,
+        new_start_time: input.startTime,
+        new_end_time: input.endTime,
+        previous_value: `${row.start_time} – ${row.end_time}`,
+        new_value: `${input.startTime} – ${input.endTime}`,
+      },
+    });
+  }
+  if (venue !== (row.venue ?? "").trim()) {
+    historyRows.push({
+      request_id: id,
+      actor_id: actorId,
+      action: "venue_changed",
+      step: "eo_publish",
+      comment: "Venue changed",
+      metadata: {
+        affected_field: "venue",
+        previous_venue: row.venue,
+        new_venue: venue,
+        previous_value: row.venue,
+        new_value: venue,
+      },
+    });
+  }
+  if (purpose !== (row.purpose ?? "").trim()) {
+    historyRows.push({
+      request_id: id,
+      actor_id: actorId,
+      action: "description_changed",
+      step: "eo_publish",
+      comment: "Description changed",
+      metadata: {
+        affected_field: "purpose",
+        previous_value: row.purpose,
+        new_value: purpose,
+      },
+    });
+  }
+  if (!historyRows.length) {
+    historyRows.push({
+      request_id: id,
+      actor_id: actorId,
+      action: "updated",
+      step: "eo_publish",
+      comment: "Event edited",
+    });
+  }
+  await insertHistoryMany(historyRows);
+
   const newSchedule = formatEventScheduleSnippet({
     start_date: input.startDate,
     end_date: input.endDate,
     start_time: input.startTime,
     end_time: input.endTime,
-    venue: input.venue.trim(),
-  });
-
-  await supabase.from("event_request_history").insert({
-    request_id: id,
-    actor_id: actorId,
-    action: "updated",
-    step: "eo_publish",
-    comment: "Schedule details updated by Executive Officer",
-    metadata: {
-      previous_start_date: row.start_date,
-      previous_end_date: row.end_date,
-      previous_start_time: row.start_time,
-      previous_end_time: row.end_time,
-      previous_venue: row.venue,
-      new_start_date: input.startDate,
-      new_end_date: input.endDate,
-      new_start_time: input.startTime,
-      new_end_time: input.endTime,
-      new_venue: input.venue.trim(),
-    },
+    venue: venue,
   });
 
   await notifyUser({
@@ -1878,7 +2243,7 @@ export async function resubmitDeclinedEventRequest(
     });
   }
 
-  await supabase.from("event_request_history").insert({
+  await insertHistory({
     request_id: id,
     actor_id: actorId,
     action: "resubmitted",

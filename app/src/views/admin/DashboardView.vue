@@ -4,6 +4,7 @@ import { Users, UserCheck, Clock3, Building2 } from "lucide-vue-next";
 import { fetchAdminRecentActivity, fetchAdminStatsSnapshot, type AdminActivityItem } from "@/services/adminDashboardDb";
 import PortalListSkeleton from "@/components/portal/PortalListSkeleton.vue";
 import PortalStatSkeleton from "@/components/portal/PortalStatSkeleton.vue";
+import ReportsView from "@/views/admin/ReportsView.vue";
 
 const loading = ref(false);
 const loadError = ref<string | null>(null);
@@ -94,5 +95,7 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <ReportsView embedded />
   </div>
 </template>

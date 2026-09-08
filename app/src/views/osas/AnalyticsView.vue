@@ -8,8 +8,6 @@ import {
   Clock,
   AlertTriangle,
 } from "lucide-vue-next";
-import EventTrailPanel from "@/components/portal/EventTrailPanel.vue";
-import EventsLogPanel from "@/components/portal/EventsLogPanel.vue";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import { fetchAnalyticsOverview } from "@/services/analyticsDb";
 
@@ -310,9 +308,6 @@ const pieGradient = computed(() => {
         <p v-if="!recentActivity.length" class="text-center text-xs text-gray-500 py-4">No recent activity yet.</p>
       </div>
     </div>
-
-    <EventsLogPanel role="osas" />
-    <EventTrailPanel role="osas" />
 
     <div class="h-4" />
   </div>

@@ -163,7 +163,7 @@ function onFeedbackSubmitted() {
           class="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-6 rounded-lg font-semibold transition-colors"
           @click="feedbackOpen = true"
         >
-          💬 Leave feedback
+          💬 Give Feedback
         </button>
         <p v-else class="text-center text-sm text-gray-500">
           Feedback is not available for this post.

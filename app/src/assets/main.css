@@ -79,18 +79,30 @@
     @apply overflow-hidden;
   }
 
+  .calendar-only-page {
+    @apply overflow-visible lg:overflow-hidden;
+  }
+
   .dash-page:has(> .dash-split) {
-    @apply overflow-hidden;
+    @apply lg:overflow-hidden;
   }
 
   .dash-split {
-    @apply grid min-h-0 flex-1 grid-cols-1 content-start items-stretch gap-4 lg:grid-cols-2 lg:content-stretch;
+    @apply grid min-h-0 flex-none grid-cols-1 content-start items-stretch gap-4 lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:content-stretch;
   }
 
   .dash-split > * {
     @apply flex min-h-0 min-w-0 flex-col;
     /* Mobile: usable panel height without forcing two full viewports stacked */
     @apply min-h-[min(22rem,52vh)] lg:min-h-0;
+  }
+
+  .dash-split > :first-child {
+    @apply order-2 lg:order-1;
+  }
+
+  .dash-split > :nth-child(2) {
+    @apply order-1 lg:order-2;
   }
 
   .dash-card {

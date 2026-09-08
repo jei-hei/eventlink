@@ -1,5 +1,6 @@
 import { getSupabase } from "@/lib/supabase";
 import { countAdminPortalUsers, type AdminPortalUserRow } from "@/services/adminUsersDb";
+import { countPendingForRole } from "@/services/eventRequestsDb";
 
 export type AdminStatSnapshot = {
   totalUsers: number;
@@ -32,16 +33,16 @@ function relativeTime(iso: string): string {
 export async function fetchAdminStatsSnapshot(): Promise<AdminStatSnapshot> {
   const supabase = getSupabase();
 
-  const [totalUsers, pendingRes, orgsRes] = await Promise.all([
+  const [totalUsers, pendingCount, orgsRes] = await Promise.all([
     countAdminPortalUsers(),
-    supabase.from("event_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    countPendingForRole("admin", ""),
     supabase.from("organizations").select("id", { count: "exact", head: true }).eq("active", true),
   ]);
 
   return {
     totalUsers,
     portalRolesAssigned: totalUsers,
-    pendingWorkflowItems: pendingRes.count ?? 0,
+    pendingWorkflowItems: pendingCount,
     activeOrganizations: orgsRes.count ?? 0,
   };
 }

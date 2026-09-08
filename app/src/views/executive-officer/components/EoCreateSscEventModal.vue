@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from "vue";
+import { reactive, watch } from "vue";
 import { CheckCircle, X } from "lucide-vue-next";
-import { fetchCollegesWithOrganizations } from "@/services/organizationsDb";
 
 export type EoCreateDirectPayload = {
   eventKind: "faculty";
   organizationId: string | null;
   organizationName: string;
   activity: string;
+  description: string;
+  venue: string;
   startDate: string;
   endDate: string;
   startTime: string;
@@ -19,11 +20,10 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ "update:open": [v: boolean]; submit: [payload: EoCreateDirectPayload] }>();
 
-const colleges = ref<Array<{ id: string; name: string }>>([]);
-
 const form = reactive({
-  collegeName: "",
   activity: "",
+  description: "",
+  venue: "",
   startDate: "",
   endDate: "",
   startTime: "08:00",
@@ -31,8 +31,9 @@ const form = reactive({
 });
 
 function resetForm() {
-  form.collegeName = "";
   form.activity = "";
+  form.description = "";
+  form.venue = "";
   form.startDate = "";
   form.endDate = "";
   form.startTime = "08:00";
@@ -45,15 +46,6 @@ watch(
     if (o) resetForm();
   },
 );
-
-onMounted(async () => {
-  try {
-    const collegeRows = await fetchCollegesWithOrganizations();
-    colleges.value = collegeRows.map((c) => ({ id: c.id, name: c.name }));
-  } catch {
-    colleges.value = [];
-  }
-});
 
 function close() {
   emit("update:open", false);
@@ -74,108 +66,113 @@ function onSubmit() {
     window.alert("Please select start date.");
     return;
   }
-  if (!form.collegeName.trim()) {
-    window.alert("Please select a college for this event.");
-    return;
-  }
+  if (!window.confirm("Are you sure you want to add this event to the calendar?")) return;
   emit("submit", {
     eventKind: "faculty",
     organizationId: null,
-    organizationName: form.collegeName.trim(),
+    organizationName: "",
     activity: form.activity.trim(),
+    description: form.description.trim(),
+    venue: form.venue.trim() || "To be announced",
     startDate: form.startDate,
     endDate: form.endDate || form.startDate,
     startTime: parseTimeInput(form.startTime),
     endTime: parseTimeInput(form.endTime),
   });
-  close();
 }
 </script>
 
 <template>
   <div
     v-if="open"
-    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
     @click.self="close"
   >
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden">
-      <div class="bg-[#16A34A] text-white px-6 py-4 flex items-center justify-between">
-        <h3 class="font-bold text-base">Add Event (Direct to Calendar)</h3>
-        <button type="button" class="hover:bg-[#15803D] p-1.5 rounded-lg transition" @click="close">
+    <div class="mx-4 w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl">
+      <div class="flex items-center justify-between bg-[#16A34A] px-6 py-4 text-white">
+        <h3 class="text-base font-bold">Add Event (Direct to Calendar)</h3>
+        <button type="button" class="rounded-lg p-1.5 transition hover:bg-[#15803D]" @click="close">
           <X :size="18" />
         </button>
       </div>
 
-      <div class="p-6 space-y-4">
+      <div class="space-y-4 p-6">
         <div>
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">College *</label>
-          <select
-            v-model="form.collegeName"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-          >
-            <option value="" disabled>Select college</option>
-            <option v-for="c in colleges" :key="c.id" :value="c.name">{{ c.name }}</option>
-          </select>
-        </div>
-
-        <div>
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Activity *</label>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Activity Name *</label>
           <input
             v-model="form.activity"
             type="text"
             placeholder="Enter activity name"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+          />
+        </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Description</label>
+          <textarea
+            v-model="form.description"
+            rows="3"
+            placeholder="Describe this event"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
           />
         </div>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Start date *</label>
+            <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Start date *</label>
             <input
               v-model="form.startDate"
               type="date"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
             />
           </div>
           <div>
-            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">End date</label>
+            <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">End date</label>
             <input
               v-model="form.endDate"
               type="date"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
             />
           </div>
         </div>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Start time *</label>
+            <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Start time *</label>
             <input
               v-model="form.startTime"
               type="time"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
             />
           </div>
           <div>
-            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">End time *</label>
+            <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">End time *</label>
             <input
               v-model="form.endTime"
               type="time"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
             />
           </div>
         </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Venue</label>
+          <input
+            v-model="form.venue"
+            type="text"
+            placeholder="Enter venue"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+          />
+        </div>
       </div>
 
-      <div class="px-6 py-4 bg-gray-50 flex gap-3 justify-end border-t border-gray-200">
+      <div class="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
         <button
           type="button"
-          class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-semibold transition"
+          class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-300"
           @click="close"
         >
           Cancel
         </button>
         <button
           type="button"
-          class="px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-sm font-semibold transition flex items-center gap-2"
+          class="flex items-center gap-2 rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#15803D]"
           @click="onSubmit"
         >
           <CheckCircle :size="15" />

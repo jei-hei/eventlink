@@ -1,609 +1,328 @@
 <script setup lang="ts">
-
-import { computed, onMounted, ref, watch } from "vue";
-
-import { GitBranch, Search } from "lucide-vue-next";
-
+import { computed, ref, watch } from "vue";
+import { GitBranch, X } from "lucide-vue-next";
 import PaginationControls from "@/components/PaginationControls.vue";
-
-import PortalEmptyState from "@/components/portal/PortalEmptyState.vue";
-
+import ProposalPdfButton from "@/components/ProposalPdfButton.vue";
 import {
-
   appRoleToEventsLogScope,
-
   fetchEventTrail,
-
-  fetchRecentEventsInScope,
-
+  fetchEventTrailContext,
+  type EventTrailContext,
   type EventTrailEntry,
-
-  type RecentEventOption,
-
 } from "@/services/eventsLogDb";
-
+import { fetchEventRequestDocuments } from "@/services/eventRequestsDb";
+import { getComplianceAttachmentSignedUrl } from "@/services/complianceAttachmentStorage";
 import type { AppRole } from "@/types/appRole";
-
 import { DEFAULT_PAGE_SIZE } from "@/types/pagination";
-
 import { toUserFacingError } from "@/utils/userFacingError";
-
-
+import type { EventRequestRow } from "@/types/eventRequest";
+import { useAuthStore } from "@/stores/auth";
 
 const props = defineProps<{
-
+  open: boolean;
+  requestId: string | null;
   role: AppRole;
-
   collegeId?: string | null;
-
   organizationId?: string | null;
-
   userId?: string | null;
-
 }>();
 
+const emit = defineEmits<{ close: [] }>();
 
-
-const requestIdInput = ref("");
-
-const selectedRequestId = ref<string | null>(null);
-
-const recentEvents = ref<RecentEventOption[]>([]);
-
+const detailLoading = ref(false);
+const detailError = ref<string | null>(null);
+const context = ref<EventTrailContext | null>(null);
 const trail = ref<EventTrailEntry[]>([]);
-
-const loading = ref(false);
-
-const error = ref<string | null>(null);
-
-const page = ref(1);
-
-const pageSize = ref(DEFAULT_PAGE_SIZE);
-
-const total = ref(0);
-
-
+const trailPage = ref(1);
+const trailPageSize = ref(DEFAULT_PAGE_SIZE);
+const trailTotal = ref(0);
+const letters = ref<NonNullable<EventRequestRow["event_request_letters"]>>([]);
+const comments = ref<NonNullable<EventRequestRow["event_request_compliance_comments"]>>([]);
 
 const analyticsScope = computed(() => appRoleToEventsLogScope(props.role));
-
-
+const auth = useAuthStore();
 
 const scopePayload = computed(() => {
-
-  const role = analyticsScope.value;
-
-  if (!role) return null;
-
+  if (auth.appRole !== "eo" || analyticsScope.value !== "eo") return null;
   return {
-
-    role,
-
+    role: "eo" as const,
     collegeId: props.collegeId,
-
     organizationId: props.organizationId,
-
     userId: props.userId,
-
   };
-
 });
-
-
 
 function formatDate(iso: string): string {
-
   return new Date(iso).toLocaleString("en-US", {
-
     month: "short",
-
     day: "numeric",
-
     year: "numeric",
-
     hour: "numeric",
-
     minute: "2-digit",
-
   });
-
 }
-
-
 
 function metadataField(entry: EventTrailEntry, ...keys: string[]): string | null {
-
   for (const key of keys) {
-
     const val = entry.metadata[key];
-
     if (typeof val === "string" && val.trim()) return val.trim();
-
   }
-
   return null;
-
 }
-
-
 
 function scheduleChanges(entry: EventTrailEntry): { label: string; from: string; to: string }[] {
-
+  const previous = metadataField(entry, "previous_value");
+  const next = metadataField(entry, "new_value");
+  if (previous || next) {
+    const field = metadataField(entry, "affected_field") ?? "Value";
+    return [{ label: field, from: previous ?? "—", to: next ?? "—" }];
+  }
   const pairs: [string, string[], string[]][] = [
-
     ["Venue", ["old_venue", "previous_venue"], ["new_venue", "venue"]],
-
     ["Start date", ["old_start_date", "previous_start_date"], ["new_start_date", "start_date"]],
-
     ["End date", ["old_end_date", "previous_end_date"], ["new_end_date", "end_date"]],
-
     ["Start time", ["old_start_time", "previous_start_time"], ["new_start_time", "start_time"]],
-
     ["End time", ["old_end_time", "previous_end_time"], ["new_end_time", "end_time"]],
-
   ];
-
   const out: { label: string; from: string; to: string }[] = [];
-
   for (const [label, fromKeys, toKeys] of pairs) {
-
     const from = metadataField(entry, ...fromKeys);
-
     const to = metadataField(entry, ...toKeys);
-
     if (from || to) out.push({ label, from: from ?? "—", to: to ?? "—" });
-
   }
-
   return out;
-
 }
 
-
-
-function isCancelled(entry: EventTrailEntry): boolean {
-
-  return entry.action === "cancelled";
-
-}
-
-
-
-function isUpdated(entry: EventTrailEntry): boolean {
-
-  return entry.action === "updated" || entry.actionLabel === "Rescheduled" || entry.actionLabel === "Edited";
-
-}
-
-
-
-async function loadRecentEvents() {
-
+async function loadTrailDetail() {
+  const target = props.requestId?.trim();
   const scope = scopePayload.value;
-
-  if (!scope) {
-
-    recentEvents.value = [];
-
+  if (!target || !scope) {
+    detailError.value = "You are not authorized to view this event trail.";
     return;
-
   }
 
+  detailLoading.value = true;
+  detailError.value = null;
   try {
-
-    recentEvents.value = await fetchRecentEventsInScope(scope);
-
-  } catch {
-
-    recentEvents.value = [];
-
-  }
-
-}
-
-
-
-async function loadTrail(id?: string | null) {
-
-  const target = (id ?? selectedRequestId.value ?? requestIdInput.value).trim();
-
-  if (!target) {
-
-    trail.value = [];
-
-    total.value = 0;
-
-    return;
-
-  }
-
-
-
-  const scope = scopePayload.value;
-
-  if (!scope) {
-
-    trail.value = [];
-
-    total.value = 0;
-
-    error.value = "Event trail is not available for this role.";
-
-    return;
-
-  }
-
-
-
-  loading.value = true;
-
-  error.value = null;
-
-  try {
-
-    const result = await fetchEventTrail(target, scope, { page: page.value, pageSize: pageSize.value });
-
-    trail.value = result.rows;
-
-    total.value = result.total;
-
-    page.value = result.page;
-
-    pageSize.value = result.pageSize;
-
-    selectedRequestId.value = target;
-
-    if (!result.total) {
-
-      error.value = "No trail found for this request in your scope.";
-
+    const summary = await fetchEventTrailContext(target, scope);
+    if (!summary) {
+      trail.value = [];
+      trailTotal.value = 0;
+      letters.value = [];
+      comments.value = [];
+      context.value = null;
+      detailError.value = "You are not authorized to view this event trail.";
+      return;
     }
 
+    const [trailResult, docs] = await Promise.all([
+      fetchEventTrail(target, scope, { page: trailPage.value, pageSize: trailPageSize.value }),
+      fetchEventRequestDocuments(target),
+    ]);
+    trail.value = trailResult.rows;
+    trailTotal.value = trailResult.total;
+    trailPage.value = trailResult.page;
+    trailPageSize.value = trailResult.pageSize;
+    letters.value = docs.letters;
+    comments.value = docs.comments;
+    context.value = summary;
+    if (!trailResult.total) {
+      detailError.value = "No trail found for this event in your scope.";
+    }
   } catch (e) {
-
     trail.value = [];
-
-    total.value = 0;
-
-    error.value = toUserFacingError(e, "Could not load event trail.");
-
+    trailTotal.value = 0;
+    letters.value = [];
+    comments.value = [];
+    context.value = null;
+    detailError.value = toUserFacingError(e, "Could not load event trail.");
   } finally {
-
-    loading.value = false;
-
+    detailLoading.value = false;
   }
-
 }
 
-
-
-function onSelectRecent() {
-
-  if (selectedRequestId.value) {
-
-    requestIdInput.value = selectedRequestId.value;
-
-    page.value = 1;
-
-    void loadTrail(selectedRequestId.value);
-
-  }
-
+function closeDetail() {
+  emit("close");
 }
 
-
-
-function onSearch() {
-
-  page.value = 1;
-
-  void loadTrail(requestIdInput.value);
-
+async function openComplianceFile(path: string) {
+  const url = await getComplianceAttachmentSignedUrl(path);
+  if (url) window.open(url, "_blank", "noopener,noreferrer");
 }
-
-
-
-onMounted(() => {
-
-  void loadRecentEvents();
-
-});
-
-
 
 watch(
-
-  () => [props.role, props.collegeId, props.organizationId, props.userId],
-
+  () => [props.open, props.requestId],
   () => {
-
-    void loadRecentEvents();
-
-    trail.value = [];
-
-    total.value = 0;
-
-    page.value = 1;
-
+    if (!props.open || !props.requestId) {
+      context.value = null;
+      trail.value = [];
+      return;
+    }
+    trailPage.value = 1;
+    void loadTrailDetail();
   },
-
 );
 
-
-
-watch([page, pageSize], () => {
-
-  const target = selectedRequestId.value ?? requestIdInput.value.trim();
-
-  if (target) void loadTrail(target);
-
+watch([trailPage, trailPageSize], () => {
+  if (!props.open || !props.requestId || detailLoading.value) return;
+  void loadTrailDetail();
 });
-
 </script>
 
-
-
 <template>
-
-  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-4">
-
-    <div class="flex items-center gap-2">
-
-      <div class="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
-
-        <GitBranch :size="16" class="text-indigo-700" />
-
-      </div>
-
-      <div>
-
-        <h3 class="font-bold text-gray-800 text-sm">Event Trail</h3>
-
-        <p class="text-gray-400 text-xs">Full action history for a single event request</p>
-
-      </div>
-
-    </div>
-
-
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-      <label class="text-[11px] text-gray-500 space-y-1">
-
-        <span>Search by request ID</span>
-
-        <div class="flex gap-2">
-
-          <input
-
-            v-model="requestIdInput"
-
-            type="text"
-
-            placeholder="Paste UUID…"
-
-            class="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-xs font-mono"
-
-            @keyup.enter="onSearch"
-
-          />
-
-          <button
-
-            type="button"
-
-            class="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
-
-            @click="onSearch"
-
-          >
-
-            <Search :size="14" />
-
-            Load
-
-          </button>
-
+  <div
+    v-if="open"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+    @click.self="closeDetail"
+  >
+    <div class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-2xl">
+      <div class="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-5 py-3">
+        <div class="flex items-center gap-2">
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50">
+            <GitBranch :size="16" class="text-emerald-700" />
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-gray-800">{{ context?.activity ?? "Event trail" }}</h3>
+            <p class="text-xs text-gray-500">Complete history, notes, and files</p>
+          </div>
         </div>
+        <button type="button" class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100" @click="closeDetail">
+          <X :size="18" />
+        </button>
+      </div>
 
-      </label>
-
-      <label class="text-[11px] text-gray-500 space-y-1">
-
-        <span>Or pick a recent event</span>
-
-        <select
-
-          v-model="selectedRequestId"
-
-          class="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs"
-
-          @change="onSelectRecent"
-
+      <div class="space-y-4 p-5">
+        <p
+          v-if="detailError"
+          class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
         >
-
-          <option :value="null">Select event…</option>
-
-          <option v-for="ev in recentEvents" :key="ev.id" :value="ev.id">
-
-            {{ ev.activity }} · {{ ev.organizationName }} ({{ ev.status }})
-
-          </option>
-
-        </select>
-
-      </label>
-
-    </div>
-
-
-
-    <p v-if="error" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-
-      {{ error }}
-
-    </p>
-
-
-
-    <div v-if="loading" class="text-center text-xs text-gray-500 py-8">Loading event trail…</div>
-
-
-
-    <PortalEmptyState
-
-      v-else-if="!trail.length"
-
-      title="Select an event to view its trail"
-
-      description="Use the request ID search or recent events dropdown to inspect workflow history."
-
-    />
-
-
-
-    <template v-else>
-
-      <ol class="relative border-l-2 border-indigo-100 ml-3 space-y-4 pl-5">
-
-        <li v-for="(entry, idx) in trail" :key="entry.id" class="relative">
-
-          <span
-
-            class="absolute -left-[1.35rem] top-1.5 w-3 h-3 rounded-full border-2 border-white bg-indigo-500 shadow-sm"
-
-          />
-
-          <div class="rounded-lg border border-gray-100 bg-gray-50/50 p-3 space-y-2">
-
-            <div class="flex flex-wrap items-center gap-2">
-
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
-
-                {{ entry.actionLabel }}
-
-              </span>
-
-              <span v-if="idx === 0" class="text-[10px] text-gray-400">Step {{ idx + 1 }}</span>
-
-              <span v-else class="text-[10px] text-gray-400">Step {{ idx + 1 }}</span>
-
-            </div>
-
-
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
-
-              <div><span class="text-gray-400">Person:</span> {{ entry.actorName }}</div>
-
-              <div><span class="text-gray-400">Role:</span> {{ entry.actorRoleLabel }}</div>
-
-              <div><span class="text-gray-400">Office:</span> {{ entry.office ?? "—" }}</div>
-
-              <div><span class="text-gray-400">When:</span> {{ formatDate(entry.createdAt) }}</div>
-
-            </div>
-
-
-
-            <div v-if="entry.previousStatus || entry.newStatus" class="text-xs text-gray-600">
-
-              <span class="text-gray-400">Status:</span>
-
-              {{ entry.previousStatus ?? "—" }} → {{ entry.newStatus ?? "—" }}
-
-            </div>
-
-
-
-            <p v-if="entry.notes" class="text-xs text-gray-700">
-
-              <span class="text-gray-400">Notes:</span> {{ entry.notes }}
-
-            </p>
-
-
-
-            <div
-
-              v-if="isCancelled(entry)"
-
-              class="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-800"
-
-            >
-
-              <span class="font-semibold">Cancellation reason:</span>
-
-              {{ entry.notes ?? metadataField(entry, "reason", "cancel_reason") ?? "No reason recorded." }}
-
-            </div>
-
-
-
-            <div v-if="isUpdated(entry) && scheduleChanges(entry).length" class="space-y-1">
-
-              <p class="text-xs font-semibold text-gray-700">Schedule changes</p>
-
-              <div
-
-                v-for="change in scheduleChanges(entry)"
-
-                :key="change.label"
-
-                class="text-xs text-gray-600 grid grid-cols-[auto_1fr_auto_1fr] gap-x-2 gap-y-0.5"
-
-              >
-
-                <span class="text-gray-400">{{ change.label }}:</span>
-
-                <span>{{ change.from }}</span>
-
-                <span class="text-gray-300">→</span>
-
-                <span>{{ change.to }}</span>
-
+          {{ detailError }}
+        </p>
+        <div v-if="detailLoading" class="py-8 text-center text-xs text-gray-500">Loading event trail…</div>
+
+        <template v-else-if="context">
+          <div>
+            <h4 class="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Event details</h4>
+            <div class="grid grid-cols-1 gap-2 rounded-lg border border-gray-100 bg-gray-50 p-3 text-xs sm:grid-cols-2">
+              <div><span class="text-gray-400">Event name:</span> {{ context.activity }}</div>
+              <div><span class="text-gray-400">Organization:</span> {{ context.organizationName }}</div>
+              <div><span class="text-gray-400">College:</span> {{ context.collegeName }}</div>
+              <div><span class="text-gray-400">Requester:</span> {{ context.requesterName }}</div>
+              <div><span class="text-gray-400">Event date:</span> {{ context.startDate }}<template v-if="context.endDate && context.endDate !== context.startDate"> – {{ context.endDate }}</template></div>
+              <div><span class="text-gray-400">Event time:</span> {{ context.startTime || "—" }}<template v-if="context.endTime"> – {{ context.endTime }}</template></div>
+              <div><span class="text-gray-400">Venue:</span> {{ context.venue }}</div>
+              <div><span class="text-gray-400">Current status:</span> {{ context.status }}</div>
+              <div><span class="text-gray-400">Current step:</span> {{ context.currentStep ?? "—" }}</div>
+              <div v-if="context.purpose" class="sm:col-span-2">
+                <span class="text-gray-400">Description:</span> {{ context.purpose }}
               </div>
-
             </div>
-
-
-
-            <details v-if="Object.keys(entry.metadata).length" class="text-[11px] text-gray-500">
-
-              <summary class="cursor-pointer hover:text-gray-700">Metadata</summary>
-
-              <pre class="mt-1 overflow-x-auto rounded bg-white p-2 text-[10px]">{{ JSON.stringify(entry.metadata, null, 2) }}</pre>
-
-            </details>
-
           </div>
 
-        </li>
+          <div v-if="context.letterPath || letters.length || comments.some((c) => c.attachment_path)" class="space-y-2">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-gray-500">Files &amp; documents</h4>
+            <ProposalPdfButton v-if="context.letterPath" :letter-path="context.letterPath" label="Event proposal letter" current />
+            <ProposalPdfButton
+              v-for="letter in letters.filter((l) => l.letter_path !== context?.letterPath)"
+              :key="letter.id"
+              :letter-path="letter.letter_path"
+              :label="letter.label"
+            />
+            <div
+              v-for="comment in comments.filter((c) => c.attachment_path)"
+              :key="comment.id"
+              class="rounded-lg border border-gray-200 bg-gray-50 p-3"
+            >
+              <p class="mb-1 text-xs font-bold uppercase tracking-wider text-gray-500">Compliance attachment</p>
+              <p class="mb-2 truncate text-sm text-gray-700">{{ comment.attachment_name || "Attachment" }}</p>
+              <p v-if="comment.comment" class="mb-2 text-xs text-gray-600">{{ comment.comment }}</p>
+              <button
+                type="button"
+                class="rounded-lg bg-[#16A34A] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#15803D]"
+                @click="openComplianceFile(comment.attachment_path!)"
+              >
+                View file
+              </button>
+            </div>
+          </div>
 
-      </ol>
+          <div v-if="comments.length" class="space-y-2">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-gray-500">Compliance comments</h4>
+            <div
+              v-for="comment in comments"
+              :key="`c-${comment.id}`"
+              class="rounded-lg border border-gray-100 px-3 py-2 text-xs text-gray-700"
+            >
+              <p class="font-semibold">{{ comment.sender_role }} · {{ formatDate(comment.created_at) }}</p>
+              <p class="mt-1">{{ comment.comment }}</p>
+            </div>
+          </div>
 
+          <div>
+            <h4 class="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Event trail</h4>
+            <ol class="relative ml-3 space-y-4 border-l-2 border-emerald-100 pl-5">
+              <li v-for="(entry, idx) in trail" :key="entry.id" class="relative">
+                <span class="absolute -left-[1.35rem] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500 shadow-sm" />
+                <div class="space-y-2 rounded-lg border border-gray-100 bg-gray-50/50 p-3">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                      {{ entry.actionLabel }}
+                    </span>
+                    <span class="text-[10px] text-gray-400">Step {{ idx + 1 + (trailPage - 1) * trailPageSize }}</span>
+                  </div>
+                  <div class="grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+                    <div><span class="text-gray-400">Person:</span> {{ entry.actorName }}</div>
+                    <div><span class="text-gray-400">Role:</span> {{ entry.actorRoleLabel }}</div>
+                    <div><span class="text-gray-400">Office:</span> {{ entry.office ?? "—" }}</div>
+                    <div><span class="text-gray-400">When:</span> {{ formatDate(entry.createdAt) }}</div>
+                    <div v-if="metadataField(entry, 'resource_name')">
+                      <span class="text-gray-400">Resource:</span>
+                      {{ metadataField(entry, "resource_kind") ?? "item" }}
+                      ·
+                      {{ metadataField(entry, "resource_name") }}
+                    </div>
+                  </div>
+                  <div v-if="entry.previousStatus || entry.newStatus" class="text-xs text-gray-600">
+                    <span class="text-gray-400">Status:</span>
+                    {{ entry.previousStatus ?? "—" }} → {{ entry.newStatus ?? "—" }}
+                  </div>
+                  <p v-if="entry.notes" class="text-xs text-gray-700">
+                    <span class="text-gray-400">Notes:</span> {{ entry.notes }}
+                  </p>
+                  <div v-if="scheduleChanges(entry).length" class="space-y-1">
+                    <p class="text-xs font-semibold text-gray-700">Previous / new values</p>
+                    <div
+                      v-for="change in scheduleChanges(entry)"
+                      :key="change.label"
+                      class="grid grid-cols-[auto_1fr_auto_1fr] gap-x-2 text-xs text-gray-600"
+                    >
+                      <span class="text-gray-400">{{ change.label }}:</span>
+                      <span>{{ change.from }}</span>
+                      <span class="text-gray-300">→</span>
+                      <span>{{ change.to }}</span>
+                    </div>
+                  </div>
+                </div>
+              </li>
+            </ol>
+          </div>
 
-
-      <PaginationControls
-
-        :page="page"
-
-        :page-size="pageSize"
-
-        :total="total"
-
-        :loading="loading"
-
-        @update:page="page = $event"
-
-        @update:page-size="(size) => { pageSize = size; page = 1; }"
-
-      />
-
-    </template>
-
+          <PaginationControls
+            v-if="trailTotal > 0"
+            :page="trailPage"
+            :page-size="trailPageSize"
+            :total="trailTotal"
+            :loading="detailLoading"
+            @update:page="trailPage = $event"
+            @update:page-size="
+              (size) => {
+                trailPageSize = size;
+                trailPage = 1;
+              }
+            "
+          />
+        </template>
+      </div>
+    </div>
   </div>
-
 </template>
-
-

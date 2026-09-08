@@ -24,7 +24,30 @@ export const FEEDBACK_PRESET_COMMENTS = [
 
 ] as const;
 
+export async function verifyPublicFeedbackAccess(feedPostId: string, accessCode: string): Promise<void> {
+  const trimmedId = feedPostId.trim();
+  const trimmedCode = accessCode.trim();
+  if (!trimmedId) throw new Error("Missing event.");
+  if (!trimmedCode) throw new Error("Enter the feedback access code.");
 
+  const supabase = getSupabase();
+  const { data, error } = await supabase.functions.invoke("verify-feedback-code", {
+    body: { feedPostId: trimmedId, accessCode: trimmedCode },
+  });
+  const payload = (data ?? {}) as {
+    error?: string;
+    verified?: boolean;
+    feedPostId?: string;
+  };
+  if (error) {
+    const fromBody = payload.error;
+    throw new Error(fromBody || "Could not verify access code.");
+  }
+  if (payload.error) throw new Error(payload.error);
+  if (payload.verified !== true || payload.feedPostId !== trimmedId) {
+    throw new Error(payload.error || "Incorrect access code.");
+  }
+}
 
 export async function submitEventFeedback(input: SubmitEventFeedbackInput): Promise<void> {
 

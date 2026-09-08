@@ -14,4 +14,11 @@
 3. **Admin login:** From `app/` with service role in `.env.seed`, run `npm run seed:admin`.
 4. **Adviser testing guide:** [`ADVISER_TEST_GUIDE.md`](./ADVISER_TEST_GUIDE.md) — end-to-end test checklist.
 
+`supabase db push` does **not** deploy Edge Functions. After schema changes, also run:
+
+```bash
+supabase functions deploy admin-create-user
+supabase functions deploy send-notification-email
+```
+
 Academic / capstone use per your institution’s policy.

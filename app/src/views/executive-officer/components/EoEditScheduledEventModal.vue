@@ -15,6 +15,8 @@ const emit = defineEmits<{
   close: [];
   save: [id: string, input: UpdateEventRequestInput];
   cancelEvent: [id: string, reason: string];
+  deleteEvent: [id: string, reason: string];
+  unpostEvent: [id: string];
 }>();
 
 const store = useEventRequestsStore();
@@ -33,8 +35,11 @@ const form = ref({
 const selectedSdgs = ref<number[]>([]);
 const saving = ref(false);
 const cancelOpen = ref(false);
+const deleteOpen = ref(false);
 const cancelReason = ref("");
+const deleteReason = ref("");
 const cancelling = ref(false);
+const deleting = ref(false);
 
 const venueOptions = ["Gymnasium", "Devenecia", "Open Gymnasium", "Auditorium", "Other"];
 
@@ -48,6 +53,8 @@ const canCancel = computed(() => {
     ev.workflowStatus === "Approved"
   );
 });
+
+const canUnpost = computed(() => !!props.event?.calendarPosted && props.event.status !== "Cancelled");
 
 function toTimeInput(value: string | undefined): string {
   if (!value) return "08:00";
@@ -76,7 +83,9 @@ function resetForm() {
   };
   selectedSdgs.value = parseSdgsFromStorage(ev.sdgs ?? "");
   cancelOpen.value = false;
+  deleteOpen.value = false;
   cancelReason.value = "";
+  deleteReason.value = "";
 }
 
 watch(
@@ -132,6 +141,20 @@ async function onConfirmCancel() {
     cancelling.value = false;
   }
 }
+
+async function onConfirmDelete() {
+  if (!props.event) return;
+  if (!deleteReason.value.trim()) {
+    window.alert("Please enter a deletion reason.");
+    return;
+  }
+  deleting.value = true;
+  try {
+    emit("deleteEvent", props.event.id, deleteReason.value.trim());
+  } finally {
+    deleting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -142,13 +165,45 @@ async function onConfirmCancel() {
   >
     <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-2xl">
       <div class="sticky top-0 flex items-center justify-between bg-[#16A34A] px-6 py-4 text-white">
-        <h3 class="text-base font-bold">{{ cancelOpen ? "Cancel Event" : "Scheduled event" }}</h3>
+        <h3 class="text-base font-bold">{{ deleteOpen ? "Delete Event" : cancelOpen ? "Cancel Event" : "Scheduled event" }}</h3>
         <button type="button" class="rounded-lg p-1.5 transition hover:bg-[#15803D]" @click="emit('close')">
           <X :size="18" />
         </button>
       </div>
 
-      <div v-if="cancelOpen" class="space-y-4 p-6">
+      <div v-if="deleteOpen" class="space-y-4 p-6">
+        <p class="text-sm text-gray-700">Are you sure you want to delete this event? Its Event Trail will be kept.</p>
+        <div>
+          <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-500">Reason</label>
+          <textarea
+            v-model="deleteReason"
+            rows="3"
+            required
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            placeholder="Enter deletion reason"
+          />
+        </div>
+        <div class="flex justify-end gap-2 border-t border-gray-200 pt-4">
+          <button
+            type="button"
+            class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300"
+            :disabled="deleting"
+            @click="deleteOpen = false"
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            class="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60"
+            :disabled="deleting"
+            @click="onConfirmDelete"
+          >
+            {{ deleting ? "Deleting…" : "Confirm Delete" }}
+          </button>
+        </div>
+      </div>
+
+      <div v-else-if="cancelOpen" class="space-y-4 p-6">
         <p class="text-sm text-gray-700">Are you sure you want to cancel this scheduled event?</p>
         <div>
           <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-500">Notes / Reason</label>
@@ -267,14 +322,31 @@ async function onConfirmCancel() {
         <SdgCheckboxGroup v-model="selectedSdgs" />
 
         <div class="flex flex-wrap justify-between gap-2 border-t border-gray-200 pt-4">
-          <button
-            v-if="canCancel"
-            type="button"
-            class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-            @click="cancelOpen = true"
-          >
-            Cancel Event
-          </button>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-if="canCancel"
+              type="button"
+              class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              @click="cancelOpen = true"
+            >
+              Cancel Event
+            </button>
+            <button
+              v-if="canUnpost"
+              type="button"
+              class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100"
+              @click="emit('unpostEvent', event.id)"
+            >
+              Unpost from calendar
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-100"
+              @click="deleteOpen = true"
+            >
+              Delete Event
+            </button>
+          </div>
           <div class="ml-auto flex gap-2">
             <button
               type="button"

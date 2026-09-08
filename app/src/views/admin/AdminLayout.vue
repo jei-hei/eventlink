@@ -4,7 +4,6 @@ import { useRoute, useRouter, RouterLink, RouterView } from "vue-router";
 import {
   Users,
   Building2,
-  BarChart3,
   Settings,
   Menu,
   X,
@@ -39,7 +38,6 @@ const navItems = [
   { to: "/admin", name: "admin-dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/admin/users", name: "admin-users", label: "Users", icon: Users },
   { to: "/admin/colleges", name: "admin-colleges", label: "Colleges", icon: Building2 },
-  { to: "/admin/reports", name: "admin-reports", label: "Reports & Analytics", icon: BarChart3 },
   { to: "/admin/settings", name: "admin-settings", label: "Settings", icon: Settings },
   { to: "/admin/profile", name: "admin-profile", label: "Profile", icon: UserCircle },
 ] as const;

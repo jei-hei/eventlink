@@ -26,8 +26,11 @@ const {
   handlePostEvent,
   handleUpdateEvent,
   handleCancelScheduled,
+  handleDeleteEvent,
+  handleUnpostEvent,
   submitRequest,
   useDb,
+  busy,
 } = useExecutivePortal();
 
 function isReadyForCalendarPost(event: EoEvent) {
@@ -66,7 +69,7 @@ const selectedEvent = ref<EoEvent | null>(null);
 const editEvent = ref<EoEvent | null>(null);
 const createOpen = ref(false);
 
-const pendingCount = computed(() => events.value.filter((e) => e.status === "Pending").length);
+const pendingCount = computed(() => events.value.length);
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.value));
 
@@ -87,12 +90,13 @@ async function onCreateSubmit(payload: EoCreateDirectPayload) {
         endDate: payload.endDate,
         startTime: payload.startTime,
         endTime: payload.endTime,
-        venue: "To be announced",
+        venue: payload.venue,
         numberOfParticipants: 1,
         sdgs: "",
         needsGso: false,
-        purpose: `[COLLEGE:${payload.organizationName}] Faculty event`,
+        purpose: payload.description,
       });
+      createOpen.value = false;
       return;
     }
 
@@ -106,12 +110,13 @@ async function onCreateSubmit(payload: EoCreateDirectPayload) {
       endDate: payload.endDate,
       startTime: payload.startTime,
       endTime: payload.endTime,
-      venue: "To be announced",
+      venue: payload.venue,
       status: "Approved",
       posted: false,
       calendarPosted: true,
     };
     handleCreateEvent(e);
+    createOpen.value = false;
   } catch (e) {
     window.alert(e instanceof Error ? e.message : String(e));
   }
@@ -133,6 +138,16 @@ async function onEditSave(id: string, input: UpdateEventRequestInput) {
 
 async function onCancelScheduled(id: string, reason: string) {
   await handleCancelScheduled(id, reason);
+  editEvent.value = null;
+}
+
+async function onDeleteScheduled(id: string, reason: string) {
+  await handleDeleteEvent(id, reason);
+  editEvent.value = null;
+}
+
+async function onUnpostScheduled(id: string) {
+  await handleUnpostEvent(id);
   editEvent.value = null;
 }
 </script>
@@ -212,6 +227,7 @@ async function onCancelScheduled(id: string, reason: string) {
                       <button
                         type="button"
                         class="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700"
+                        :disabled="busy"
                         @click="onTableCancel(event)"
                       >
                         <XCircle :size="12" />
@@ -244,11 +260,14 @@ async function onCancelScheduled(id: string, reason: string) {
       @close="editEvent = null"
       @save="onEditSave"
       @cancel-event="onCancelScheduled"
+      @delete-event="onDeleteScheduled"
+      @unpost-event="onUnpostScheduled"
     />
     <EoEventDetailModal
       v-if="selectedEvent"
       :event="selectedEvent"
       :can-post-to-calendar="isReadyForCalendarPost(selectedEvent)"
+      :busy="busy"
       @close="selectedEvent = null"
       @approve-and-forward="onApproveAndForward"
       @reject="onDetailReject"

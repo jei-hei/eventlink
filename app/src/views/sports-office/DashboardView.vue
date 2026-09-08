@@ -2,7 +2,7 @@
 import ResourceOfficeDashboard from "@/components/portal/ResourceOfficeDashboard.vue";
 import { useSportsPortal } from "./portalContext";
 
-const { events, scheduledEvents, handleApprove, handleReject } = useSportsPortal();
+const { events, scheduledEvents, handleApprove, handleReject, busy } = useSportsPortal();
 </script>
 
 <template>
@@ -13,5 +13,6 @@ const { events, scheduledEvents, handleApprove, handleReject } = useSportsPortal
     :scheduled-events="scheduledEvents"
     @approve="handleApprove"
     @reject="handleReject"
+    :busy="busy"
   />
 </template>

@@ -14,6 +14,7 @@ export interface OsasPortalContext {
     attachmentFile?: File | null,
   ) => void | Promise<void>;
   handleCreateEvent: (e: OsasEvent) => void;
+  busy: Ref<boolean>;
 }
 
 export const osasPortalKey: InjectionKey<OsasPortalContext> = Symbol("osasPortal");

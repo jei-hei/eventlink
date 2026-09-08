@@ -1,11 +1,12 @@
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
-import type { AnalyticsScope, AnalyticsScopeOptions } from "@/services/analyticsDb";
+import type { AnalyticsScopeOptions } from "@/services/analyticsDb";
 import { stepLabel } from "@/services/eventRequestWorkflow";
+import { useAuthStore } from "@/stores/auth";
 import { appRoleLabel, type AppRole } from "@/types/appRole";
 import type { DbWorkflowStep } from "@/types/eventRequest";
 
 export type EventsLogScope = AnalyticsScopeOptions & {
-  role: AnalyticsScope;
+  role: AppRole;
 };
 
 export type EventsLogFilters = {
@@ -171,17 +172,34 @@ async function hydrateHistoryWithRequests(rows: HistoryRow[]): Promise<HistoryRo
 }
 
 const ACTION_LABELS: Record<string, string> = {
+  created: "Created",
   submitted: "Submitted",
   approved: "Approved",
   forwarded: "Forwarded",
   scheduled: "Scheduled",
   declined: "Declined",
   posted: "Published",
-  calendar_posted: "Calendar Posted",
+  calendar_posted: "Posted",
+  unposted: "Unposted",
   cancelled: "Cancelled",
+  deleted: "Deleted",
   revision_requested: "Revision Requested",
   updated: "Edited",
   resubmitted: "Resubmitted",
+  venue_assigned: "Venue Assigned",
+  venue_approved: "Venue Approved",
+  venue_declined: "Venue Declined",
+  equipment_assigned: "Equipment Assigned",
+  equipment_approved: "Equipment Approved",
+  equipment_declined: "Equipment Declined",
+  date_changed: "Date Changed",
+  time_changed: "Time Changed",
+  venue_changed: "Venue Changed",
+  description_changed: "Description Changed",
+  resource_approved: "Resource Approved",
+  resource_declined: "Resource Declined",
+  moved: "Moved",
+  rescheduled: "Rescheduled",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -193,7 +211,7 @@ const STATUS_LABELS: Record<string, string> = {
   revision_requested: "Revision Requested",
 };
 
-function isResourceOfficeScope(scope: AnalyticsScope): scope is ResourceOffice {
+function isResourceOfficeScope(scope: AppRole): scope is ResourceOffice {
   return scope === "gso" || scope === "it_infrastructure" || scope === "sports_office";
 }
 
@@ -252,6 +270,33 @@ function officeFromStep(step: DbWorkflowStep | null): string | null {
   return stepLabel(step);
 }
 
+function officeFromMetadata(
+  step: DbWorkflowStep | null,
+  metadata: Record<string, unknown>,
+): string | null {
+  const fromMeta =
+    (typeof metadata.office === "string" && metadata.office.trim()) ||
+    (typeof metadata.assigned_office === "string" && metadata.assigned_office.trim()) ||
+    null;
+  if (fromMeta) {
+    const labels: Record<string, string> = {
+      gso: "GSO",
+      sports_office: "Sports Office",
+      it_infrastructure: "IT Infrastructure",
+      ssc: "SSC",
+      eo: "Executive Officer",
+      osas: "OSAS",
+      adviser: "Adviser",
+      dean: "Dean",
+      student_officer: "Student Officer",
+      infirmary: "Infirmary",
+      nstp: "NSTP",
+    };
+    return labels[fromMeta] ?? fromMeta;
+  }
+  return officeFromStep(step);
+}
+
 function refineActionLabel(
   action: string,
   step: DbWorkflowStep | null,
@@ -261,7 +306,13 @@ function refineActionLabel(
   const base = ACTION_LABELS[action] ?? action.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
   if (action === "submitted" && metadata.is_resubmit !== true) {
-    return "Created";
+    return "Submitted";
+  }
+  if (action === "created") return "Created";
+
+  if (action === "venue_assigned" || action === "equipment_assigned") {
+    const office = officeFromMetadata(step, metadata);
+    return office ? `Forwarded to ${office}` : base;
   }
 
   if (action === "approved" && step === "resource_offices") {
@@ -335,6 +386,30 @@ async function fetchScopedRequestIds(scope: EventsLogScope): Promise<string[] | 
   if (scope.role === "dean" && !collegeId) return [];
   if (scope.role === "adviser" && !collegeId && !organizationId) return [];
   if (scope.role === "student_officer" && !organizationId && !userId) return [];
+
+  if (
+    scope.role === "eo" ||
+    scope.role === "osas" ||
+    scope.role === "admin"
+  ) {
+    return null;
+  }
+
+  if (scope.role === "infirmary" || scope.role === "nstp") {
+    const supabase = getSupabase();
+    const since = new Date();
+    since.setFullYear(since.getFullYear() - 1);
+    const { data, error } = await supabase
+      .from("event_requests")
+      .select("id")
+      .not("calendar_posted_at", "is", null)
+      .is("deleted_at", null)
+      .gte("created_at", since.toISOString())
+      .order("updated_at", { ascending: false })
+      .limit(500);
+    if (error) throw asError(error, "Could not load scheduled events.");
+    return ((data ?? []) as Array<{ id: string }>).map((r) => r.id).filter(Boolean);
+  }
 
   const supabase = getSupabase();
   const since = new Date();
@@ -458,7 +533,9 @@ function mapHistoryRow(
     actorRoleLabel: actorRole
       ? appRoleLabel(actorRole as AppRole) || actorRole.replace(/_/g, " ")
       : "—",
-    office: officeFromStep(row.step),
+    office:
+      officeFromMetadata(row.step, metadata) ??
+      (actorRole ? appRoleLabel(actorRole as AppRole) || actorRole.replace(/_/g, " ") : null),
     notes: row.comment?.trim() || null,
     metadata,
     createdAt: row.created_at,
@@ -501,19 +578,15 @@ function applyFilters(entries: EventsLogEntry[], filters: EventsLogFilters): Eve
   });
 }
 
-export function appRoleToEventsLogScope(role: AppRole): AnalyticsScope | null {
-  const map: Partial<Record<AppRole, AnalyticsScope>> = {
-    student_officer: "student_officer",
-    ssc: "ssc",
-    eo: "eo",
-    adviser: "adviser",
-    dean: "dean",
-    osas: "osas",
-    gso: "gso",
-    it_infrastructure: "it_infrastructure",
-    sports_office: "sports_office",
-  };
-  return map[role] ?? null;
+export function appRoleToEventsLogScope(role: AppRole): AppRole | null {
+  return role === "eo" ? "eo" : null;
+}
+
+function assertEoEventLogAccess(scopeRole?: AppRole) {
+  const auth = useAuthStore();
+  if (auth.appRole !== "eo" || (scopeRole && scopeRole !== "eo")) {
+    throw new Error("You are not authorized to view the Event Log.");
+  }
 }
 
 export async function fetchEventsLog(
@@ -523,6 +596,7 @@ export async function fetchEventsLog(
 ): Promise<import("@/types/pagination").PaginatedResult<EventsLogEntry>> {
   const { buildPaginatedResult, emptyPage, pageToRange } = await import("@/types/pagination");
   if (!isSupabaseConfigured) return emptyPage();
+  assertEoEventLogAccess(scope.role);
 
   const { page, pageSize, from, to } = pageToRange(pagination?.page, pagination?.pageSize);
   const requestIds = await fetchScopedRequestIds(scope);
@@ -603,6 +677,7 @@ export async function fetchEventTrail(
 ): Promise<import("@/types/pagination").PaginatedResult<EventTrailEntry>> {
   const { buildPaginatedResult, emptyPage, pageToRange } = await import("@/types/pagination");
   if (!isSupabaseConfigured) return emptyPage();
+  assertEoEventLogAccess(scope?.role);
   const trimmed = requestId.trim();
   if (!trimmed) return emptyPage();
 
@@ -660,6 +735,7 @@ export async function fetchEventTrail(
 
 export async function fetchRecentEventsInScope(scope: EventsLogScope): Promise<RecentEventOption[]> {
   if (!isSupabaseConfigured) return [];
+  assertEoEventLogAccess(scope.role);
 
   const requestIds = await fetchScopedRequestIds(scope);
   if (requestIds !== null && requestIds.length === 0) return [];
@@ -689,6 +765,74 @@ export async function fetchRecentEventsInScope(scope: EventsLogScope): Promise<R
       updatedAt: row.updated_at ?? row.created_at,
     };
   });
+}
+
+export type EventTrailContext = {
+  id: string;
+  activity: string;
+  organizationName: string;
+  collegeName: string;
+  requesterName: string;
+  startDate: string;
+  endDate: string;
+  startTime: string;
+  endTime: string;
+  venue: string;
+  status: string;
+  currentStep: string | null;
+  purpose: string;
+  letterPath: string | null;
+};
+
+export async function fetchEventTrailContext(
+  requestId: string,
+  scope?: EventsLogScope,
+): Promise<EventTrailContext | null> {
+  if (!isSupabaseConfigured) return null;
+  assertEoEventLogAccess(scope?.role);
+  const trimmed = requestId.trim();
+  if (!trimmed) return null;
+
+  if (scope) {
+    const requestIds = await fetchScopedRequestIds(scope);
+    if (requestIds !== null && !requestIds.includes(trimmed)) return null;
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("event_requests")
+    .select(
+      "id, activity, venue, status, current_step, start_date, end_date, start_time, end_time, purpose, letter_path, submitted_by, organizations(name, college_id)",
+    )
+    .eq("id", trimmed)
+    .maybeSingle();
+  if (error) throw asError(error, "Could not load event details.");
+  if (!data) return null;
+
+  const org = unwrapOrg(
+    (data as { organizations?: RequestRow["organizations"] }).organizations ?? null,
+  );
+  const [collegeNameById, actorNameById] = await Promise.all([
+    fetchCollegeNameMap(),
+    fetchActorNameMap(data.submitted_by ? [data.submitted_by as string] : []),
+  ]);
+
+  return {
+    id: String(data.id),
+    activity: String(data.activity ?? "").trim() || "Untitled event",
+    organizationName: org?.name?.trim() || "—",
+    collegeName: org?.college_id ? collegeNameById.get(org.college_id) ?? "—" : "—",
+    requesterName: data.submitted_by ? actorNameById.get(String(data.submitted_by)) ?? "—" : "—",
+    startDate: String(data.start_date ?? ""),
+    endDate: String(data.end_date ?? ""),
+    startTime: String(data.start_time ?? ""),
+    endTime: String(data.end_time ?? ""),
+    venue: String(data.venue ?? "").trim() || "—",
+    status: statusLabel(String(data.status ?? "")) ?? String(data.status ?? "—"),
+    currentStep: data.current_step ? stepLabel(data.current_step as DbWorkflowStep) : null,
+    purpose: String(data.purpose ?? "").trim(),
+    letterPath: (data.letter_path as string | null) ?? null,
+  };
 }
 
 export const EVENT_LOG_ACTION_OPTIONS = Object.entries(ACTION_LABELS).map(([value, label]) => ({

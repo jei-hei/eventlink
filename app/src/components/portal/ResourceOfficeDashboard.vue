@@ -14,6 +14,7 @@ const props = defineProps<{
   events: PortalEvent[];
   scheduledEvents: PortalEvent[];
   title: string;
+  busy?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -46,15 +47,7 @@ function officeAssignments(event: PortalEvent) {
   );
 }
 
-const pending = computed(() =>
-  props.events.filter((e) => {
-    if (e.status !== "Pending") return false;
-    const assigned = officeAssignments(e);
-    if (assigned.length > 0) return true;
-    // Legacy GSO step without EO resource assignments
-    return props.office === "gso" && !e.resourceAssignments?.length;
-  }),
-);
+const pending = computed(() => props.events);
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(props.scheduledEvents));
 
@@ -210,8 +203,8 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
         </div>
         <div class="flex justify-end gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
           <button type="button" class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold" @click="selectedEvent = null">Close</button>
-          <button type="button" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white" @click="onReject(selectedEvent)">Decline</button>
-          <button type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" @click="onApprove(selectedEvent)">Approve</button>
+          <button type="button" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" :disabled="busy" @click="onReject(selectedEvent)">Decline</button>
+          <button type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" :disabled="busy" @click="onApprove(selectedEvent)">Approve</button>
         </div>
       </div>
     </div>

@@ -11,12 +11,12 @@ const sidebarOpen = ref(false);
 const mockPending = ref<ItEvent[]>([]);
 const mockApproved = ref<ItEvent[]>([]);
 
-const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, useDb } = usePortalEvents(
+const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, useDb, busy } = usePortalEvents(
   "it_infrastructure",
   { events: mockPending, approvedEvents: mockApproved },
 );
 
-provide(itPortalKey, { events, approvedEvents, scheduledEvents, handleApprove, handleReject, useDb });
+provide(itPortalKey, { events, approvedEvents, scheduledEvents, handleApprove, handleReject, useDb, busy });
 </script>
 
 <template>

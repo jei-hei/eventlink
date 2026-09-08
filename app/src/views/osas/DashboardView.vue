@@ -9,7 +9,7 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 
-const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision } = useOsasPortal();
+const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision, busy } = useOsasPortal();
 const eventsLoading = useEventsTableLoading();
 
 const selectedEvent = ref<OsasEvent | null>(null);
@@ -137,7 +137,8 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
                     <div class="flex gap-1.5">
                       <button
                         type="button"
-                        class="bg-[#4ADE80] hover:bg-[#3BC56D] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
+                        class="bg-[#4ADE80] hover:bg-[#3BC56D] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm disabled:opacity-60"
+                        :disabled="busy"
                         @click.stop="handleApprove(event.id)"
                       >
                         <CheckCircle :size="12" />
@@ -145,7 +146,8 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
                       </button>
                       <button
                         type="button"
-                        class="bg-[#DC2626] hover:bg-[#B91C1C] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm"
+                        class="bg-[#DC2626] hover:bg-[#B91C1C] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm disabled:opacity-60"
+                        :disabled="busy"
                         @click.stop="handleReject(event.id)"
                       >
                         <XCircle :size="12" />

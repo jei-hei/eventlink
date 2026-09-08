@@ -12,7 +12,7 @@ const sidebarOpen = ref(false);
 const mockPending = ref<GsoEvent[]>([]);
 const mockApproved = ref<GsoEvent[]>([]);
 
-const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, handleCreateEvent, useDb } =
+const { events, approvedEvents, scheduledEvents, handleApprove, handleReject, handleCreateEvent, useDb, busy } =
   usePortalEvents("gso", { events: mockPending, approvedEvents: mockApproved });
 
 provide(gsoPortalKey, {
@@ -23,6 +23,7 @@ provide(gsoPortalKey, {
   handleReject,
   handleCreateEvent,
   useDb,
+  busy,
 });
 </script>
 

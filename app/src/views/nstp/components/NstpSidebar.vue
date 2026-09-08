@@ -9,7 +9,7 @@ const emit = defineEmits<{ close: [] }>();
 const route = useRoute();
 
 const navItems = [
-  { label: "Calendar", to: "/nstp", name: "nstp-dashboard", icon: Calendar },
+  { label: "Dashboard", to: "/nstp", name: "nstp-dashboard", icon: Calendar },
   { label: "Profile", to: "/nstp/profile", name: "nstp-profile", icon: UserCircle },
 ] as const;
 

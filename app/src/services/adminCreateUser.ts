@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
+import { ISU_EMAIL_ERROR, isOfficialIsuEmail } from "@/utils/isuEmail";
 
 export type CreatePortalUserInput = {
   role:
@@ -37,16 +38,25 @@ export type CreatePortalUserResult = {
   email: string;
 };
 
+export class AdminCreateUserError extends Error {
+  readonly source: string;
+  constructor(message: string, source = "unknown") {
+    super(message);
+    this.name = "AdminCreateUserError";
+    this.source = source;
+  }
+}
+
 async function invokeAdminCreateUser(body: Record<string, unknown>): Promise<CreatePortalUserResult> {
   const supabase = getSupabase();
   const { data, error } = await supabase.functions.invoke("admin-create-user", { body });
 
   const payload = data as
-    | (Partial<CreatePortalUserResult> & { error?: string })
+    | (Partial<CreatePortalUserResult> & { error?: string; source?: string })
     | null;
 
   if (payload?.error) {
-    throw new Error(payload.error);
+    throw new AdminCreateUserError(payload.error, payload.source || "edge_function");
   }
 
   if (error) {
@@ -57,15 +67,19 @@ async function invokeAdminCreateUser(body: Record<string, unknown>): Promise<Cre
       lowered.includes("non-2xx") ||
       lowered.includes("not found")
     ) {
-      throw new Error(
+      throw new AdminCreateUserError(
         "Admin create-user function is not available. Deploy Supabase function: admin-create-user.",
+        "edge_function",
       );
     }
-    throw new Error(msg);
+    throw new AdminCreateUserError(msg, "edge_function");
   }
 
   if (!payload?.userId || !payload?.role || !payload?.email) {
-    throw new Error("User account was created, but the response was invalid.");
+    throw new AdminCreateUserError(
+      "User account was created, but the response was invalid.",
+      "edge_function",
+    );
   }
 
   return {
@@ -75,10 +89,18 @@ async function invokeAdminCreateUser(body: Record<string, unknown>): Promise<Cre
   };
 }
 
+function assertIsuEmail(email: string): void {
+  if (!isOfficialIsuEmail(email)) {
+    throw new AdminCreateUserError(ISU_EMAIL_ERROR, "email_validation");
+  }
+}
+
 export async function createPortalUser(input: CreatePortalUserInput): Promise<CreatePortalUserResult> {
+  const email = input.email.trim();
+  assertIsuEmail(email);
   return invokeAdminCreateUser({
     role: input.role,
-    email: input.email.trim(),
+    email,
     password: input.password,
     displayName: input.displayName.trim(),
     collegeId: input.collegeId ?? null,
