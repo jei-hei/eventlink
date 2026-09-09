@@ -1,5 +1,6 @@
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { countPendingForRole } from "@/services/eventRequestsDb";
+import { parseSdgsFromStorage, sdgLabel } from "@/constants/sdgs";
 import type { AppRole } from "@/types/appRole";
 
 export type AnalyticsScope =
@@ -29,6 +30,7 @@ type RequestRow = {
   status: "pending" | "approved" | "declined" | "posted";
   current_step: string | null;
   created_at: string;
+  sdgs?: string | null;
   organization_id?: string | null;
   organizations?:
     | { name: string | null; college_id?: string | null }[]
@@ -70,6 +72,7 @@ export type StatTotals = {
 
 export type OrganizationPoint = { org: string; events: number };
 export type CollegePoint = { college: string; events: number };
+export type SdgUsagePoint = { id: number; name: string; value: number; color: string };
 
 export type AnalyticsOverview = {
   monthlyEvents: MonthlyPoint[];
@@ -77,6 +80,7 @@ export type AnalyticsOverview = {
   recentActivity: ActivityItem[];
   organizationData: OrganizationPoint[];
   collegeData: CollegePoint[];
+  sdgUsage: SdgUsagePoint[];
   totals: StatTotals;
   peakMonthLabel: string;
 };
@@ -138,6 +142,7 @@ function emptyOverview(): AnalyticsOverview {
     recentActivity: [],
     organizationData: [],
     collegeData: [],
+    sdgUsage: [],
     totals: {
       totalThisYear: 0,
       approvedThisMonth: 0,
@@ -218,6 +223,7 @@ function buildOverview(rows: RequestRow[], collegeNameById: Map<string, string>)
 
   const orgMap = new Map<string, number>();
   const collegeMap = new Map<string, number>();
+  const sdgMap = new Map<number, number>();
   let approved = 0;
   let pending = 0;
   let rejected = 0;
@@ -263,6 +269,10 @@ function buildOverview(rows: RequestRow[], collegeNameById: Map<string, string>)
       ? (collegeNameById.get(org.college_id) ?? "Unassigned College")
       : "Unassigned College";
     collegeMap.set(collegeName, (collegeMap.get(collegeName) ?? 0) + 1);
+
+    for (const sdgId of parseSdgsFromStorage(row.sdgs)) {
+      sdgMap.set(sdgId, (sdgMap.get(sdgId) ?? 0) + 1);
+    }
   });
 
   const monthlyEvents = Array.from(monthMap.values());
@@ -289,6 +299,12 @@ function buildOverview(rows: RequestRow[], collegeNameById: Map<string, string>)
     .map(([college, events]) => ({ college, events }))
     .sort((a, b) => b.events - a.events)
     .slice(0, 8);
+  const sdgColors = ["#16A34A", "#0D9488", "#2563EB", "#D97706", "#7C3AED", "#DC2626"];
+  const sdgUsage = Array.from(sdgMap.entries())
+    .map(([id, value]) => ({ id, name: sdgLabel(id), value }))
+    .sort((a, b) => b.value - a.value || a.id - b.id)
+    .slice(0, 6)
+    .map((item, index) => ({ ...item, color: sdgColors[index % sdgColors.length]! }));
 
   return {
     monthlyEvents,
@@ -300,6 +316,7 @@ function buildOverview(rows: RequestRow[], collegeNameById: Map<string, string>)
     recentActivity,
     organizationData,
     collegeData,
+    sdgUsage,
     totals: {
       totalThisYear,
       approvedThisMonth,
@@ -350,7 +367,7 @@ export async function fetchAnalyticsOverview(
   let query = supabase
     .from("event_requests")
     .select(
-      `id, activity, request_type, status, current_step, created_at, organization_id, ${orgSelect}`,
+      `id, activity, request_type, status, current_step, created_at, sdgs, organization_id, ${orgSelect}`,
     )
     .gte("created_at", sinceIso)
     .order("created_at", { ascending: false })

@@ -9,7 +9,7 @@ import {
   AlertTriangle,
 } from "lucide-vue-next";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
-import { fetchAnalyticsOverview } from "@/services/analyticsDb";
+import { fetchAnalyticsOverview, type SdgUsagePoint } from "@/services/analyticsDb";
 
 const monthlyEvents = ref([
   { id: "m1", month: "Jan", events: 0, approved: 0, rejected: 0 },
@@ -19,6 +19,7 @@ const eventStatusData = ref([
   { name: "Pending" as const, value: 0, color: "#D97706" },
   { name: "Rejected" as const, value: 0, color: "#DC2626" },
 ]);
+const sdgUsage = ref<SdgUsagePoint[]>([]);
 const recentActivity = ref<{ id: number; action: string; event: string; time: string; org: string; icon: string }[]>([]);
 const totals = ref({
   totalThisYear: 0,
@@ -36,6 +37,7 @@ async function loadAnalytics() {
     const data = await fetchAnalyticsOverview("osas");
     monthlyEvents.value = data.monthlyEvents.length ? data.monthlyEvents : monthlyEvents.value;
     eventStatusData.value = data.eventStatusData;
+    sdgUsage.value = data.sdgUsage;
     recentActivity.value = data.recentActivity;
     totals.value = {
       totalThisYear: data.totals.totalThisYear,
@@ -124,6 +126,20 @@ const pieGradient = computed(() => {
   });
   return `conic-gradient(${parts.join(", ")})`;
 });
+
+const sdgTotal = computed(() => sdgUsage.value.reduce((sum, item) => sum + item.value, 0));
+const mostUsedSdg = computed(() => sdgUsage.value[0] ?? null);
+const sdgGradient = computed(() => {
+  if (!sdgTotal.value) return "conic-gradient(#e5e7eb 0deg 360deg)";
+  let used = 0;
+  const parts = sdgUsage.value.map((item) => {
+    const start = (used / sdgTotal.value) * 360;
+    used += item.value;
+    const end = (used / sdgTotal.value) * 360;
+    return `${item.color} ${start}deg ${end}deg`;
+  });
+  return `conic-gradient(${parts.join(", ")})`;
+});
 </script>
 
 <template>
@@ -175,8 +191,8 @@ const pieGradient = computed(() => {
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
-      <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:col-span-2">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
           <div>
             <h3 class="font-bold text-gray-800 text-sm">Monthly Event Trend</h3>
@@ -263,6 +279,44 @@ const pieGradient = computed(() => {
               <span class="text-xs text-gray-600">{{ item.name }}</span>
             </div>
             <span class="text-xs font-bold text-gray-700">{{ item.value }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div class="mb-4">
+          <h3 class="text-sm font-bold text-gray-800">SDG Analysis</h3>
+          <p class="text-xs text-gray-400">
+            {{ mostUsedSdg ? `Most used · SDG ${mostUsedSdg.id}` : "No SDG data yet" }}
+          </p>
+        </div>
+        <div v-if="sdgUsage.length" class="flex items-center justify-center py-2">
+          <div class="relative flex h-36 w-36 items-center justify-center">
+            <div
+              class="absolute inset-0 rounded-full border border-gray-100 shadow-inner"
+              :style="{
+                background: sdgGradient,
+                mask: 'radial-gradient(transparent 52%, black 53%)',
+                WebkitMask: 'radial-gradient(transparent 52%, black 53%)',
+              }"
+              aria-hidden="true"
+            />
+            <div class="relative text-center">
+              <p class="text-lg font-bold text-emerald-700">SDG {{ mostUsedSdg?.id }}</p>
+              <p class="text-[10px] text-gray-500">{{ mostUsedSdg?.value }} uses</p>
+            </div>
+          </div>
+        </div>
+        <div v-else class="flex h-40 items-center justify-center text-xs text-gray-400">
+          No SDGs recorded for visible events.
+        </div>
+        <div v-if="sdgUsage.length" class="mt-2 space-y-1.5">
+          <div v-for="item in sdgUsage" :key="item.id" class="flex items-center justify-between gap-2">
+            <div class="flex min-w-0 items-center gap-1.5">
+              <div class="h-2.5 w-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: item.color }" />
+              <span class="truncate text-xs text-gray-600" :title="item.name">SDG {{ item.id }}</span>
+            </div>
+            <span class="shrink-0 text-xs font-bold text-gray-700">{{ item.value }}</span>
           </div>
         </div>
       </div>
