@@ -18,7 +18,10 @@ function onKey(e: KeyboardEvent) {
   if (e.key === "Escape") open.value = false;
 }
 
-onMounted(() => window.addEventListener("keydown", onKey));
+onMounted(() => {
+  void store.hydrate(false);
+  window.addEventListener("keydown", onKey);
+});
 onUnmounted(() => window.removeEventListener("keydown", onKey));
 
 const grouped = computed(() => {

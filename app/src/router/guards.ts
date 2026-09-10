@@ -25,7 +25,13 @@ export function installRouterGuards(router: Router) {
     }
 
     if (!auth.isAuthenticated) {
-      return { name: "login", query: { redirect: to.fullPath } };
+      return {
+        name: "login",
+        query: {
+          redirect: to.fullPath,
+          ...(to.query.reason === "inactivity" ? { reason: "inactivity" } : {}),
+        },
+      };
     }
 
     if (!auth.appRole) {

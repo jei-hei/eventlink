@@ -7,6 +7,9 @@ import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
+import { useDashboardLifecycleLog } from "@/composables/useDashboardLifecycleLog";
+
+useDashboardLifecycleLog("adviser/DashboardView");
 
 const AdviserEventDetailModal = defineAsyncComponent(
   () => import("./components/AdviserEventDetailModal.vue"),

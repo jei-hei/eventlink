@@ -105,6 +105,37 @@
     @apply order-1 lg:order-2;
   }
 
+  /* Event Management pages that should match EO split proportions
+     without clipping into nested scrollers. The main portal column scrolls.
+     Placed after .dash-split so these heights win over lg:min-h-0. */
+  .dash-page-flow {
+    @apply overflow-visible;
+  }
+
+  .dash-page.dash-page-flow:has(> .dash-split) {
+    @apply overflow-visible lg:overflow-visible;
+  }
+
+  .dash-page-flow > .dash-split {
+    @apply flex-none content-start items-stretch lg:items-start lg:content-start;
+  }
+
+  .dash-page-flow > .dash-split > * {
+    @apply min-h-[min(22rem,52vh)] lg:min-h-[min(38rem,calc(100dvh-9rem))];
+  }
+
+  .dash-page-flow > .dash-split > :nth-child(2) {
+    @apply lg:h-[min(38rem,calc(100dvh-9rem))] lg:max-h-[min(38rem,calc(100dvh-9rem))];
+  }
+
+  .calendar-balanced-page {
+    @apply overflow-visible;
+  }
+
+  .calendar-balanced-page > :last-child {
+    @apply mx-auto w-full max-w-[72rem];
+  }
+
   .dash-card {
     @apply rounded-xl border border-slate-200/90 bg-white/95 shadow-sm ring-1 ring-slate-900/[0.02] backdrop-blur-sm;
   }

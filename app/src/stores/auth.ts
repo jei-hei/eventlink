@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { computed, onScopeDispose, ref } from "vue";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { ROLE_HOME_PATH, normalizeLoadedAppRole, PUBLIC_EVENTS_PATH, type AppRole } from "@/types/appRole";
 import { useNotificationsStore } from "@/stores/notifications";
@@ -30,7 +30,13 @@ export const useAuthStore = defineStore("auth", () => {
   const DEFAULT_INACTIVITY_LOGOUT_MS = 10 * 60 * 1000;
   const EXTENDED_INACTIVITY_LOGOUT_MS = 5 * 60 * 60 * 1000;
   const SINGLE_SESSION_CHECK_MS = 15 * 1000;
-  const ACTIVITY_EVENTS = ["pointerdown", "keydown", "mousemove", "scroll", "touchstart"] as const;
+  const IDLE_CHECK_MS = 15 * 1000;
+  const INACTIVITY_WARNING_MS = 60 * 1000;
+  const ACTIVITY_PERSIST_THROTTLE_MS = 1000;
+  const LAST_ACTIVITY_STORAGE_KEY = "eventlink_last_activity";
+  const ACTIVITY_BROADCAST_NAME = "eventlink-activity";
+  const ACTIVITY_EVENTS = ["pointerdown", "keydown", "scroll"] as const;
+  const ACTIVITY_LISTENER_OPTIONS = { passive: true } as const;
   const EXTENDED_SESSION_ROLES = new Set<AppRole>(["eo", "gso", "osas"]);
 
   const ready = ref(false);
@@ -63,20 +69,22 @@ export const useAuthStore = defineStore("auth", () => {
   const readyPromise = new Promise<void>((resolve) => {
     readyResolve = resolve;
   });
-  let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+  let idleCheckTimer: ReturnType<typeof setInterval> | null = null;
+  let warningTicker: ReturnType<typeof setInterval> | null = null;
   let singleSessionTimer: ReturnType<typeof setInterval> | null = null;
   let inactivityListenersBound = false;
   let currentSessionMarker: string | null = null;
-  let lastActivityAt = 0;
+  let singleSessionVerificationPromise: Promise<void> | null = null;
+  const lastActivityAt = ref(0);
+  const inactivityWarning = ref(false);
+  const inactivityWarningSeconds = ref(0);
+  let lastActivityPersistAt = 0;
+  let activityChannel: BroadcastChannel | null = null;
+  let inactivitySignOutInFlight = false;
 
   function sessionPreferenceKey() {
     if (!userId.value || !appRole.value) return null;
     return `eventlink:stay-online:${userId.value}:${appRole.value}`;
-  }
-
-  function lastActivityKey() {
-    if (!userId.value) return null;
-    return `eventlink:last-activity:${userId.value}`;
   }
 
   function loadSessionPreference() {
@@ -104,10 +112,14 @@ export const useAuthStore = defineStore("auth", () => {
     window.localStorage.setItem(key, stayOnlineEnabled.value ? "1" : "0");
   }
 
-  function clearInactivityTimer() {
-    if (inactivityTimer) {
-      clearTimeout(inactivityTimer);
-      inactivityTimer = null;
+  function clearIdleCheckTimer() {
+    if (idleCheckTimer) {
+      clearInterval(idleCheckTimer);
+      idleCheckTimer = null;
+    }
+    if (warningTicker) {
+      clearInterval(warningTicker);
+      warningTicker = null;
     }
   }
 
@@ -118,36 +130,110 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
+  function pauseSingleSessionPolling() {
+    clearSingleSessionTimer();
+  }
+
+  function isDocumentVisible() {
+    return (
+      typeof document === "undefined" ||
+      (document.visibilityState !== "hidden" && !document.hidden)
+    );
+  }
+
+  function readStoredLastActivityAt(): number {
+    if (typeof window === "undefined") return 0;
+    const raw = Number(window.localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY) ?? "0");
+    return Number.isFinite(raw) && raw > 0 ? raw : 0;
+  }
+
   function loadLastActivityAt() {
-    if (typeof window === "undefined") return;
-    const key = lastActivityKey();
-    if (!key) {
-      lastActivityAt = 0;
-      return;
-    }
-    const raw = Number(window.localStorage.getItem(key) ?? "0");
-    lastActivityAt = Number.isFinite(raw) && raw > 0 ? raw : 0;
+    lastActivityAt.value = readStoredLastActivityAt();
   }
 
   function persistLastActivityAt(ts: number) {
     if (typeof window === "undefined") return;
-    const key = lastActivityKey();
-    if (!key) return;
-    window.localStorage.setItem(key, String(ts));
+    window.localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(ts));
+    if (activityChannel) {
+      try {
+        activityChannel.postMessage({ at: ts });
+      } catch {
+        // BroadcastChannel may be unavailable in some privacy modes.
+      }
+    }
   }
 
   function clearLastActivityAt() {
-    lastActivityAt = 0;
+    lastActivityAt.value = 0;
+    inactivityWarning.value = false;
+    inactivityWarningSeconds.value = 0;
+    lastActivityPersistAt = 0;
     if (typeof window === "undefined") return;
-    const key = lastActivityKey();
-    if (!key) return;
-    window.localStorage.removeItem(key);
+    window.localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
   }
 
   function touchActivity() {
     const now = Date.now();
-    lastActivityAt = now;
-    persistLastActivityAt(now);
+    lastActivityAt.value = now;
+    inactivityWarning.value = false;
+    inactivityWarningSeconds.value = 0;
+    if (warningTicker) {
+      clearInterval(warningTicker);
+      warningTicker = null;
+    }
+    if (now - lastActivityPersistAt >= ACTIVITY_PERSIST_THROTTLE_MS) {
+      lastActivityPersistAt = now;
+      persistLastActivityAt(now);
+    }
+  }
+
+  function goToInactivityLogin() {
+    void import("@/router").then(({ default: router }) => {
+      const current = router.currentRoute.value;
+      if (current.name === "login" && current.query.reason === "inactivity") return;
+      void router.replace({ name: "login", query: { reason: "inactivity" } });
+    });
+  }
+
+  /** Local wall-clock idle check. No network. */
+  function evaluateIdleTimeout() {
+    if (!isAuthenticated.value || inactivitySignOutInFlight) {
+      inactivityWarning.value = false;
+      inactivityWarningSeconds.value = 0;
+      return;
+    }
+
+    const stored = readStoredLastActivityAt();
+    if (stored > lastActivityAt.value) lastActivityAt.value = stored;
+    if (!lastActivityAt.value) {
+      touchActivity();
+      persistLastActivityAt(lastActivityAt.value);
+      return;
+    }
+
+    const elapsed = Date.now() - lastActivityAt.value;
+    const remaining = inactivityLogoutMs.value - elapsed;
+    if (remaining <= 0) {
+      void signOutDueToInactivity();
+      return;
+    }
+
+    const warn = remaining <= INACTIVITY_WARNING_MS;
+    inactivityWarning.value = warn;
+    inactivityWarningSeconds.value = warn ? Math.max(1, Math.ceil(remaining / 1000)) : 0;
+    if (warn && !warningTicker) {
+      warningTicker = setInterval(() => {
+        evaluateIdleTimeout();
+      }, 1000);
+    } else if (!warn && warningTicker) {
+      clearInterval(warningTicker);
+      warningTicker = null;
+    }
+  }
+
+  function onTabBecameVisible() {
+    evaluateIdleTimeout();
+    if (currentSessionMarker) startSingleSessionPolling();
   }
 
   function isSecurityExemptEmail(mail: string | null | undefined): boolean {
@@ -172,7 +258,7 @@ export const useAuthStore = defineStore("auth", () => {
     let location = "unknown";
     try {
       const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 2500);
+      const timer = setTimeout(() => ctl.abort(), 800);
       const res = await fetch("https://ipapi.co/json/", { signal: ctl.signal });
       clearTimeout(timer);
       if (res.ok) {
@@ -195,7 +281,13 @@ export const useAuthStore = defineStore("auth", () => {
   async function writeActiveSession(marker: string, showLoginAlert: boolean) {
     if (!userId.value) return;
     const supabase = getSupabase();
-    const loginMeta = await fetchLoginMeta();
+    const loginMeta = showLoginAlert
+      ? await fetchLoginMeta()
+      : {
+          userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "Unknown device",
+          ip: "unknown",
+          location: "unknown",
+        };
     const metadata = {
       browser: loginMeta.userAgent,
       ip: loginMeta.ip,
@@ -218,21 +310,23 @@ export const useAuthStore = defineStore("auth", () => {
     }
 
     let notificationCreated = false;
-    try {
-      await enqueueNotification({
-        userId: userId.value,
-        eventType: "login_detected",
-        dedupKey: `security-login:${marker}`,
-        context: {
-          device: metadata.browser,
-          ip: metadata.ip,
-          location: metadata.location,
-          time: new Date(metadata.logged_at).toLocaleString(),
-        },
-      });
-      notificationCreated = true;
-    } catch {
-      // Session tracking remains authoritative if notification enqueue is unavailable.
+    if (showLoginAlert) {
+      try {
+        await enqueueNotification({
+          userId: userId.value,
+          eventType: "login_detected",
+          dedupKey: `security-login:${marker}`,
+          context: {
+            device: metadata.browser,
+            ip: metadata.ip,
+            location: metadata.location,
+            time: new Date(metadata.logged_at).toLocaleString(),
+          },
+        });
+        notificationCreated = true;
+      } catch {
+        // Session tracking remains authoritative if notification enqueue is unavailable.
+      }
     }
     if (notificationCreated && showLoginAlert) {
       try {
@@ -252,36 +346,62 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
-  async function verifySingleSessionStillActive() {
-    if (!userId.value || !currentSessionMarker) return;
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("active_session_id")
-      .eq("id", userId.value)
-      .maybeSingle();
-    if (error) return;
-    const active = (data?.active_session_id as string | null) ?? null;
-    if (active && active !== currentSessionMarker) {
-      await signOut();
-      if (typeof window !== "undefined") {
-        window.alert(
-          "Your account was signed in from another device, so this session was ended for security.",
-        );
+  function verifySingleSessionStillActive(): Promise<void> {
+    if (singleSessionVerificationPromise) return singleSessionVerificationPromise;
+
+    singleSessionVerificationPromise = (async () => {
+      if (!userId.value || !currentSessionMarker) return;
+      const supabase = getSupabase();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("active_session_id")
+        .eq("id", userId.value)
+        .maybeSingle();
+      if (error) return;
+      const active = (data?.active_session_id as string | null) ?? null;
+      if (active && active !== currentSessionMarker) {
+        await signOut();
+        if (typeof window !== "undefined") {
+          window.alert(
+            "Your account was signed in from another device, so this session was ended for security.",
+          );
+        }
       }
+    })().finally(() => {
+      singleSessionVerificationPromise = null;
+    });
+
+    return singleSessionVerificationPromise;
+  }
+
+  function startSingleSessionPolling() {
+    if (
+      singleSessionTimer ||
+      !isDocumentVisible() ||
+      useMock.value ||
+      !userId.value ||
+      !currentSessionMarker ||
+      isSecurityExemptEmail(email.value)
+    ) {
+      return;
     }
+    singleSessionTimer = setInterval(() => {
+      if (!isDocumentVisible()) {
+        pauseSingleSessionPolling();
+        return;
+      }
+      void verifySingleSessionStillActive();
+    }, SINGLE_SESSION_CHECK_MS);
   }
 
   async function activateCurrentSessionSecurity(showLoginAlert: boolean) {
     if (useMock.value || !userId.value || isSecurityExemptEmail(email.value)) return;
-    clearSingleSessionTimer();
+    pauseSingleSessionPolling();
     const marker = generateSessionMarker();
     currentSessionMarker = marker;
     await writeActiveSession(marker, showLoginAlert);
-    singleSessionTimer = setInterval(() => {
-      void verifySingleSessionStillActive();
-    }, SINGLE_SESSION_CHECK_MS);
     await verifySingleSessionStillActive();
+    startSingleSessionPolling();
   }
 
   function resumeSingleSessionMonitorFromStorage() {
@@ -292,154 +412,89 @@ export const useAuthStore = defineStore("auth", () => {
       const stored = key ? window.localStorage.getItem(key) : null;
       if (stored) currentSessionMarker = stored;
     }
-    if (!currentSessionMarker) return;
-    singleSessionTimer = setInterval(() => {
-      void verifySingleSessionStillActive();
-    }, SINGLE_SESSION_CHECK_MS);
-    void verifySingleSessionStillActive();
+    if (!currentSessionMarker) {
+      void activateCurrentSessionSecurity(false);
+      return;
+    }
+    startSingleSessionPolling();
   }
 
-  async function signOutDueToInactivity() {
+  function signOutDueToInactivity() {
+    if (!isAuthenticated.value || inactivitySignOutInFlight) return;
+    inactivitySignOutInFlight = true;
+    inactivityWarning.value = false;
+    inactivityWarningSeconds.value = 0;
+    void signOut({ reason: "inactivity" });
+  }
+
+  function onStorageActivity(event: StorageEvent) {
+    if (event.key !== LAST_ACTIVITY_STORAGE_KEY || event.newValue == null) return;
+    const next = Number(event.newValue);
+    if (!Number.isFinite(next) || next <= 0) return;
+    lastActivityAt.value = next;
+    evaluateIdleTimeout();
+  }
+
+  function onBroadcastActivity(event: MessageEvent<{ at?: number }>) {
+    const next = Number(event.data?.at ?? 0);
+    if (!Number.isFinite(next) || next <= 0) return;
+    if (next > lastActivityAt.value) lastActivityAt.value = next;
+    evaluateIdleTimeout();
+  }
+
+  function onActivity() {
     if (!isAuthenticated.value) return;
-    await signOut();
-  }
-
-  async function enforceInactivityNow() {
-    if (!isAuthenticated.value) {
-      clearInactivityTimer();
-      return;
-    }
-
-    if (!lastActivityAt) {
-      loadLastActivityAt();
-      if (!lastActivityAt) touchActivity();
-    }
-
-    const elapsed = Date.now() - lastActivityAt;
-    if (elapsed >= inactivityLogoutMs.value) {
-      await signOutDueToInactivity();
-      return;
-    }
-    resetInactivityTimer();
-  }
-
-  let resumeRevalidatePromise: Promise<{ ok: boolean; signedOut?: boolean }> | null = null;
-  let lastSessionRefreshAt = 0;
-
-  /**
-   * When a backgrounded tab becomes visible again, browser timers were throttled so
-   * Supabase may have a stale access token. Refresh only when near expiry.
-   */
-  async function revalidateSessionOnResume(): Promise<{ ok: boolean; signedOut?: boolean }> {
-    if (resumeRevalidatePromise) return resumeRevalidatePromise;
-
-    resumeRevalidatePromise = (async () => {
-      if (useMock.value) {
-        await enforceInactivityNow();
-        return { ok: isAuthenticated.value };
-      }
-
-      await enforceInactivityNow();
-      if (!isAuthenticated.value) return { ok: false, signedOut: true };
-
-      const supabase = getSupabase();
-      try {
-        const { data: existingWrap } = await supabase.auth.getSession();
-        const existing = existingWrap.session;
-        if (!existing) {
-          try {
-            await supabase.auth.signOut({ scope: "local" });
-          } catch {
-            // ignore
-          }
-          logout();
-          return { ok: false, signedOut: true };
-        }
-
-        const expiresAtMs = (existing.expires_at ?? 0) * 1000;
-        const nearExpiry = !expiresAtMs || expiresAtMs - Date.now() < 120_000;
-        const refreshedRecently = Date.now() - lastSessionRefreshAt < 60_000;
-
-        if (nearExpiry && !refreshedRecently) {
-          const { data, error } = await supabase.auth.refreshSession();
-          lastSessionRefreshAt = Date.now();
-          if (error || !data.session) {
-            const { data: again } = await supabase.auth.getSession();
-            if (!again.session) {
-              try {
-                await supabase.auth.signOut({ scope: "local" });
-              } catch {
-                // ignore
-              }
-              logout();
-              return { ok: false, signedOut: true };
-            }
-            if (!userId.value) {
-              await applySession(again.session, { enforceSingleSession: false, showLoginAlert: false });
-            }
-          } else if (!userId.value) {
-            await applySession(data.session, { enforceSingleSession: false, showLoginAlert: false });
-          }
-        } else if (!userId.value) {
-          await applySession(existing, { enforceSingleSession: false, showLoginAlert: false });
-        }
-      } catch {
-        const { data: existing } = await supabase.auth.getSession();
-        if (!existing.session) {
-          try {
-            await supabase.auth.signOut({ scope: "local" });
-          } catch {
-            // ignore
-          }
-          logout();
-          return { ok: false, signedOut: true };
-        }
-      }
-
-      resumeSingleSessionMonitorFromStorage();
-      void verifySingleSessionStillActive();
-      resetInactivityTimer();
-      return { ok: true };
-    })().finally(() => {
-      resumeRevalidatePromise = null;
-    });
-
-    return resumeRevalidatePromise;
-  }
-
-  function resetInactivityTimer() {
-    if (typeof window === "undefined") return;
-    if (!isAuthenticated.value) {
-      clearInactivityTimer();
-      return;
-    }
-    if (!lastActivityAt) touchActivity();
-    clearInactivityTimer();
-    const elapsed = Date.now() - lastActivityAt;
-    const remaining = Math.max(0, inactivityLogoutMs.value - elapsed);
-    inactivityTimer = setTimeout(() => {
-      void enforceInactivityNow();
-    }, remaining);
+    touchActivity();
   }
 
   function bindInactivityListeners() {
     if (typeof window === "undefined" || inactivityListenersBound) return;
-    const onActivity = () => {
-      touchActivity();
-      resetInactivityTimer();
-    };
     ACTIVITY_EVENTS.forEach((eventName) => {
-      window.addEventListener(eventName, onActivity, { passive: true });
+      window.addEventListener(eventName, onActivity, ACTIVITY_LISTENER_OPTIONS);
     });
-    // Tab resume (session + data) is owned by App.vue — avoid duplicate refresh storms.
+    window.addEventListener("storage", onStorageActivity);
+    try {
+      activityChannel = new BroadcastChannel(ACTIVITY_BROADCAST_NAME);
+      activityChannel.addEventListener("message", onBroadcastActivity);
+    } catch {
+      activityChannel = null;
+    }
     inactivityListenersBound = true;
   }
 
+  function unbindInactivityListeners() {
+    if (typeof window === "undefined" || !inactivityListenersBound) return;
+    ACTIVITY_EVENTS.forEach((eventName) => {
+      window.removeEventListener(eventName, onActivity);
+    });
+    window.removeEventListener("storage", onStorageActivity);
+    if (activityChannel) {
+      activityChannel.removeEventListener("message", onBroadcastActivity);
+      activityChannel.close();
+      activityChannel = null;
+    }
+    inactivityListenersBound = false;
+  }
+
+  onScopeDispose(() => {
+    unbindInactivityListeners();
+    clearIdleCheckTimer();
+    pauseSingleSessionPolling();
+  });
+
   function startInactivityMonitor() {
     bindInactivityListeners();
-    if (!inactivityTimer) {
-      resetInactivityTimer();
+    if (!lastActivityAt.value) loadLastActivityAt();
+    if (!lastActivityAt.value) {
+      touchActivity();
+      persistLastActivityAt(lastActivityAt.value);
     }
+    if (!idleCheckTimer) {
+      idleCheckTimer = setInterval(() => {
+        evaluateIdleTimeout();
+      }, IDLE_CHECK_MS);
+    }
+    evaluateIdleTimeout();
   }
 
   function markReady() {
@@ -491,15 +546,15 @@ export const useAuthStore = defineStore("auth", () => {
 
   async function applySession(
     session: { user: { id: string; email?: string | null } } | null,
-    opts?: { enforceSingleSession?: boolean; showLoginAlert?: boolean },
+    opts?: { enforceSingleSession?: boolean; showLoginAlert?: boolean; resetIdleClock?: boolean },
   ) {
     const enforceSingleSession = opts?.enforceSingleSession ?? true;
     const showLoginAlert = opts?.showLoginAlert ?? false;
     if (!session?.user) {
-      clearInactivityTimer();
+      clearIdleCheckTimer();
       clearSingleSessionTimer();
       currentSessionMarker = null;
-      clearLastActivityAt();
+      inactivitySignOutInFlight = false;
       stayOnlineEnabled.value = false;
       userId.value = null;
       email.value = null;
@@ -514,25 +569,38 @@ export const useAuthStore = defineStore("auth", () => {
       }
       return;
     }
+    if (userId.value === session.user.id && appRole.value) {
+      if (session.user.email) email.value = session.user.email;
+      return;
+    }
     userId.value = session.user.id;
     email.value = session.user.email ?? null;
-    await repairProfileIfMissing();
-    await loadRole(session.user.id);
-    await loadProfile(session.user.id);
+    await Promise.all([loadRole(session.user.id), loadProfile(session.user.id)]);
+    if (!appRole.value) {
+      await repairProfileIfMissing();
+      await Promise.all([loadRole(session.user.id), loadProfile(session.user.id)]);
+    } else {
+      void repairProfileIfMissing();
+    }
     try {
-      await useNotificationsStore().hydrate(true);
+      void useNotificationsStore().hydrate(false);
     } catch {
       // best effort: login should not fail due to notification hydration
     }
     loadSessionPreference();
-    loadLastActivityAt();
+    inactivitySignOutInFlight = false;
+    if (opts?.resetIdleClock) {
+      touchActivity();
+      persistLastActivityAt(lastActivityAt.value);
+    } else {
+      loadLastActivityAt();
+    }
     startInactivityMonitor();
-    await enforceInactivityNow();
     if (isSecurityExemptEmail(session.user.email ?? email.value)) {
       clearSingleSessionTimer();
       currentSessionMarker = null;
     } else if (enforceSingleSession) {
-      await activateCurrentSessionSecurity(showLoginAlert);
+      void activateCurrentSessionSecurity(showLoginAlert);
     } else {
       resumeSingleSessionMonitorFromStorage();
     }
@@ -545,8 +613,10 @@ export const useAuthStore = defineStore("auth", () => {
     }
     stayOnlineEnabled.value = enabled;
     persistSessionPreference();
-    resetInactivityTimer();
+    evaluateIdleTimeout();
   }
+
+  let lastSessionRefreshAt = 0;
 
   async function init() {
     bindInactivityListeners();
@@ -561,38 +631,49 @@ export const useAuthStore = defineStore("auth", () => {
     }
 
     const supabase = getSupabase();
-    const { data } = await supabase.auth.getSession();
-    const recoveryToken = recoveryAccessTokenFromUrl();
-    passwordRecoveryPending.value =
-      !!recoveryToken && data.session?.access_token === recoveryToken;
-    await applySession(data.session, { enforceSingleSession: true, showLoginAlert: false });
+    try {
+      const { data } = await supabase.auth.getSession();
+      const recoveryToken = recoveryAccessTokenFromUrl();
+      passwordRecoveryPending.value =
+        !!recoveryToken && data.session?.access_token === recoveryToken;
+      await applySession(data.session, { enforceSingleSession: false, showLoginAlert: false });
 
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "PASSWORD_RECOVERY") {
-        passwordRecoveryPending.value = !!session;
-      } else if (event === "SIGNED_OUT") {
-        passwordRecoveryPending.value = false;
-      }
-      // Token refresh must not reload role/profile/notifications (resume storm).
-      if (event === "TOKEN_REFRESHED") {
-        lastSessionRefreshAt = Date.now();
-        if (session?.user && !userId.value) {
-          await applySession(session, { enforceSingleSession: false, showLoginAlert: false });
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === "PASSWORD_RECOVERY") {
+          passwordRecoveryPending.value = !!session;
+          return;
         }
-        return;
-      }
-      if (event === "INITIAL_SESSION") {
-        if (userId.value || !session?.user) return;
-        await applySession(session, { enforceSingleSession: true, showLoginAlert: false });
-        return;
-      }
-      await applySession(session, {
-        enforceSingleSession: event === "SIGNED_IN",
-        showLoginAlert: false,
+        if (event === "SIGNED_OUT") {
+          passwordRecoveryPending.value = false;
+          await applySession(null);
+          return;
+        }
+        // Tab focus / autoRefreshToken emit these. Re-hydrating here
+        // clears auth fields and the router tears down <RouterView>.
+        if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+          lastSessionRefreshAt = Date.now();
+          return;
+        }
+        if (event === "INITIAL_SESSION") {
+          if (userId.value || !session?.user) return;
+          await applySession(session, { enforceSingleSession: false, showLoginAlert: false });
+          return;
+        }
+        if (event === "SIGNED_IN") {
+          if (session?.user && userId.value === session.user.id && appRole.value) {
+            lastSessionRefreshAt = Date.now();
+            return;
+          }
+          await applySession(session, {
+            enforceSingleSession: true,
+            showLoginAlert: false,
+            resetIdleClock: true,
+          });
+        }
       });
-    });
-
-    markReady();
+    } finally {
+      markReady();
+    }
   }
 
   async function verifyStudentRegistry(studentId: string): Promise<boolean> {
@@ -658,6 +739,7 @@ export const useAuthStore = defineStore("auth", () => {
     await applySession(data.session, {
       enforceSingleSession: !opts?.provisional,
       showLoginAlert: !opts?.provisional,
+      resetIdleClock: true,
     });
     return { mock: false as const };
   }
@@ -697,6 +779,7 @@ export const useAuthStore = defineStore("auth", () => {
     await applySession(data.session ?? null, {
       enforceSingleSession: true,
       showLoginAlert: true,
+      resetIdleClock: true,
     });
   }
 
@@ -725,7 +808,7 @@ export const useAuthStore = defineStore("auth", () => {
     if (error) throw new Error(formatAuthError(error));
 
     if (data.session) {
-      await applySession(data.session);
+      await applySession(data.session, { resetIdleClock: true });
       return { needsEmailConfirmation: false };
     }
 
@@ -763,18 +846,18 @@ export const useAuthStore = defineStore("auth", () => {
     passwordRecoveryPending.value = false;
   }
 
-  async function signOut() {
-    clearInactivityTimer();
+  async function signOut(opts?: { reason?: "inactivity" }) {
+    clearIdleCheckTimer();
     clearSingleSessionTimer();
     currentSessionMarker = null;
-    clearLastActivityAt();
     if (useMock.value) {
       logout();
+      if (opts?.reason === "inactivity") goToInactivityLogin();
       return;
     }
     const supabase = getSupabase();
-    // Always clear local auth first so logout never hangs on a stale/expired JWT.
     logout();
+    if (opts?.reason === "inactivity") goToInactivityLogin();
     try {
       await Promise.race([
         supabase.auth.signOut({ scope: "global" }),
@@ -819,11 +902,13 @@ export const useAuthStore = defineStore("auth", () => {
     appRole.value = roleMap[r] ?? null;
     userId.value = "mock-user";
     loadSessionPreference();
+    touchActivity();
+    persistLastActivityAt(lastActivityAt.value);
     startInactivityMonitor();
   }
 
   function logout() {
-    clearInactivityTimer();
+    clearIdleCheckTimer();
     clearSingleSessionTimer();
     currentSessionMarker = null;
     clearLastActivityAt();
@@ -851,12 +936,15 @@ export const useAuthStore = defineStore("auth", () => {
     stayOnlineEnabled,
     canUseExtendedSession,
     inactivityLogoutMs,
+    inactivityWarning,
+    inactivityWarningSeconds,
     role: computed(() => appRole.value),
     isAuthenticated,
     homePath,
     whenReady,
     init,
-    revalidateSessionOnResume,
+    pauseSingleSessionPolling,
+    onTabBecameVisible,
     verifyStudentRegistry,
     fetchRegistryRow,
     signIn,

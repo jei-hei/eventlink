@@ -11,6 +11,9 @@ import { mergeMyPortalEvents } from "@/composables/mergeMyPortalEvents";
 import { useAuthStore } from "@/stores/auth";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
+import { useDashboardLifecycleLog } from "@/composables/useDashboardLifecycleLog";
+
+useDashboardLifecycleLog("student-officer/DashboardView");
 
 const OfficerCreateEventModal = defineAsyncComponent(
   () => import("./components/OfficerCreateEventModal.vue"),
@@ -77,11 +80,11 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
 </script>
 
 <template>
-  <div class="dash-page !overflow-visible">
-    <div class="dash-split !flex-none">
-      <div class="flex min-w-0 flex-col">
-        <div class="dash-card">
-          <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
+  <div class="dash-page dash-page-flow">
+    <div class="dash-split">
+      <div class="flex min-h-0 min-w-0 flex-col">
+        <div class="dash-card flex min-h-0 flex-1 flex-col overflow-visible">
+          <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
             <div class="flex items-center gap-2">
               <Calendar :size="18" class="text-[#16A34A]" />
               <h2 class="font-bold text-sm text-gray-800 uppercase tracking-wide">Requests in review</h2>
@@ -109,7 +112,7 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
             {{ approvedNoticeCount }} request(s) are already approved. Check the Events page.
           </p>
 
-          <div class="w-full">
+          <div class="min-w-0">
             <table class="w-full table-fixed">
               <colgroup>
                 <col class="w-[28%]" />
@@ -121,26 +124,26 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
               <thead class="hidden bg-gray-50 md:table-header-group">
                 <tr>
                   <th
-                    class="px-2 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide lg:px-3"
+                    class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
                   >
                     Event
                   </th>
                   <th
-                    class="px-2 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide lg:px-3"
+                    class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
                   >
                     Date
                   </th>
                   <th
-                    class="px-2 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide lg:px-3"
+                    class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
                   >
                     Time
                   </th>
                   <th
-                    class="px-2 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide lg:px-3"
+                    class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
                   >
                     Venue
                   </th>
-                  <th class="px-2 py-2.5 text-left font-bold text-xs text-gray-600 uppercase tracking-wide lg:px-3">Status</th>
+                  <th class="px-3 py-2.5 text-left font-bold text-xs text-gray-600 uppercase tracking-wide">Status</th>
                 </tr>
               </thead>
               <tbody class="block md:table-row-group">
@@ -157,25 +160,25 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
                     class="block border-b border-gray-100 px-3 py-2 hover:bg-gray-50 transition cursor-pointer md:table-row md:px-0 md:py-0"
                     @click="selectedEvent = event"
                   >
-                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-800 md:table-cell md:border-r md:px-2 md:py-2.5 lg:px-3">
+                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-800 md:table-cell md:border-r md:px-3 md:py-2.5">
                       <span class="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Event</span>
                       <span class="min-w-0 flex-1 break-words whitespace-normal font-medium">{{ event.name }}</span>
                     </td>
-                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-700 md:table-cell md:border-r md:px-2 md:py-2.5 lg:px-3">
+                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-700 md:table-cell md:border-r md:px-3 md:py-2.5">
                       <span class="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Date</span>
                       <span class="min-w-0 flex-1 break-words whitespace-normal">{{ event.date || "—" }}</span>
                     </td>
-                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-700 md:table-cell md:border-r md:px-2 md:py-2.5 lg:px-3">
+                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-700 md:table-cell md:border-r md:px-3 md:py-2.5">
                       <span class="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Time</span>
                       <span class="min-w-0 flex-1 break-words whitespace-normal">
                         {{ event.startTime && event.endTime ? `${event.startTime} – ${event.endTime}` : event.startTime || event.endTime || "—" }}
                       </span>
                     </td>
-                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-700 md:table-cell md:border-r md:px-2 md:py-2.5 lg:px-3">
+                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-700 md:table-cell md:border-r md:px-3 md:py-2.5">
                       <span class="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Venue</span>
                       <span class="min-w-0 flex-1 break-words whitespace-normal">{{ event.venue || "—" }}</span>
                     </td>
-                    <td class="flex min-w-0 gap-3 py-1.5 md:table-cell md:px-2 md:py-2.5 lg:px-3">
+                    <td class="flex min-w-0 gap-3 py-1.5 md:table-cell md:px-3 md:py-2.5">
                       <span class="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Status</span>
                       <span class="min-w-0 flex-1">
                         <span :class="['inline-block max-w-full break-words whitespace-normal px-2 py-1 rounded text-xs font-semibold', workflowRowClass(event)]">

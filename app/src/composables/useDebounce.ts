@@ -1,4 +1,4 @@
-import { ref, watch, type Ref } from "vue";
+import { onScopeDispose, ref, watch, type Ref } from "vue";
 
 /** Returns a ref updated `delayMs` after `source` stops changing. */
 export function useDebouncedRef<T>(source: Ref<T>, delayMs = 300): Ref<T> {
@@ -16,6 +16,13 @@ export function useDebouncedRef<T>(source: Ref<T>, delayMs = 300): Ref<T> {
     },
     { flush: "post", immediate: true },
   );
+
+  onScopeDispose(() => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+  });
 
   return debounced;
 }

@@ -6,94 +6,79 @@ import { usePageVisibility } from "@/composables/usePageVisibility";
 import { useAuthStore } from "@/stores/auth";
 import { useEventRequestsStore } from "@/stores/eventRequests";
 import { useNotificationsStore } from "@/stores/notifications";
-import { useProfileStore } from "@/stores/profile";
-import { useUiStore } from "@/stores/ui";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { appRoleToPortalRole } from "@/types/appRole";
-import type { PortalRoleKey } from "@/types/portalProfile";
 
 const auth = useAuthStore();
 const events = useEventRequestsStore();
 const notifications = useNotificationsStore();
-const profile = useProfileStore();
-const ui = useUiStore();
 const { visible } = usePageVisibility();
 
-let resumeBusy = false;
-let lastResumeToastAt = 0;
-let hiddenAt = Date.now();
-const FORCE_AFTER_HIDDEN_MS = 30_000;
-
-function portalRoleFromAuth(): PortalRoleKey | null {
-  if (!auth.appRole) return null;
-  return appRoleToPortalRole(auth.appRole);
-}
+watch(
+  () => Boolean(auth.ready && auth.userId && auth.appRole),
+  (ok) => {
+    if (!ok || !isSupabaseConfigured) return;
+    void events.load(false);
+    void notifications.hydrate(false);
+  },
+  { immediate: true },
+);
 
 watch(visible, (isVisible) => {
   if (!isVisible) {
-    hiddenAt = Date.now();
+    auth.pauseSingleSessionPolling();
     return;
   }
-  if (!isSupabaseConfigured || resumeBusy) return;
-
-  const hiddenFor = Date.now() - hiddenAt;
-  const forceData = hiddenFor >= FORCE_AFTER_HIDDEN_MS;
-
-  resumeBusy = true;
-  void (async () => {
-    try {
-      const sessionResult = await auth.revalidateSessionOnResume();
-      if (!sessionResult.ok || !auth.isAuthenticated) return;
-
-      let updated = false;
-      let failed = false;
-
-      try {
-        if (auth.userId && auth.appRole) {
-          updated = (await events.load(forceData)) || updated;
-        }
-      } catch {
-        failed = true;
-      }
-
-      try {
-        await notifications.hydrate(forceData);
-        updated = true;
-      } catch {
-        failed = true;
-      }
-
-      try {
-        const portalRole = portalRoleFromAuth();
-        if (auth.userId && portalRole) {
-          await profile.ensureHydrated(portalRole);
-        }
-      } catch {
-        // profile is best-effort on resume
-      }
-
-      const now = Date.now();
-      if (failed && now - lastResumeToastAt > 8_000) {
-        lastResumeToastAt = now;
-        ui.pushToast(
-          "Could not refresh data",
-          "Connection may be slow. Retry by switching tabs again or continue working.",
-          "error",
-        );
-      } else if (updated && forceData && now - lastResumeToastAt > 8_000) {
-        lastResumeToastAt = now;
-        ui.pushToast("Data updated.", "Latest data loaded.", "info");
-      }
-    } finally {
-      resumeBusy = false;
-    }
-  })();
+  auth.onTabBecameVisible();
 });
 </script>
 
 <template>
+  <!-- Splash is an overlay only. Never v-if <RouterView> on auth/idle state. -->
+  <div v-if="!auth.ready" class="el-boot" aria-busy="true">
+    <span>Loading EventLink…</span>
+  </div>
+  <div
+    v-if="auth.inactivityWarning && auth.isAuthenticated"
+    class="el-idle-warning"
+    role="status"
+  >
+    You will be signed out in {{ auth.inactivityWarningSeconds }}s due to inactivity.
+  </div>
   <RouterView />
   <PortalToastHost />
 </template>
 
-<style scoped></style>
+<style scoped>
+.el-boot {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #020617;
+  color: #ecfdf5;
+  font-family: system-ui, sans-serif;
+}
+.el-boot span {
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+.el-idle-warning {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  z-index: 70;
+  max-width: min(28rem, calc(100vw - 1.5rem));
+  transform: translateX(-50%);
+  border-radius: 0.75rem;
+  border: 1px solid #fbbf24;
+  background: #fffbeb;
+  padding: 0.65rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #92400e;
+  box-shadow: 0 10px 24px rgb(15 23 42 / 0.12);
+}
+</style>

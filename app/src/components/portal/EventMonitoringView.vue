@@ -20,7 +20,7 @@ const auth = useAuthStore();
 const store = useEventRequestsStore();
 const ui = useUiStore();
 
-const loading = ref(true);
+const loading = ref(!store.loaded);
 const selected = ref<PortalEvent | null>(null);
 const search = ref("");
 const filterDateFrom = ref("");
@@ -43,7 +43,7 @@ async function refresh(force = false) {
     loading.value = false;
     return;
   }
-  loading.value = true;
+  if (!store.loaded) loading.value = true;
   try {
     await store.load(force);
   } finally {

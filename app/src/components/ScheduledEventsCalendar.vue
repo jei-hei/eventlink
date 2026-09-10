@@ -499,15 +499,25 @@ const weeks = computed(() => {
   }
   return rows;
 });
+
+const weekRowTemplate = computed(() => {
+  const count = Math.max(weeks.value.length, 1);
+  if (props.listLayout === "calendar-only") {
+    return `repeat(${count}, minmax(5.5rem, 6.25rem))`;
+  }
+  return `repeat(${count}, minmax(0, 1fr))`;
+});
 </script>
 
 <template>
   <div
     :class="[
-      'relative font-sans dash-card dash-card-fill border border-slate-200/90 bg-[#faf8f5]',
-      listLayout !== 'below'
-        ? '!h-auto min-h-[44rem] !overflow-visible lg:!h-full lg:min-h-0 lg:!overflow-hidden'
-        : '',
+      'relative font-sans dash-card border border-slate-200/90 bg-[#faf8f5]',
+      listLayout === 'calendar-only'
+        ? 'h-auto overflow-visible'
+        : listLayout !== 'below'
+          ? 'dash-card-fill !h-auto min-h-[44rem] !overflow-visible lg:!h-full lg:min-h-0 lg:!overflow-hidden'
+          : '',
     ]"
   >
     <div
@@ -565,20 +575,27 @@ const weeks = computed(() => {
       :class="[
         listLayout === 'below'
           ? 'contents'
-          : 'flex min-h-0 flex-none flex-col lg:flex-1 lg:flex-row',
+          : listLayout === 'calendar-only'
+            ? 'flex min-h-0 flex-col gap-4 p-0 lg:flex-row lg:items-start lg:gap-0'
+            : 'flex min-h-0 flex-none flex-col lg:flex-1 lg:flex-row',
       ]"
     >
       <div
         :class="[
-          'flex min-h-[32rem] min-w-0 flex-1 flex-col lg:min-h-0',
+          'flex min-w-0 flex-col',
           listLayout === 'management'
-            ? 'lg:w-3/4 lg:flex-none'
+            ? 'min-h-[32rem] flex-1 lg:min-h-0 lg:w-3/4 lg:flex-none'
             : listLayout === 'calendar-only'
-              ? 'lg:w-4/5 lg:flex-none'
-              : '',
+              ? 'min-h-0 min-w-0 flex-1'
+              : 'min-h-[32rem] flex-1 lg:min-h-0',
         ]"
       >
-    <div class="flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-3">
+    <div
+      :class="[
+        'flex min-h-0 flex-col p-2 sm:p-3',
+        listLayout === 'calendar-only' ? '' : 'flex-1 overflow-hidden',
+      ]"
+    >
       <div class="mb-1 grid shrink-0 grid-cols-7 gap-px bg-slate-200/60">
         <div
           v-for="(d, idx) in weekdays"
@@ -589,8 +606,9 @@ const weeks = computed(() => {
         </div>
       </div>
       <div
-        class="grid min-h-0 flex-1 gap-px overflow-hidden bg-slate-200/60"
-        :style="{ gridTemplateRows: `repeat(${weeks.length}, minmax(0, 1fr))` }"
+        class="grid min-h-0 gap-px bg-slate-200/60"
+        :class="listLayout === 'calendar-only' ? '' : 'flex-1 overflow-hidden'"
+        :style="{ gridTemplateRows: weekRowTemplate }"
       >
         <div v-for="week in weeks" :key="`week-${week.index}`" class="relative min-h-0 overflow-hidden">
           <div
@@ -753,12 +771,12 @@ const weeks = computed(() => {
     <aside
       v-if="groupedEventList.length"
       :class="[
-        'shrink-0 border-t border-slate-200/90 bg-[#faf8f5] px-3 py-2',
+        'border-t border-slate-200/90 bg-[#faf8f5] px-3 py-2',
         listLayout === 'management'
-          ? 'lg:w-1/4 lg:border-l lg:border-t-0'
+          ? 'shrink-0 lg:w-1/4 lg:border-l lg:border-t-0'
           : listLayout === 'calendar-only'
-            ? 'lg:w-1/5 lg:border-l lg:border-t-0'
-            : '',
+            ? 'min-w-0 w-full lg:w-72 lg:shrink-0 lg:self-stretch lg:border-l lg:border-t-0 xl:w-80'
+            : 'shrink-0',
       ]"
     >
       <p class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">List of events</p>
@@ -773,7 +791,13 @@ const weeks = computed(() => {
               chipClass(ev, isEventOngoing(ev), isEventPast(ev)),
             ]"
           >
-            <p class="truncate font-semibold" :class="isEventPast(ev) ? 'text-slate-600' : 'text-charcoal'">
+            <p
+              :class="[
+                'font-semibold',
+                listLayout === 'calendar-only' ? 'break-words whitespace-normal' : 'truncate',
+                isEventPast(ev) ? 'text-slate-600' : 'text-charcoal',
+              ]"
+            >
               {{ ev.name }}
             </p>
             <p class="mt-0.5 text-xs text-slate-600">{{ formatEventDate(ev) }}</p>

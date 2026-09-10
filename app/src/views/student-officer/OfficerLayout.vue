@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, provide } from "vue";
+import { onUnmounted, ref, provide } from "vue";
 import { RouterView } from "vue-router";
 import type { OfficerEvent } from "./types";
 import { officerPortalKey } from "./portalContext";
@@ -30,8 +30,16 @@ function pushToast(title: string, description?: string, variant: "success" | "er
   toast.value = { title, description, variant };
   toastTimer = setTimeout(() => {
     toast.value = null;
+    toastTimer = undefined;
   }, 4000);
 }
+
+onUnmounted(() => {
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+    toastTimer = undefined;
+  }
+});
 
 provide(studentPostPublishKey, portal.handleCreateFeedPost);
 

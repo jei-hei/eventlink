@@ -4,6 +4,9 @@ import { Users, UserCheck, Clock3, Building2 } from "lucide-vue-next";
 import { fetchAdminRecentActivity, fetchAdminStatsSnapshot, type AdminActivityItem } from "@/services/adminDashboardDb";
 import PortalListSkeleton from "@/components/portal/PortalListSkeleton.vue";
 import PortalStatSkeleton from "@/components/portal/PortalStatSkeleton.vue";
+import { useDashboardLifecycleLog } from "@/composables/useDashboardLifecycleLog";
+
+useDashboardLifecycleLog("admin/DashboardView");
 
 const ReportsView = defineAsyncComponent(() => import("@/views/admin/ReportsView.vue"));
 

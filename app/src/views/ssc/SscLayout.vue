@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, provide } from "vue";
+import { onUnmounted, ref, provide } from "vue";
 import { RouterView } from "vue-router";
 import type { SscEvent } from "./types";
 import { sscPortalKey } from "./portalContext";
@@ -39,8 +39,16 @@ function pushToast(title: string, description?: string, variant: "success" | "er
   toast.value = { title, description, variant };
   toastTimer = setTimeout(() => {
     toast.value = null;
+    toastTimer = undefined;
   }, 4000);
 }
+
+onUnmounted(() => {
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+    toastTimer = undefined;
+  }
+});
 
 provide(studentPostPublishKey, handleCreateFeedPost);
 

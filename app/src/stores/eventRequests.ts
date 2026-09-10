@@ -165,8 +165,9 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     }
 
     const runForce = force;
+    const showLoading = !loaded.value;
     const promise = (async (): Promise<boolean> => {
-      loading.value = true;
+      if (showLoading) loading.value = true;
       error.value = null;
       try {
         const nextRows = await withRetry(
@@ -177,7 +178,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
               collegeId: auth.collegeId,
               organizationId: auth.organizationId,
             }),
-          2,
+          1,
         );
         rows.value = nextRows;
         rebuildPortalCache(nextRows);

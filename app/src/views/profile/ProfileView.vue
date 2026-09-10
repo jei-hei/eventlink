@@ -27,7 +27,9 @@ const showMyPosts = computed(
   () => portalRole.value === "student-officer" || portalRole.value === "ssc",
 );
 
-const loading = ref(true);
+const loading = ref(
+  !(profile.lastFetchedAt > 0 || (profile.displayName && profile.displayName !== "Guest")),
+);
 const editMode = ref(false);
 const saving = ref(false);
 const avatarSaving = ref(false);
@@ -70,13 +72,17 @@ watch(editMode, (on) => {
 /** Academic block for student officers only — not SSC or staff. */
 const showAcademic = computed(() => portalRole.value === "student-officer");
 
-onMounted(async () => {
-  try {
-    await profile.ensureHydrated(portalRole.value);
-  } finally {
+onMounted(() => {
+  const alreadyWarm =
+    profile.lastFetchedAt > 0 || (profile.displayName && profile.displayName !== "Guest");
+  if (alreadyWarm) {
     loading.value = false;
     syncDraftFromStore();
   }
+  void profile.ensureHydrated(portalRole.value).finally(() => {
+    loading.value = false;
+    syncDraftFromStore();
+  });
 });
 
 watch(portalRole, async (r) => {

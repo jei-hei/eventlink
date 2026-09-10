@@ -5,11 +5,12 @@ import router from "./router";
 import { useAuthStore } from "./stores/auth";
 import "./assets/main.css";
 
-async function bootstrap() {
+function bootstrap() {
   const app = createApp(App);
   const pinia = createPinia();
   app.use(pinia);
-  await useAuthStore().init();
+  // Start session restore immediately so it overlaps first paint.
+  void useAuthStore().init();
   app.use(router);
   app.mount("#app");
 }

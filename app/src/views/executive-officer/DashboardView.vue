@@ -12,6 +12,9 @@ import { canPostToCalendar } from "@/composables/eventPublish";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 import { toUserFacingError } from "@/utils/userFacingError";
+import { useDashboardLifecycleLog } from "@/composables/useDashboardLifecycleLog";
+
+useDashboardLifecycleLog("executive-officer/DashboardView");
 
 const EoCreateSscEventModal = defineAsyncComponent(
   () => import("./components/EoCreateSscEventModal.vue"),

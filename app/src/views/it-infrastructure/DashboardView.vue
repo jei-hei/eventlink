@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import ResourceOfficeDashboard from "@/components/portal/ResourceOfficeDashboard.vue";
+import { useDashboardLifecycleLog } from "@/composables/useDashboardLifecycleLog";
 import { useItPortal } from "./portalContext";
+
+useDashboardLifecycleLog("it-infrastructure/DashboardView");
 
 const { events, scheduledEvents, handleApprove, handleReject, busy } = useItPortal();
 </script>

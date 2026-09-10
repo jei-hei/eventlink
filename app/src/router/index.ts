@@ -6,8 +6,8 @@ const router = createRouter({
   history: createWebHistory(),
   scrollBehavior(to, _from, saved) {
     if (saved) return saved;
-    if (to.hash) return { el: to.hash, behavior: "smooth" };
-    return { top: 0, behavior: "smooth" };
+    if (to.hash) return { el: to.hash };
+    return { top: 0 };
   },
   routes: [
     { path: "/", redirect: "/login" },

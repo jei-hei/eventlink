@@ -41,6 +41,14 @@ export const useProfileStore = defineStore("profile", () => {
   const themePreference = ref<"system" | "light">("system");
   const activityStats = ref<ActivityStatModel[]>([]);
   const loadError = ref<string | null>(null);
+  const lastFetchedAt = ref(0);
+  const cacheUserId = ref<string | null>(null);
+  const cacheRouteRole = ref<PortalRoleKey | null>(null);
+
+  const PROFILE_STALE_MS = 5 * 60_000;
+  let hydrationInFlight: Promise<void> | null = null;
+  let hydrationIdentity: string | null = null;
+  let cacheGeneration = 0;
 
   const summary = computed<ProfileState>(() => ({
     displayName: displayName.value,
@@ -112,45 +120,89 @@ export const useProfileStore = defineStore("profile", () => {
   }
 
   /** Load profile for the portal role; fetches Supabase when configured. */
-  async function ensureHydrated(routeRole: PortalRoleKey) {
+  function ensureHydrated(routeRole: PortalRoleKey, force = false): Promise<void> {
     const auth = useAuthStore();
     const d = getProfileDefaults(routeRole);
-    loadError.value = null;
+    const userId = auth.userId;
+    const identity = `${userId ?? ""}:${routeRole}`;
+    const now = Date.now();
 
-    if (isSupabaseConfigured && auth.userId && !auth.useMock) {
-      try {
-        const row = await fetchMyProfile(auth.userId);
-        if (row) {
-          applyServerProfile(row, routeRole);
-          try {
-            activityStats.value = await fetchProfileActivityStats(portalRoleToAppRole(routeRole), auth.userId);
-          } catch {
-            // keep defaults if stats query fails
+    if (hydrationInFlight && hydrationIdentity === identity) {
+      return hydrationInFlight;
+    }
+
+    if (
+      !force &&
+      lastFetchedAt.value > 0 &&
+      cacheUserId.value === userId &&
+      cacheRouteRole.value === routeRole &&
+      now - lastFetchedAt.value < PROFILE_STALE_MS
+    ) {
+      return Promise.resolve();
+    }
+
+    const generation = cacheGeneration;
+    const request = (async () => {
+      loadError.value = null;
+
+      if (isSupabaseConfigured && userId && !auth.useMock) {
+        try {
+          const [row, stats] = await Promise.all([
+            fetchMyProfile(userId),
+            fetchProfileActivityStats(portalRoleToAppRole(routeRole), userId).catch(() => null),
+          ]);
+          if (row) {
+            const statsLoaded = Array.isArray(stats);
+            const nextStats = statsLoaded ? stats : null;
+
+            if (generation !== cacheGeneration || useAuthStore().userId !== userId) return;
+
+            applyServerProfile(row, routeRole);
+            if (statsLoaded && nextStats) {
+              activityStats.value = nextStats;
+            }
+            cacheUserId.value = userId;
+            cacheRouteRole.value = routeRole;
+            lastFetchedAt.value = Date.now();
+            return;
           }
-          return;
+          if (generation !== cacheGeneration) return;
+          loadError.value = "Profile data is unavailable. Please contact an administrator.";
+        } catch (e) {
+          if (generation !== cacheGeneration) return;
+          loadError.value = toUserFacingError(e, "Could not load profile.");
         }
-        loadError.value = "Profile data is unavailable. Please contact an administrator.";
-      } catch (e) {
-        loadError.value = toUserFacingError(e, "Could not load profile.");
       }
-    }
 
-    applyDefaults(d);
+      if (generation !== cacheGeneration) return;
+      applyDefaults(d);
 
-    if (auth.displayName) {
-      displayName.value = auth.displayName;
-    }
+      if (auth.displayName) {
+        displayName.value = auth.displayName;
+      }
 
-    if (auth.email) {
-      email.value = auth.email;
-    }
+      if (auth.email) {
+        email.value = auth.email;
+      }
 
-    if (auth.appRole) {
-      role.value = auth.appRole;
-      roleLabel.value = appRoleLabel(auth.appRole);
-    } else {
-      role.value = d.roleLabel;
-    }
+      if (auth.appRole) {
+        role.value = auth.appRole;
+        roleLabel.value = appRoleLabel(auth.appRole);
+      } else {
+        role.value = d.roleLabel;
+      }
+    })();
+
+    let trackedRequest: Promise<void>;
+    trackedRequest = request.finally(() => {
+      if (hydrationInFlight === trackedRequest) {
+        hydrationInFlight = null;
+        hydrationIdentity = null;
+      }
+    });
+    hydrationInFlight = trackedRequest;
+    hydrationIdentity = identity;
+    return trackedRequest;
   }
 
   async function persistPersonal(
@@ -226,7 +278,7 @@ export const useProfileStore = defineStore("profile", () => {
       }
       if (partial.notifyEmail !== undefined) notifyEmail.value = partial.notifyEmail;
       if (partial.themePreference !== undefined) themePreference.value = partial.themePreference;
-      await ensureHydrated(routeRole);
+      await ensureHydrated(routeRole, true);
       return;
     }
 
@@ -289,6 +341,12 @@ export const useProfileStore = defineStore("profile", () => {
   }
 
   function clear() {
+    cacheGeneration += 1;
+    lastFetchedAt.value = 0;
+    cacheUserId.value = null;
+    cacheRouteRole.value = null;
+    hydrationInFlight = null;
+    hydrationIdentity = null;
     displayName.value = "Guest";
     email.value = "";
     role.value = "";
@@ -321,6 +379,9 @@ export const useProfileStore = defineStore("profile", () => {
     themePreference,
     activityStats,
     loadError,
+    lastFetchedAt,
+    cacheUserId,
+    cacheRouteRole,
     setFromAuth,
     ensureHydrated,
     persistPersonal,

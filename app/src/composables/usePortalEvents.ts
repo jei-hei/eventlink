@@ -29,7 +29,6 @@ export function usePortalEvents(
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let refreshing = false;
   const POLL_MS_VISIBLE = 60_000;
-  const POLL_MS_HIDDEN = 180_000;
 
   async function refreshEvents(force = false): Promise<boolean> {
     if (!useDb.value || refreshing) return false;
@@ -43,12 +42,23 @@ export function usePortalEvents(
 
   function schedulePoll() {
     stopPolling();
-    if (!useDb.value) return;
-    const ms = pageVisible.value ? POLL_MS_VISIBLE : POLL_MS_HIDDEN;
+    if (
+      !useDb.value ||
+      !pageVisible.value ||
+      (typeof document !== "undefined" && document.hidden)
+    ) {
+      return;
+    }
     pollTimer = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (
+        !pageVisible.value ||
+        (typeof document !== "undefined" && document.hidden)
+      ) {
+        stopPolling();
+        return;
+      }
       void refreshEvents(false);
-    }, ms);
+    }, POLL_MS_VISIBLE);
   }
 
   function stopPolling() {
@@ -58,7 +68,6 @@ export function usePortalEvents(
   }
 
   onMounted(() => {
-    // Soft load if store already warm; force only on first entry.
     void refreshEvents(!store.loaded);
     schedulePoll();
   });
@@ -82,9 +91,12 @@ export function usePortalEvents(
     },
   );
   watch(
-    () => [auth.appRole, auth.collegeId, auth.organizationId],
-    () => {
-      if (useDb.value) void refreshEvents(true);
+    () => [auth.appRole, auth.collegeId, auth.organizationId] as const,
+    (next, prev) => {
+      if (!useDb.value) return;
+      if (prev && next[0] === prev[0] && next[1] === prev[1] && next[2] === prev[2]) return;
+      if (!prev) return;
+      void refreshEvents(true);
     },
   );
 
@@ -118,20 +130,6 @@ export function usePortalEvents(
     if (!useDb.value) return;
     void store.loadCalendarRange(payload.startDate, payload.endDate);
   }
-
-  // Prime current month calendar window after portal load.
-  watch(
-    () => store.loaded,
-    (ok) => {
-      if (!ok || !useDb.value) return;
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      const fmt = (d: Date) =>
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      void store.loadCalendarRange(fmt(start), fmt(end));
-    },
-  );
 
   const busy = ref(false);
 

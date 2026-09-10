@@ -7,6 +7,7 @@ import { useProfileStore } from "@/stores/profile";
 import { useUiStore } from "@/stores/ui";
 import { useNotificationsStore } from "@/stores/notifications";
 import { shouldSkipStaffEmailOtp } from "@/config/devAuth";
+import { usePageVisibility } from "@/composables/usePageVisibility";
 
 const route = useRoute();
 const router = useRouter();
@@ -14,6 +15,7 @@ const auth = useAuthStore();
 const profile = useProfileStore();
 const ui = useUiStore();
 const notifications = useNotificationsStore();
+const { visible: pageVisible } = usePageVisibility();
 
 const email = ref("");
 const password = ref("");
@@ -53,10 +55,23 @@ watch(
   { immediate: true },
 );
 
-onMounted(() => {
+function stopClock() {
+  if (!clockTimer) return;
+  clearInterval(clockTimer);
+  clockTimer = null;
+}
+
+function syncClock() {
+  stopClock();
+  if (!pageVisible.value) return;
+  nowMs.value = Date.now();
   clockTimer = setInterval(() => {
     nowMs.value = Date.now();
   }, 1000);
+}
+
+onMounted(() => {
+  syncClock();
   if (route.query.notice === "signup-disabled") {
     ui.pushToast(
       "Student signup removed",
@@ -66,12 +81,23 @@ onMounted(() => {
   }
 });
 
-onUnmounted(() => {
-  if (clockTimer) {
-    clearInterval(clockTimer);
-    clockTimer = null;
-  }
-});
+watch(
+  () => route.query.reason,
+  (reason) => {
+    if (reason === "inactivity") {
+      ui.pushToast(
+        "Signed out due to inactivity",
+        "You were idle too long, so EventLink signed you out. Sign in again to continue.",
+        "warning",
+      );
+    }
+  },
+  { immediate: true },
+);
+
+onUnmounted(stopClock);
+
+watch(pageVisible, syncClock);
 
 function lockoutKey(mail: string): string {
   return `${LOCKOUT_KEY_PREFIX}${mail.trim().toLowerCase()}`;
@@ -193,7 +219,7 @@ async function onSubmit() {
       }
       return;
     }
-    await auth.activateCurrentSessionSecurity(true);
+    void auth.activateCurrentSessionSecurity(true);
     await completeLogin();
   } catch (e) {
     const msg = formatAuthError(e);
