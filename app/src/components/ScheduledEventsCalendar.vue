@@ -399,10 +399,9 @@ function emitMonthRange() {
   emit("monthChange", payload);
   if (isSupabaseConfigured) {
     try {
-      const store = useEventRequestsStore();
-      void store.loadCalendarRange(payload.startDate, payload.endDate);
+      void useEventRequestsStore().loadCalendarRange(payload.startDate, payload.endDate);
     } catch {
-      // store may be unavailable outside portal contexts
+      // The calendar can also be rendered outside an initialized portal store.
     }
   }
 }

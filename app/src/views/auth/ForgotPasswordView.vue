@@ -4,6 +4,7 @@ import { RouterLink } from "vue-router";
 import { ArrowLeft, GraduationCap, Mail } from "lucide-vue-next";
 import { useAuthStore } from "@/stores/auth";
 import { useUiStore } from "@/stores/ui";
+import { toUserFacingError } from "@/utils/userFacingError";
 
 const auth = useAuthStore();
 const ui = useUiStore();
@@ -21,7 +22,7 @@ async function submit() {
   } catch (e) {
     ui.pushToast(
       "Could not send reset",
-      e instanceof Error ? e.message : "Try again later.",
+      toUserFacingError(e, "Try again later."),
       "error",
     );
   } finally {

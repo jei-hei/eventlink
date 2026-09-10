@@ -14,6 +14,7 @@ import EventFeedbackModal from "@/components/portal/EventFeedbackModal.vue";
 import { getComplianceAttachmentSignedUrl } from "@/services/complianceAttachmentStorage";
 import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import { useUiStore } from "@/stores/ui";
+import { toUserFacingError } from "@/utils/userFacingError";
 
 const auth = useAuthStore();
 const store = useEventRequestsStore();
@@ -223,7 +224,7 @@ async function onResubmit(id: string, input: UpdateEventRequestInput) {
     selected.value = null;
     await refresh(true);
   } catch (e) {
-    window.alert(e instanceof Error ? e.message : String(e));
+    window.alert(toUserFacingError(e, "Could not resubmit this event request."));
   } finally {
     resubmitting.value = false;
   }

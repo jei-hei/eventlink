@@ -9,7 +9,7 @@ let client: SupabaseClient | null = null;
 
 export function getSupabase(): SupabaseClient {
   if (!isSupabaseConfigured) {
-    throw new Error("Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+    throw new Error("The authentication service is unavailable. Please contact an administrator.");
   }
   if (!client) {
     client = createClient(url!, anonKey!, {

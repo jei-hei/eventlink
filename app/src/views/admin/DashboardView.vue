@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from "vue";
 import { Users, UserCheck, Clock3, Building2 } from "lucide-vue-next";
 import { fetchAdminRecentActivity, fetchAdminStatsSnapshot, type AdminActivityItem } from "@/services/adminDashboardDb";
 import PortalListSkeleton from "@/components/portal/PortalListSkeleton.vue";
 import PortalStatSkeleton from "@/components/portal/PortalStatSkeleton.vue";
-import ReportsView from "@/views/admin/ReportsView.vue";
+
+const ReportsView = defineAsyncComponent(() => import("@/views/admin/ReportsView.vue"));
 
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 const recentActivity = ref<AdminActivityItem[]>([]);
+const reportsAnchor = ref<HTMLElement | null>(null);
+const showReports = ref(false);
+let reportsObserver: IntersectionObserver | null = null;
 const statsRaw = ref({
   totalUsers: 0,
   portalRolesAssigned: 0,
@@ -42,7 +46,23 @@ async function loadDashboard() {
 
 onMounted(() => {
   void loadDashboard();
+  if (typeof IntersectionObserver === "undefined") {
+    showReports.value = true;
+    return;
+  }
+  reportsObserver = new IntersectionObserver(
+    ([entry]) => {
+      if (!entry?.isIntersecting) return;
+      showReports.value = true;
+      reportsObserver?.disconnect();
+      reportsObserver = null;
+    },
+    { rootMargin: "300px 0px" },
+  );
+  if (reportsAnchor.value) reportsObserver.observe(reportsAnchor.value);
 });
+
+onBeforeUnmount(() => reportsObserver?.disconnect());
 </script>
 
 <template>
@@ -96,6 +116,11 @@ onMounted(() => {
       </div>
     </div>
 
-    <ReportsView embedded />
+    <div ref="reportsAnchor" class="mt-8 min-h-24">
+      <ReportsView v-if="showReports" embedded />
+      <div v-else class="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">
+        Reports load as you scroll.
+      </div>
+    </div>
   </div>
 </template>

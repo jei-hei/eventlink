@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, defineAsyncComponent } from "vue";
 import { Calendar, XCircle } from "lucide-vue-next";
 import type { EoEvent } from "./types";
 import { useExecutivePortal } from "./portalContext";
-import EoCreateSscEventModal, { type EoCreateDirectPayload } from "./components/EoCreateSscEventModal.vue";
-import EoEditScheduledEventModal from "./components/EoEditScheduledEventModal.vue";
-import EoEventDetailModal from "./components/EoEventDetailModal.vue";
+import type { EoCreateDirectPayload } from "./components/EoCreateSscEventModal.vue";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import type { ScheduledCalendarEvent } from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
@@ -13,6 +11,17 @@ import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import { canPostToCalendar } from "@/composables/eventPublish";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
+import { toUserFacingError } from "@/utils/userFacingError";
+
+const EoCreateSscEventModal = defineAsyncComponent(
+  () => import("./components/EoCreateSscEventModal.vue"),
+);
+const EoEditScheduledEventModal = defineAsyncComponent(
+  () => import("./components/EoEditScheduledEventModal.vue"),
+);
+const EoEventDetailModal = defineAsyncComponent(
+  () => import("./components/EoEventDetailModal.vue"),
+);
 
 const eventsLoading = useEventsTableLoading();
 
@@ -118,7 +127,7 @@ async function onCreateSubmit(payload: EoCreateDirectPayload) {
     handleCreateEvent(e);
     createOpen.value = false;
   } catch (e) {
-    window.alert(e instanceof Error ? e.message : String(e));
+    window.alert(toUserFacingError(e, "Could not create this calendar event."));
   }
 }
 

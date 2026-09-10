@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, defineAsyncComponent, ref } from "vue";
 import { Calendar, Check, XCircle } from "lucide-vue-next";
 import type { AdviserEvent } from "./types";
 import { useAdviserPortal } from "./portalContext";
-import AdviserEventDetailModal from "./components/AdviserEventDetailModal.vue";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
+
+const AdviserEventDetailModal = defineAsyncComponent(
+  () => import("./components/AdviserEventDetailModal.vue"),
+);
 
 const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision, busy } = useAdviserPortal();
 const eventsLoading = useEventsTableLoading();

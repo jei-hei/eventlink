@@ -8,6 +8,7 @@ import { fetchProfileActivityStats } from "@/services/profileActivityDb";
 import { useAuthStore } from "./auth";
 import { appRoleLabel, portalRoleToAppRole } from "@/types/appRole";
 import { getProfileAvatarPublicUrl, uploadProfileAvatar } from "@/services/profileAvatarStorage";
+import { toUserFacingError } from "@/utils/userFacingError";
 
 export interface ProfileState {
   displayName: string;
@@ -128,10 +129,9 @@ export const useProfileStore = defineStore("profile", () => {
           }
           return;
         }
-        loadError.value =
-          "Profile could not be created. Run migration 20260529300000_ensure_my_profile.sql in Supabase, then refresh.";
+        loadError.value = "Profile data is unavailable. Please contact an administrator.";
       } catch (e) {
-        loadError.value = e instanceof Error ? e.message : "Could not load profile.";
+        loadError.value = toUserFacingError(e, "Could not load profile.");
       }
     }
 

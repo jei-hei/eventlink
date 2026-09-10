@@ -29,10 +29,9 @@ function json(req: Request, status: number, body: Record<string, unknown>) {
 }
 
 async function sha256Hex(text: string): Promise<string> {
-  const data = new TextEncoder().encode(text);
-  const digest = await crypto.subtle.digest("SHA-256", data);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 }
 
@@ -42,6 +41,14 @@ async function clientKey(req: Request): Promise<string> {
   const salt = Deno.env.get("RATE_LIMIT_SALT") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   return sha256Hex(`${salt}:${ip}`);
 }
+
+type SubmitBody = {
+  feedPostId?: unknown;
+  rating?: unknown;
+  comment?: unknown;
+  improvementTags?: unknown;
+  accessCode?: unknown;
+};
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin");
@@ -61,57 +68,66 @@ Deno.serve(async (req) => {
     return json(req, 500, { error: "Service unavailable." });
   }
   const contentLength = Number(req.headers.get("content-length") ?? "0");
-  if (contentLength > 4096) {
+  if (contentLength > 16384) {
     return json(req, 413, { error: "Request is too large." });
   }
 
-  let body: { feedPostId?: string; accessCode?: string };
+  let body: SubmitBody;
   try {
-    body = (await req.json()) as { feedPostId?: string; accessCode?: string };
+    body = (await req.json()) as SubmitBody;
   } catch {
     return json(req, 400, { error: "Invalid JSON body." });
   }
 
   const feedPostId = String(body.feedPostId ?? "").trim();
+  const rating = Number(body.rating);
+  const comment = String(body.comment ?? "").trim();
   const accessCode = String(body.accessCode ?? "").trim();
+  const improvementTags = Array.isArray(body.improvementTags)
+    ? body.improvementTags.map((tag) => String(tag).trim()).filter(Boolean)
+    : [];
+
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(feedPostId)) {
     return json(req, 400, { error: "Missing event." });
   }
-  if (accessCode.length > 128) {
-    return json(req, 400, { error: "Invalid access code." });
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return json(req, 400, { error: "Please select a rating from 1 to 5 stars." });
+  }
+  if (!comment || comment.length > 1000) {
+    return json(req, 400, { error: "Please choose a comment of at most 1000 characters." });
+  }
+  if (accessCode.length > 128 || improvementTags.length > 20 || improvementTags.some((tag) => tag.length > 80)) {
+    return json(req, 400, { error: "Invalid feedback details." });
   }
 
   const admin = createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-
-  const codeHash = accessCode ? await sha256Hex(accessCode) : "";
-  const { data, error: verifyErr } = await admin.rpc("verify_public_feedback_access_server", {
+  const { data, error } = await admin.rpc("submit_public_event_feedback_server", {
     p_feed_post_id: feedPostId,
-    p_access_code_hash: codeHash,
+    p_rating: rating,
+    p_comment: comment,
+    p_improvement_tags: improvementTags,
+    p_access_code_hash: accessCode ? await sha256Hex(accessCode) : "",
     p_rate_limit_key: await clientKey(req),
   });
-  if (verifyErr) {
-    if (verifyErr.message?.includes("rate_limit_exceeded")) {
-      return json(req, 429, { error: "Too many attempts. Please wait and try again." });
+
+  if (error) {
+    if (error.message?.includes("rate_limit_exceeded")) {
+      return json(req, 429, { error: "Too many submissions. Please wait and try again." });
     }
-    console.error("[verify-feedback-code] verification failed", verifyErr.message);
-    return json(req, 500, { error: "Could not verify access." });
-  }
-  const result = Array.isArray(data) ? data[0] : data;
-  if (!result?.post_exists) {
-    return json(req, 404, { error: "This event was not found." });
-  }
-  if (result.requires_code && !accessCode) {
-    return json(req, 400, { error: "Enter the feedback access code." });
-  }
-  if (result.verified !== true) {
-    return json(req, 200, { error: "Incorrect access code.", verified: false, feedPostId });
+    const safeMessages = [
+      "Feedback opens after the linked event has finished.",
+      "Incorrect access code. Feedback was not submitted.",
+      "Feedback is not available for this event.",
+      "Please select a rating from 1 to 5 stars.",
+      "Please choose a comment of at most 1000 characters.",
+    ];
+    const safe = safeMessages.find((message) => error.message?.includes(message));
+    if (safe) return json(req, 400, { error: safe });
+    console.error("[submit-public-feedback] submission failed", error.message);
+    return json(req, 500, { error: "Could not submit feedback." });
   }
 
-  return json(req, 200, {
-    verified: true,
-    feedPostId,
-    requiresCode: result.requires_code === true,
-  });
+  return json(req, 200, { ok: true, feedbackId: data });
 });

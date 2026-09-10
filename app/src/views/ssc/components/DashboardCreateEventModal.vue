@@ -7,6 +7,7 @@ import EventRequestCreateForm, {
 import type { SscEvent } from "../types";
 import { useSscPortal } from "../portalContext";
 import { buildWorkflowHistory, getInitialStep } from "@/services/eventRequestWorkflow";
+import { toUserFacingError } from "@/utils/userFacingError";
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: [] }>();
@@ -50,7 +51,7 @@ async function onSubmit(payload: EventRequestFormPayload) {
       });
       emit("close");
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      window.alert(toUserFacingError(e, "Could not submit this event request."));
     } finally {
       submitting.value = false;
     }

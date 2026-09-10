@@ -186,7 +186,7 @@ async function removeOrg(id: string) {
           <span class="text-xs text-purple-700">SSC · slug: {{ org.slug || "ssc" }}</span>
         </li>
         <li v-if="!universityWide.organizations.length" class="px-6 py-4 text-sm text-gray-400">
-          Run migration / seed for SSC (supabase/seed/03_ssc_organization.sql).
+          SSC organization data has not been configured yet.
         </li>
       </ul>
     </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, defineAsyncComponent, onMounted } from "vue";
 import { useDebouncedRef } from "@/composables/useDebounce";
 import { RefreshCw, Search, User } from "lucide-vue-next";
 import { RouterLink } from "vue-router";
@@ -7,9 +7,10 @@ import type { StudentEvent } from "./types";
 import { studentEvents } from "./eventData";
 import EventCard from "./components/EventCard.vue";
 import PortalFeedSkeleton from "@/components/portal/PortalFeedSkeleton.vue";
-import EventModal from "./components/EventModal.vue";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useEventRequestsStore } from "@/stores/eventRequests";
+
+const EventModal = defineAsyncComponent(() => import("./components/EventModal.vue"));
 
 const ALL_ORGANIZATIONS = "All Organizations";
 const ALL_VENUES = "All Venues";
@@ -236,10 +237,6 @@ const filteredEvents = computed(() => {
 
       <p v-if="eventStore.feedError" class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
         Could not load posts: {{ eventStore.feedError }}.
-        <span v-if="eventStore.feedError.includes('student_feed_posts')">
-          Run migration <code class="text-xs">20260528900000_student_feed_posts.sql</code> and
-          <code class="text-xs">20260529000000_student_feed_public_read.sql</code> in Supabase.
-        </span>
       </p>
 
       <PortalFeedSkeleton

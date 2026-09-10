@@ -7,6 +7,48 @@ function makeStat(id: string, label: string, value: number, icon: ActivityStatMo
   return { id, label, value: Math.max(0, Number(value || 0)), icon };
 }
 
+async function countScheduledForProfile(
+  role: AppRole,
+  userId: string,
+  profile: { college_id: string | null; organization_id: string | null } | null,
+): Promise<number> {
+  const supabase = getSupabase();
+  if (role === "gso" || role === "it_infrastructure" || role === "sports_office") {
+    let query = supabase
+      .from("event_request_resource_assignments")
+      .select("request_id", { head: true, count: "exact" })
+      .eq("assigned_office", role);
+    if (role === "it_infrastructure") query = query.eq("resource_kind", "equipment");
+    if (role === "sports_office") query = query.eq("resource_kind", "venue");
+    const { count } = await query;
+    return count ?? 0;
+  }
+
+  const needsCollegeJoin =
+    (role === "dean" || role === "adviser") && !!profile?.college_id;
+  let query = supabase
+    .from("event_requests")
+    .select(needsCollegeJoin ? "id, organizations!inner(college_id)" : "id", {
+      head: true,
+      count: "exact",
+    })
+    .not("calendar_posted_at", "is", null);
+
+  if (role === "student_officer") {
+    if (profile?.organization_id) query = query.eq("organization_id", profile.organization_id);
+    else query = query.eq("submitted_by", userId);
+  } else if (role === "ssc") {
+    query = query.eq("request_type", "ssc");
+  } else if (needsCollegeJoin) {
+    query = query.eq("organizations.college_id", profile!.college_id!);
+  } else if (role === "adviser" && profile?.organization_id) {
+    query = query.eq("organization_id", profile.organization_id);
+  }
+
+  const { count } = await query;
+  return count ?? 0;
+}
+
 export async function fetchProfileActivityStats(role: AppRole, userId: string): Promise<ActivityStatModel[]> {
   const supabase = getSupabase();
 
@@ -29,7 +71,7 @@ export async function fetchProfileActivityStats(role: AppRole, userId: string): 
     .eq("id", userId)
     .maybeSingle();
 
-  const [{ count: approvedCount }, pendingCount, { count: scheduledCount }] = await Promise.all([
+  const [{ count: approvedCount }, pendingCount, scheduledCount] = await Promise.all([
     supabase
       .from("event_request_history")
       .select("id", { head: true, count: "exact" })
@@ -39,15 +81,12 @@ export async function fetchProfileActivityStats(role: AppRole, userId: string): 
       collegeId: profile?.college_id ?? null,
       organizationId: profile?.organization_id ?? null,
     }),
-    supabase
-      .from("event_requests")
-      .select("id", { head: true, count: "exact" })
-      .not("calendar_posted_at", "is", null),
+    countScheduledForProfile(role, userId, profile),
   ]);
 
   return [
     makeStat("approved", "Approved requests", approvedCount ?? 0, "CheckCircle"),
     makeStat("pending", "Pending reviews", pendingCount, "Clock"),
-    makeStat("scheduled", "Scheduled events", scheduledCount ?? 0, "Calendar"),
+    makeStat("scheduled", "Scheduled events", scheduledCount, "Calendar"),
   ];
 }

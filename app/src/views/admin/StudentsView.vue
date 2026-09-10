@@ -100,9 +100,17 @@ async function onFile(e: Event) {
     if (name.endsWith(".csv")) {
       const text = await file.text();
       rows = parseRegistryCsv(text);
-    } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+    } else if (name.endsWith(".xlsx")) {
       const buf = await file.arrayBuffer();
       rows = await parseRegistryXlsx(buf);
+    } else if (name.endsWith(".xls")) {
+      ui.pushToast(
+        "Legacy XLS is not supported",
+        "Save the workbook as XLSX or export it as CSV, then upload it again.",
+        "error",
+      );
+      parsing.value = false;
+      return;
     } else {
       ui.pushToast("Unsupported file", "Use CSV or XLSX.", "error");
       parsing.value = false;

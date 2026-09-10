@@ -13,14 +13,16 @@
  *
  * Optional:
  *   ADMIN_EMAIL (default admin@eventlink.local)
- *   ADMIN_PASSWORD (default EventLinkAdmin123!)
+ *
+ * Required when creating a new account:
+ *   ADMIN_PASSWORD (at least 8 characters)
  */
 import { createClient } from "@supabase/supabase-js";
 
 const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const email = (process.env.ADMIN_EMAIL ?? "admin@eventlink.local").trim();
-const password = process.env.ADMIN_PASSWORD ?? "EventLinkAdmin123!";
+const password = process.env.ADMIN_PASSWORD;
 
 if (!url || !serviceKey) {
   console.error(
@@ -45,6 +47,9 @@ async function main() {
   let user = await findUserByEmail(email);
 
   if (!user) {
+    if (!password || password.length < 8) {
+      throw new Error("Set ADMIN_PASSWORD to a unique value of at least 8 characters.");
+    }
     const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -55,12 +60,7 @@ async function main() {
     user = data.user;
     console.log("Created auth user:", user.id);
   } else {
-    const { error } = await supabase.auth.admin.updateUserById(user.id, {
-      password,
-      email_confirm: true,
-    });
-    if (error) throw error;
-    console.log("Auth user already exists; password updated:", user.id);
+    console.log("Auth user already exists; credentials were not modified:", user.id);
   }
 
   const { error: roleErr } = await supabase.from("user_roles").upsert(
@@ -81,7 +81,6 @@ async function main() {
 
   console.log("\nAdmin ready.");
   console.log("  Email:   ", email);
-  console.log("  Password:", password);
   console.log("  Login:   http://localhost:5173/login → redirects to /admin");
 }
 

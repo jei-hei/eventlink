@@ -165,38 +165,46 @@ function isResourceOfficeScope(scope: AnalyticsScope): scope is ResourceOffice {
  */
 async function fetchResourceOfficeRequestIds(office: ResourceOffice): Promise<string[] | null> {
   const supabase = getSupabase();
-  let assignmentQuery = supabase
-    .from("event_request_resource_assignments")
-    .select("request_id")
-    .eq("assigned_office", office);
+  const pageSize = 500;
+  const ids = new Set<string>();
+  for (let from = 0; ; from += pageSize) {
+    let assignmentQuery = supabase
+      .from("event_request_resource_assignments")
+      .select("request_id")
+      .eq("assigned_office", office)
+      .order("request_id", { ascending: true })
+      .order("id", { ascending: true });
 
-  if (office === "it_infrastructure") {
-    assignmentQuery = assignmentQuery.eq("resource_kind", "equipment");
-  } else if (office === "sports_office") {
-    assignmentQuery = assignmentQuery.eq("resource_kind", "venue");
+    if (office === "it_infrastructure") {
+      assignmentQuery = assignmentQuery.eq("resource_kind", "equipment");
+    } else if (office === "sports_office") {
+      assignmentQuery = assignmentQuery.eq("resource_kind", "venue");
+    }
+
+    const { data, error } = await assignmentQuery.range(from, from + pageSize - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as Array<{ request_id: string | null }>;
+    rows.forEach((row) => {
+      if (row.request_id) ids.add(row.request_id);
+    });
+    if (rows.length < pageSize) break;
   }
-
-  const { data: assignmentRows, error: assignmentErr } = await assignmentQuery.limit(500);
-  if (assignmentErr) throw assignmentErr;
-
-  const ids = new Set<string>(
-    ((assignmentRows ?? []) as Array<{ request_id: string | null }>)
-      .map((r) => r.request_id)
-      .filter((id): id is string => !!id),
-  );
 
   if (office === "gso") {
     const since = new Date();
     since.setFullYear(since.getFullYear() - 1);
-    const { data: legacyRows, error: legacyErr } = await supabase
-      .from("event_requests")
-      .select("id")
-      .eq("current_step", "gso")
-      .gte("created_at", since.toISOString())
-      .limit(500);
-    if (legacyErr) throw legacyErr;
-    for (const row of (legacyRows ?? []) as Array<{ id: string }>) {
-      if (row.id) ids.add(row.id);
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from("event_requests")
+        .select("id")
+        .eq("current_step", "gso")
+        .gte("created_at", since.toISOString())
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      const rows = (data ?? []) as Array<{ id: string }>;
+      rows.forEach((row) => ids.add(row.id));
+      if (rows.length < pageSize) break;
     }
   }
 
@@ -364,36 +372,10 @@ export async function fetchAnalyticsOverview(
     ? "organizations!inner(name, college_id)"
     : "organizations(name, college_id)";
 
-  let query = supabase
-    .from("event_requests")
-    .select(
-      `id, activity, request_type, status, current_step, created_at, sdgs, organization_id, ${orgSelect}`,
-    )
-    .gte("created_at", sinceIso)
-    .order("created_at", { ascending: false })
-    .limit(500);
-
-  if (scope === "ssc") {
-    query = query.eq("request_type", "ssc");
-  } else if (scope === "student_officer") {
-    query = query.eq("request_type", "student_officer");
-    if (organizationId) {
-      query = query.eq("organization_id", organizationId);
-    } else if (userId) {
-      query = query.eq("submitted_by", userId);
-    }
-  } else if (scope === "dean") {
-    query = query.eq("organizations.college_id", collegeId!);
-  } else if (scope === "adviser") {
-    // Prefer college scope (all orgs in the adviser's college). Fall back to own org only.
-    if (collegeId) {
-      query = query.eq("organizations.college_id", collegeId);
-    } else if (organizationId) {
-      query = query.eq("organization_id", organizationId);
-    }
-  } else if (isResourceOfficeScope(scope)) {
-    const requestIds = await fetchResourceOfficeRequestIds(scope);
-    if (!requestIds || requestIds.length === 0) {
+  let resourceRequestIds: string[] | null = null;
+  if (isResourceOfficeScope(scope)) {
+    resourceRequestIds = await fetchResourceOfficeRequestIds(scope);
+    if (!resourceRequestIds || !resourceRequestIds.length) {
       const overview = emptyOverview();
       const pendingCount = await countPendingForRole(scope as AppRole, userId ?? "", {
         collegeId,
@@ -404,14 +386,55 @@ export async function fetchAnalyticsOverview(
       if (pendingSlice) pendingSlice.value = pendingCount;
       return overview;
     }
-    const capped = requestIds.slice(0, 500);
-    query = query.in("id", capped);
   }
   // eo / osas: campus-wide (matches workflow visibility) — no college filter
 
-  const { data, error } = await query;
-  if (error) throw error;
-  const rows = (data ?? []) as unknown as RequestRow[];
+  function buildQuery(idChunk?: string[]) {
+    let query = supabase
+      .from("event_requests")
+      .select(
+        `id, activity, request_type, status, current_step, created_at, sdgs, organization_id, ${orgSelect}`,
+      )
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+
+    if (scope === "ssc") {
+      query = query.eq("request_type", "ssc");
+    } else if (scope === "student_officer") {
+      query = query.eq("request_type", "student_officer");
+      if (organizationId) query = query.eq("organization_id", organizationId);
+      else if (userId) query = query.eq("submitted_by", userId);
+    } else if (scope === "dean") {
+      query = query.eq("organizations.college_id", collegeId!);
+    } else if (scope === "adviser") {
+      if (collegeId) query = query.eq("organizations.college_id", collegeId);
+      else if (organizationId) query = query.eq("organization_id", organizationId);
+    }
+    if (idChunk?.length) query = query.in("id", idChunk);
+    return query;
+  }
+
+  const pageSize = 500;
+  const idChunks = resourceRequestIds
+    ? Array.from(
+        { length: Math.ceil(resourceRequestIds.length / pageSize) },
+        (_, index) => resourceRequestIds!.slice(index * pageSize, (index + 1) * pageSize),
+      )
+    : [undefined];
+  const rowsById = new Map<string, RequestRow>();
+  for (const idChunk of idChunks) {
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await buildQuery(idChunk).range(from, from + pageSize - 1);
+      if (error) throw error;
+      const pageRows = (data ?? []) as unknown as RequestRow[];
+      pageRows.forEach((row) => rowsById.set(row.id, row));
+      if (pageRows.length < pageSize) break;
+    }
+  }
+  const rows = [...rowsById.values()].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
 
   const { data: collegeRows } = await supabase.from("colleges").select("id, name");
   const collegeNameById = new Map<string, string>(

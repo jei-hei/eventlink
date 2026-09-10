@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, defineAsyncComponent, ref } from "vue";
 import { Calendar, Check, XCircle } from "lucide-vue-next";
 import type { DeanEvent } from "./types";
 import { useDeanPortal } from "./portalContext";
-import DeanEventDetailModal from "./components/DeanEventDetailModal.vue";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
+
+const DeanEventDetailModal = defineAsyncComponent(
+  () => import("./components/DeanEventDetailModal.vue"),
+);
 
 const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision, busy } = useDeanPortal();
 const eventsLoading = useEventsTableLoading();

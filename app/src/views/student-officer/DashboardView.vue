@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, defineAsyncComponent, onMounted } from "vue";
 import { Calendar, Plus } from "lucide-vue-next";
 import type { OfficerEvent } from "./types";
 import { useOfficerPortal } from "./portalContext";
-import OfficerCreateEventModal from "./components/OfficerCreateEventModal.vue";
-import OfficerEventDetailModal from "./components/OfficerEventDetailModal.vue";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import CreatePostButton from "@/components/portal/CreatePostButton.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
@@ -13,6 +11,13 @@ import { mergeMyPortalEvents } from "@/composables/mergeMyPortalEvents";
 import { useAuthStore } from "@/stores/auth";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
+
+const OfficerCreateEventModal = defineAsyncComponent(
+  () => import("./components/OfficerCreateEventModal.vue"),
+);
+const OfficerEventDetailModal = defineAsyncComponent(
+  () => import("./components/OfficerEventDetailModal.vue"),
+);
 
 const { events, approvedEvents, scheduledEvents, handleCreateFeedPost, pushToast } = useOfficerPortal();
 const eventsLoading = useEventsTableLoading();

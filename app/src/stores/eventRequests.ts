@@ -20,6 +20,12 @@ import {
   updateEventRequest,
   cancelScheduledEventRequest,
   softDeleteEventRequest,
+  approveResourceAssignment,
+  declineResourceAssignment,
+  approveAndForwardEventRequest,
+  unpostEventFromStaffCalendar,
+  fetchEventRequestDocuments,
+  requestRevision as requestRevisionDb,
 } from "@/services/eventRequestsDb";
 import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import type { CreateEventRequestInput } from "@/types/eventRequest";
@@ -28,6 +34,8 @@ import {
   fetchStudentFeedPostsPage,
   fetchFeedPostsBySubmitter,
   mapFeedPostToStudentEvent,
+  deleteStudentFeedPost,
+  updateStudentFeedPost,
 } from "@/services/studentFeedPostsDb";
 import type { CreateStudentFeedPostInput, StudentFeedPostRow, UpdateStudentFeedPostInput } from "@/types/studentPost";
 import type { StudentEvent } from "@/views/student/types";
@@ -35,6 +43,7 @@ import type { EventRequestRow } from "@/types/eventRequest";
 import type { PortalEvent } from "@/types/portalEvent";
 import type { AppRole } from "@/types/appRole";
 import { useAuthStore } from "@/stores/auth";
+import { toUserFacingError } from "@/utils/userFacingError";
 
 export const useEventRequestsStore = defineStore("eventRequests", () => {
   const rows = ref<EventRequestRow[]>([]);
@@ -50,6 +59,8 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   const STALE_MS = 45_000;
   let inFlight: { scope: string; force: boolean; promise: Promise<boolean> } | null = null;
   const portalById = ref<Map<string, PortalEvent>>(new Map());
+  let calendarInFlight: { key: string; promise: Promise<void> } | null = null;
+  let calendarRangeKey = "";
 
   function currentScopeKey() {
     const auth = useAuthStore();
@@ -88,23 +99,34 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     if (!isSupabaseConfigured) return;
     const auth = useAuthStore();
     if (!auth.userId) return;
-    try {
-      const data = await fetchCalendarEventsInRange({ startDate, endDate, limit: 150 });
-      // Keep role/org scope when portal rows are already org-scoped.
-      if (auth.appRole === "adviser" && auth.organizationId) {
-        calendarRows.value = data.filter((r) => r.organization_id === auth.organizationId);
-      } else if (auth.appRole === "dean" && auth.collegeId) {
-        calendarRows.value = data.filter(
-          (r) => (r.organizations?.college_id ?? null) === auth.collegeId,
-        );
-      } else if (auth.appRole === "student_officer" && auth.organizationId) {
-        calendarRows.value = data.filter((r) => r.organization_id === auth.organizationId);
-      } else {
-        calendarRows.value = data;
+    const key = `${currentScopeKey()}:${startDate}:${endDate}`;
+    if (calendarRangeKey === key) return;
+    if (calendarInFlight?.key === key) return calendarInFlight.promise;
+
+    const promise = (async () => {
+      try {
+        const data = await fetchCalendarEventsInRange({ startDate, endDate });
+        // Keep role/org scope when portal rows are already org-scoped.
+        if (auth.appRole === "adviser" && auth.organizationId) {
+          calendarRows.value = data.filter((r) => r.organization_id === auth.organizationId);
+        } else if (auth.appRole === "dean" && auth.collegeId) {
+          calendarRows.value = data.filter(
+            (r) => (r.organizations?.college_id ?? null) === auth.collegeId,
+          );
+        } else if (auth.appRole === "student_officer" && auth.organizationId) {
+          calendarRows.value = data.filter((r) => r.organization_id === auth.organizationId);
+        } else {
+          calendarRows.value = data;
+        }
+        calendarRangeKey = key;
+      } catch (e) {
+        console.warn("[calendar] range load failed", e);
       }
-    } catch (e) {
-      console.warn("[calendar] range load failed", e);
-    }
+    })().finally(() => {
+      if (calendarInFlight?.promise === promise) calendarInFlight = null;
+    });
+    calendarInFlight = { key, promise };
+    return promise;
   }
 
   async function withRetry<T>(task: () => Promise<T>, retries = 2): Promise<T> {
@@ -163,7 +185,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
         lastLoadedAt.value = Date.now();
         return true;
       } catch (e) {
-        error.value = e instanceof Error ? e.message : String(e);
+        error.value = toUserFacingError(e, "Could not load event requests.");
         throw e;
       } finally {
         loading.value = false;
@@ -199,7 +221,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
       studentFeedHasMore.value = page.hasMore;
       studentBoardLoaded.value = true;
     } catch (e) {
-      feedError.value = e instanceof Error ? e.message : String(e);
+      feedError.value = toUserFacingError(e, "Could not load campus posts.");
       throw e;
     } finally {
       feedLoading.value = false;
@@ -222,7 +244,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
       studentFeedHasMore.value = page.hasMore;
       studentBoardLoaded.value = true;
     } catch (e) {
-      feedError.value = e instanceof Error ? e.message : String(e);
+      feedError.value = toUserFacingError(e, "Could not load more campus posts.");
       throw e;
     } finally {
       feedLoading.value = false;
@@ -262,7 +284,6 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   async function deleteFeedPost(postId: string) {
     const auth = useAuthStore();
     if (!auth.userId) throw new Error("You must be signed in.");
-    const { deleteStudentFeedPost } = await import("@/services/studentFeedPostsDb");
     await deleteStudentFeedPost(postId, auth.userId);
     feedPostRows.value = feedPostRows.value.filter((r) => r.id !== postId);
     myFeedPostRows.value = myFeedPostRows.value.filter((r) => r.id !== postId);
@@ -271,7 +292,6 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   async function updateFeedPost(input: UpdateStudentFeedPostInput) {
     const auth = useAuthStore();
     if (!auth.userId) throw new Error("You must be signed in.");
-    const { updateStudentFeedPost } = await import("@/services/studentFeedPostsDb");
     const row = await updateStudentFeedPost(input, auth.userId);
     const patchList = (list: StudentFeedPostRow[]) => {
       const idx = list.findIndex((r) => r.id === row.id);
@@ -325,7 +345,6 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
       : null;
     const row = rows.value.find((r) => r.id === id);
     if (office && row?.current_step === "resource_offices") {
-      const { approveResourceAssignment } = await import("@/services/eventRequestsDb");
       await approveResourceAssignment(id, auth.userId, auth.appRole);
     } else {
       await approveEventRequest(id, auth.userId, auth.appRole);
@@ -344,7 +363,6 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
         auth.appRole === "sports_office" ||
         auth.appRole === "ssc")
     ) {
-      const { declineResourceAssignment } = await import("@/services/eventRequestsDb");
       await declineResourceAssignment(id, auth.userId, auth.appRole, reason);
     } else {
       await declineEventRequest(id, auth.userId, auth.appRole, reason);
@@ -355,7 +373,6 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   async function approveAndForward(id: string, assignments: import("@/types/resourceOffice").ResourceAssignmentInput[]) {
     const auth = useAuthStore();
     if (!auth.userId) throw new Error("You must be signed in.");
-    const { approveAndForwardEventRequest } = await import("@/services/eventRequestsDb");
     await approveAndForwardEventRequest(id, auth.userId, assignments);
     await load(true);
   }
@@ -400,7 +417,6 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     if (auth.appRole !== "eo" && auth.appRole !== "admin") {
       throw new Error("Only the Executive Officer can unpost calendar events.");
     }
-    const { unpostEventFromStaffCalendar } = await import("@/services/eventRequestsDb");
     await unpostEventFromStaffCalendar(id, auth.userId);
     await load(true);
   }
@@ -420,7 +436,6 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     if (row.event_request_letters != null && row.event_request_compliance_comments != null) {
       return portalOf(row);
     }
-    const { fetchEventRequestDocuments } = await import("@/services/eventRequestsDb");
     const docs = await fetchEventRequestDocuments(id);
     const next: EventRequestRow = {
       ...row,
@@ -440,7 +455,6 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
   async function requestRevision(id: string, comment: string, attachmentFile?: File | null) {
     const auth = useAuthStore();
     if (!auth.userId || !auth.appRole) throw new Error("You must be signed in.");
-    const { requestRevision: requestRevisionDb } = await import("@/services/eventRequestsDb");
     await requestRevisionDb(id, auth.userId, auth.appRole, comment, attachmentFile);
     await load(true);
   }

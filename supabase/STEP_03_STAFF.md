@@ -7,6 +7,7 @@ One login per office role (your rule). Students still use **/signup** + registry
 From `app/`:
 
 ```bash
+export STAFF_SEED_PASSWORD='<unique-password>'
 npm run seed:staff
 ```
 
@@ -24,7 +25,8 @@ This reads `supabase/seed/staff_accounts.json` and creates:
 | it_infrastructure | it@eventlink.local | /it-infrastructure |
 | sports_office | sports@eventlink.local | /sports-office |
 
-**Password (all):** `EventLinkTest123!`
+`STAFF_SEED_PASSWORD` is required and is not stored in the repository. Existing Auth
+accounts keep their current credentials.
 
 Admin was created earlier with `npm run seed:admin`.
 
@@ -35,7 +37,8 @@ After seeding staff, open **Admin → Users** to see everyone with a portal role
 ## Create one account manually
 
 ```bash
-node --env-file=.env.seed scripts/create-portal-user.mjs eo eo@eventlink.local EventLinkTest123! "Executive Officer"
+export PORTAL_USER_PASSWORD='<unique-password>'
+node --env-file=.env.seed scripts/create-portal-user.mjs eo eo@eventlink.local "Executive Officer"
 ```
 
 Roles: `student_officer`, `ssc`, `adviser`, `dean`, `osas`, `eo`, `gso`, `it_infrastructure`, `sports_office`, `admin`
@@ -43,7 +46,7 @@ Roles: `student_officer`, `ssc`, `adviser`, `dean`, `osas`, `eo`, `gso`, `it_inf
 ## Verify Step 3
 
 1. Sign out completely (or use incognito).
-2. `/login` as `eo@eventlink.local` / `EventLinkTest123!` → should land on **Executive Officer** portal.
+2. Sign in at `/login` with the account password supplied outside the repository → it should land on the **Executive Officer** portal.
 3. Repeat for adviser, dean, gso, etc.
 4. Wrong role should redirect to that user’s home (router guard).
 

@@ -11,7 +11,10 @@ const supabase = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-const DEFAULT_PASSWORD = process.env.TEST_USER_PASSWORD ?? "EventLinkTest123!";
+const password = process.env.TEST_USER_PASSWORD;
+if (!password || password.length < 8) {
+  throw new Error("Set TEST_USER_PASSWORD to a unique value of at least 8 characters.");
+}
 
 const users = [
   { email: "projectth85@gmail.com", displayName: "Project TH", role: "student" },
@@ -40,7 +43,7 @@ for (const row of users) {
   if (!user) {
     const { data, error } = await supabase.auth.admin.createUser({
       email: row.email,
-      password: DEFAULT_PASSWORD,
+      password,
       email_confirm: true,
       user_metadata: { display_name: row.displayName },
     });
@@ -48,13 +51,7 @@ for (const row of users) {
     user = data.user;
     console.log(`created auth user: ${row.email}`);
   } else {
-    const { error } = await supabase.auth.admin.updateUserById(user.id, {
-      password: DEFAULT_PASSWORD,
-      email_confirm: true,
-      user_metadata: { display_name: row.displayName },
-    });
-    if (error) throw error;
-    console.log(`updated auth user: ${row.email}`);
+    console.log(`kept existing auth user unchanged: ${row.email}`);
   }
 
   if (row.studentId) {
@@ -92,4 +89,3 @@ for (const row of users) {
 }
 
 console.log("\nDone.");
-console.log(`Password for these test users: ${DEFAULT_PASSWORD}`);

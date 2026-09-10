@@ -2,10 +2,6 @@ import { getSupabase } from "@/lib/supabase";
 
 import type { EventFeedbackRow, FeedbackSummary, SubmitEventFeedbackInput } from "@/types/eventFeedback";
 
-import { hashFeedbackAccessCode } from "@/utils/hashFeedbackAccessCode";
-
-
-
 export const FEEDBACK_PRESET_COMMENTS = [
 
   "Great event, very informative!",
@@ -64,37 +60,19 @@ export async function submitEventFeedback(input: SubmitEventFeedbackInput): Prom
 
 
   const supabase = getSupabase();
-
-  const accessCodeHash =
-
-    input.accessCode != null && input.accessCode.trim()
-
-      ? await hashFeedbackAccessCode(input.accessCode.trim())
-
-      : null;
-
-
-
-  const { assertRateLimitAllowed } = await import("@/services/rateLimitDb");
-  await assertRateLimitAllowed("feedback_submit", input.feedPostId);
-
-  const { error } = await supabase.rpc("submit_public_event_feedback", {
-
-    p_feed_post_id: input.feedPostId,
-
-    p_rating: input.rating,
-
-    p_comment: comment,
-
-    p_improvement_tags: input.improvementTags ?? [],
-
-    p_request_id: input.requestId ?? null,
-
-    p_access_code_hash: accessCodeHash,
-
+  const { data, error } = await supabase.functions.invoke("submit-public-feedback", {
+    body: {
+      feedPostId: input.feedPostId.trim(),
+      rating: input.rating,
+      comment,
+      improvementTags: input.improvementTags ?? [],
+      accessCode: input.accessCode?.trim() ?? "",
+    },
   });
-
-  if (error) throw error;
+  const payload = (data ?? {}) as { error?: string; ok?: boolean };
+  if (error) throw new Error(payload.error || "Could not submit feedback.");
+  if (payload.error) throw new Error(payload.error);
+  if (payload.ok !== true) throw new Error("Could not submit feedback.");
 
 }
 

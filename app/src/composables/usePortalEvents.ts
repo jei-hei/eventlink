@@ -9,6 +9,7 @@ import type { PortalEvent } from "@/types/portalEvent";
 import type { CreateEventRequestInput } from "@/types/eventRequest";
 import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import type { CreateStudentFeedPostInput } from "@/types/studentPost";
+import { toUserFacingError } from "@/utils/userFacingError";
 
 type MockState = {
   events: Ref<PortalEvent[]>;
@@ -143,7 +144,7 @@ export function usePortalEvents(
         ui.pushToast(successToast.title, successToast.description, "success");
       }
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      window.alert(toUserFacingError(e, "Could not complete this workflow action."));
     } finally {
       busy.value = false;
     }

@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, defineAsyncComponent, ref } from "vue";
 import { Calendar, CheckCircle, XCircle } from "lucide-vue-next";
 import type { OsasEvent } from "./types";
 import { useOsasPortal } from "./portalContext";
-import OsasEventDetailModal from "./components/OsasEventDetailModal.vue";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
+
+const OsasEventDetailModal = defineAsyncComponent(
+  () => import("./components/OsasEventDetailModal.vue"),
+);
 
 const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision, busy } = useOsasPortal();
 const eventsLoading = useEventsTableLoading();
@@ -53,7 +56,7 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
           </div>
 
           <div class="flex-1 overflow-auto min-h-0">
-            <table class="w-full">
+            <table class="w-full min-w-[900px]">
               <thead class="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th

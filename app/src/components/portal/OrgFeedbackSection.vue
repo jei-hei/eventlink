@@ -9,6 +9,7 @@ import {
 } from "@/services/eventFeedbackDb";
 import type { EventFeedbackRow } from "@/types/eventFeedback";
 import EventFeedbackModal from "@/components/portal/EventFeedbackModal.vue";
+import { toUserFacingError } from "@/utils/userFacingError";
 
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -39,7 +40,7 @@ async function load() {
   try {
     rows.value = await fetchFeedbackForSubmitter(auth.userId);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
+    error.value = toUserFacingError(e, "Could not load feedback.");
   } finally {
     loading.value = false;
   }
@@ -72,9 +73,6 @@ async function load() {
 
     <p v-else-if="error" class="text-sm text-red-600 py-4">
       {{ error }}
-      <span v-if="error.includes('event_feedback')">
-        Run <code class="text-xs">20260529100000_feedback_feed_posts.sql</code>.
-      </span>
     </p>
 
     <p v-else-if="summary.byPost.length === 0" class="text-sm text-gray-500 py-6 text-center">

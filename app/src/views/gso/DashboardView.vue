@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, defineAsyncComponent, ref } from "vue";
 import { Calendar, CheckCircle, XCircle } from "lucide-vue-next";
 import type { GsoEvent } from "./types";
 import { useGsoPortal } from "./portalContext";
-import GsoEventDetailModal from "./components/GsoEventDetailModal.vue";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
+
+const GsoEventDetailModal = defineAsyncComponent(
+  () => import("./components/GsoEventDetailModal.vue"),
+);
 
 const { events, scheduledEvents, handleApprove, handleReject, busy } = useGsoPortal();
 const eventsLoading = useEventsTableLoading();

@@ -4,6 +4,9 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { ROLE_HOME_PATH, normalizeLoadedAppRole, PUBLIC_EVENTS_PATH, type AppRole } from "@/types/appRole";
 import { useNotificationsStore } from "@/stores/notifications";
 import { isDevTestEmailAddress } from "@/config/devAuth";
+import { assertRateLimitAllowed } from "@/services/rateLimitDb";
+import { enqueueNotification } from "@/services/notificationsDb";
+import { toUserFacingError } from "@/utils/userFacingError";
 
 export function formatAuthError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
@@ -14,7 +17,13 @@ export function formatAuthError(err: unknown): string {
   if (lower.includes("invalid login credentials")) {
     return "Invalid email or password. If you just registered, confirm your email first.";
   }
-  return msg;
+  return toUserFacingError(err, "Authentication failed. Please try again.");
+}
+
+function recoveryAccessTokenFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return hash.get("type") === "recovery" ? hash.get("access_token") : null;
 }
 
 export const useAuthStore = defineStore("auth", () => {
@@ -31,7 +40,8 @@ export const useAuthStore = defineStore("auth", () => {
   const appRole = ref<AppRole | null>(null);
   const collegeId = ref<string | null>(null);
   const organizationId = ref<string | null>(null);
-  const useMock = ref(!isSupabaseConfigured);
+  const passwordRecoveryPending = ref(false);
+  const useMock = computed(() => import.meta.env.DEV && !isSupabaseConfigured);
   const stayOnlineEnabled = ref(false);
 
   const isAuthenticated = computed(() => !!email.value && (useMock.value || !!userId.value));
@@ -207,18 +217,24 @@ export const useAuthStore = defineStore("auth", () => {
       if (key) window.localStorage.setItem(key, marker);
     }
 
-    const { error: notifyErr } = await supabase.from("notifications").insert({
-      user_id: userId.value,
-      title: "New login detected",
-      body:
-        `Device: ${metadata.browser}\n` +
-        `IP: ${metadata.ip}\n` +
-        `Location: ${metadata.location}\n` +
-        `Time: ${new Date(metadata.logged_at).toLocaleString()}\n` +
-        `If this wasn't you, use "This wasn't me" in Notifications.`,
-      category: "security",
-    });
-    if (!notifyErr && showLoginAlert) {
+    let notificationCreated = false;
+    try {
+      await enqueueNotification({
+        userId: userId.value,
+        eventType: "login_detected",
+        dedupKey: `security-login:${marker}`,
+        context: {
+          device: metadata.browser,
+          ip: metadata.ip,
+          location: metadata.location,
+          time: new Date(metadata.logged_at).toLocaleString(),
+        },
+      });
+      notificationCreated = true;
+    } catch {
+      // Session tracking remains authoritative if notification enqueue is unavailable.
+    }
+    if (notificationCreated && showLoginAlert) {
       try {
         useNotificationsStore().push({
           title: "New login detected",
@@ -538,12 +554,25 @@ export const useAuthStore = defineStore("auth", () => {
       markReady();
       return;
     }
+    if (!isSupabaseConfigured) {
+      // Production must remain unauthenticated when the backend is unavailable.
+      markReady();
+      return;
+    }
 
     const supabase = getSupabase();
     const { data } = await supabase.auth.getSession();
+    const recoveryToken = recoveryAccessTokenFromUrl();
+    passwordRecoveryPending.value =
+      !!recoveryToken && data.session?.access_token === recoveryToken;
     await applySession(data.session, { enforceSingleSession: true, showLoginAlert: false });
 
     supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        passwordRecoveryPending.value = !!session;
+      } else if (event === "SIGNED_OUT") {
+        passwordRecoveryPending.value = false;
+      }
       // Token refresh must not reload role/profile/notifications (resume storm).
       if (event === "TOKEN_REFRESHED") {
         lastSessionRefreshAt = Date.now();
@@ -706,12 +735,32 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function resetPassword(mail: string) {
-    if (useMock.value) return;
+    if (useMock.value) {
+      throw new Error("Password recovery is unavailable in local mock mode.");
+    }
 
     const supabase = getSupabase();
-    const redirectTo = `${window.location.origin}/login`;
+    await assertRateLimitAllowed("password_reset", mail.trim().toLowerCase());
+    const redirectTo = `${window.location.origin}/reset-password`;
     const { error } = await supabase.auth.resetPasswordForEmail(mail.trim(), { redirectTo });
-    if (error) throw error;
+    if (error) throw new Error(formatAuthError(error));
+  }
+
+  async function updatePassword(password: string) {
+    if (useMock.value) {
+      throw new Error("Password recovery is unavailable in local mock mode.");
+    }
+    const supabase = getSupabase();
+    if (!passwordRecoveryPending.value) {
+      throw new Error("This password reset link is invalid or has expired.");
+    }
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !sessionData.session) {
+      throw new Error("This password reset link is invalid or has expired.");
+    }
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) throw new Error(formatAuthError(error));
+    passwordRecoveryPending.value = false;
   }
 
   async function signOut() {
@@ -744,6 +793,9 @@ export const useAuthStore = defineStore("auth", () => {
 
   /** Local-only fallback when Supabase env vars are missing. */
   function loginMock(e: string, name: string, r: string) {
+    if (!import.meta.env.DEV) {
+      throw new Error("Mock authentication is disabled.");
+    }
     email.value = e;
     displayName.value = name;
     const roleMap: Record<string, AppRole> = {
@@ -782,6 +834,7 @@ export const useAuthStore = defineStore("auth", () => {
     collegeId.value = null;
     organizationId.value = null;
     userId.value = null;
+    passwordRecoveryPending.value = false;
   }
 
   return {
@@ -794,6 +847,7 @@ export const useAuthStore = defineStore("auth", () => {
     appRole,
     collegeId,
     organizationId,
+    passwordRecoveryPending,
     stayOnlineEnabled,
     canUseExtendedSession,
     inactivityLogoutMs,
@@ -812,6 +866,7 @@ export const useAuthStore = defineStore("auth", () => {
     verifyEmailOtp,
     activateCurrentSessionSecurity,
     resetPassword,
+    updatePassword,
     signOut,
     setStayOnlineEnabled,
     loginMock,

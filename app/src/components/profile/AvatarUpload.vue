@@ -47,7 +47,7 @@ function clearPhoto() {
       <div
         class="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-gradient-to-br from-emerald-600 to-teal-700 text-lg font-bold text-white shadow-md ring-2 ring-emerald-900/10 sm:h-24 sm:w-24 sm:text-xl"
       >
-        <img v-if="modelValue" :src="modelValue" alt="" class="h-full w-full object-cover" />
+        <img v-if="modelValue" :src="modelValue" alt="" class="h-full w-full object-cover" decoding="async" />
         <span v-else>{{ initials() }}</span>
       </div>
     </div>

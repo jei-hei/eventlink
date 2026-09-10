@@ -2,7 +2,7 @@ import type { RouteLocationNormalized, Router } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { PUBLIC_EVENTS_PATH, ROLE_HOME_PATH, type AppRole } from "@/types/appRole";
 
-const PUBLIC_NAMES = new Set(["login", "forgot-password", "public-events"]);
+const PUBLIC_NAMES = new Set(["login", "forgot-password", "reset-password", "public-events"]);
 
 function allowedRolesFor(to: RouteLocationNormalized): AppRole[] | undefined {
   for (let i = to.matched.length - 1; i >= 0; i--) {

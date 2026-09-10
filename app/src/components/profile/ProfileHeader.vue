@@ -63,7 +63,7 @@ const badgeTone = computed(() => roleToBadgeTone(portalRole.value));
       <div
         class="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-gradient-to-br from-emerald-600 to-teal-700 text-sm font-bold text-white shadow-md ring-1 ring-emerald-900/10 sm:h-14 sm:w-16 sm:text-base"
       >
-        <img v-if="avatarDataUrl" :src="avatarDataUrl" alt="" class="h-full w-full object-cover" />
+        <img v-if="avatarDataUrl" :src="avatarDataUrl" alt="" class="h-full w-full object-cover" decoding="async" />
         <span v-else>{{ initials }}</span>
       </div>
       <span
@@ -105,7 +105,7 @@ const badgeTone = computed(() => roleToBadgeTone(portalRole.value));
           <div
             class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-gradient-to-br from-emerald-600 to-teal-700 text-2xl font-bold text-white shadow-lg ring-2 ring-emerald-900/10 sm:h-28 sm:w-28 sm:text-3xl"
           >
-            <img v-if="avatarDataUrl" :src="avatarDataUrl" alt="" class="h-full w-full object-cover" />
+            <img v-if="avatarDataUrl" :src="avatarDataUrl" alt="" class="h-full w-full object-cover" decoding="async" />
             <span v-else>{{ initials }}</span>
           </div>
           <span

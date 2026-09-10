@@ -1,4 +1,5 @@
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+import { sendNotificationEmail } from "@/services/notificationEmail";
 import {
   buildPaginatedResult,
   pageToRange,
@@ -7,6 +8,21 @@ import {
 } from "@/types/pagination";
 
 export type NotificationCategory = "approval" | "system" | "calendar" | "security" | "other";
+export type NotificationEventType =
+  | "login_detected"
+  | "request_submitted"
+  | "request_approved"
+  | "sent_to_resource_offices"
+  | "resource_review_required"
+  | "event_scheduled"
+  | "resource_declined"
+  | "request_declined"
+  | "published_student_feed"
+  | "published_staff_calendar"
+  | "event_cancelled"
+  | "revision_requested"
+  | "schedule_updated"
+  | "request_resubmitted";
 
 export type NotificationRow = {
   id: string;
@@ -18,6 +34,50 @@ export type NotificationRow = {
 };
 
 const NOTIFICATION_SELECT = "id, title, body, category, read_at, created_at";
+
+export type EnqueueNotificationInput = {
+  userId: string;
+  eventType: NotificationEventType;
+  /** Required for an authorized cross-user workflow notification. */
+  requestId?: string | null;
+  /** Stable per-recipient key used to make retries idempotent. */
+  dedupKey: string;
+  /** Short template fields only; title/body/category are selected by the server. */
+  context?: {
+    /** @deprecated Accepted during eventRequestsDb refactor; server derives workflow detail. */
+    detail?: string;
+    device?: string;
+    ip?: string;
+    location?: string;
+    time?: string;
+  };
+};
+
+/**
+ * Enqueues an authorized in-app notification and its email outbox row.
+ * Email delivery remains best effort; the in-app notification is authoritative.
+ */
+export async function enqueueNotification(input: EnqueueNotificationInput): Promise<string> {
+  if (!isSupabaseConfigured) return "";
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc("enqueue_notification", {
+    p_user_id: input.userId,
+    p_event_type: input.eventType,
+    p_request_id: input.requestId ?? null,
+    p_dedup_key: input.dedupKey.trim(),
+    p_context: input.context ?? {},
+  });
+  if (error) throw error;
+
+  const notificationId = String(data ?? "");
+  if (!notificationId) throw new Error("Notification could not be enqueued.");
+  try {
+    await sendNotificationEmail({ notificationId });
+  } catch {
+    // The outbox keeps failed or pending email separate from the primary workflow.
+  }
+  return notificationId;
+}
 
 /** @deprecated Prefer fetchMyNotificationsPage. */
 export async function fetchMyNotifications(limit = 20): Promise<NotificationRow[]> {
@@ -56,20 +116,15 @@ export async function countMyUnreadNotifications(): Promise<number> {
 export async function markNotificationRead(id: string): Promise<void> {
   if (!isSupabaseConfigured) return;
   const supabase = getSupabase();
-  const { error } = await supabase
-    .from("notifications")
-    .update({ read_at: new Date().toISOString() })
-    .eq("id", id)
-    .is("read_at", null);
+  const { error } = await supabase.rpc("mark_notification_read", {
+    p_notification_id: id,
+  });
   if (error) throw error;
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
   if (!isSupabaseConfigured) return;
   const supabase = getSupabase();
-  const { error } = await supabase
-    .from("notifications")
-    .update({ read_at: new Date().toISOString() })
-    .is("read_at", null);
+  const { error } = await supabase.rpc("mark_all_notifications_read");
   if (error) throw error;
 }

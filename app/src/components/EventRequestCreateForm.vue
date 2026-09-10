@@ -290,9 +290,7 @@ function handleSubmit() {
   const orgName = isSscForm.value ? SSC_ORGANIZATION_NAME : selectedOrgName.value.trim();
   const resolvedOrganizationId = isOfficerForm.value ? (auth.organizationId ?? form.organizationId) : form.organizationId;
   if (isSscForm.value && !form.organizationId && isSupabaseConfigured) {
-    window.alert(
-      "SSC organization is not set up in the database yet. Ask admin to run the SSC seed in supabase/seed/03_ssc_organization.sql.",
-    );
+    window.alert("SSC organization is not set up yet. Ask an administrator to configure it.");
     return;
   }
   if (useOrgSelect.value && !form.organizationId) {

@@ -13,10 +13,14 @@ const jsonPath = join(__dirname, "../../supabase/seed/staff_accounts.json");
 
 const raw = readFileSync(jsonPath, "utf8");
 const accounts = JSON.parse(raw);
+const password = process.env.STAFF_SEED_PASSWORD;
 
 if (!Array.isArray(accounts)) {
   console.error("staff_accounts.json must be an array");
   process.exit(1);
+}
+if (!password || password.length < 8) {
+  throw new Error("Set STAFF_SEED_PASSWORD to a unique value of at least 8 characters.");
 }
 
 console.log(`Creating ${accounts.length} staff account(s)…\n`);
@@ -25,11 +29,11 @@ for (const row of accounts) {
   const result = await ensurePortalUser({
     role: row.role,
     email: row.email,
-    password: row.password,
+    password,
     displayName: row.displayName,
   });
   console.log(`✓ ${result.role.padEnd(16)} ${result.email} → ${result.home}`);
 }
 
-console.log("\nDefault password for all above: EventLinkTest123!");
+console.log("\nStaff seeding complete. Existing Auth accounts were not modified.");
 console.log("Students still register via /signup (not in this file).");

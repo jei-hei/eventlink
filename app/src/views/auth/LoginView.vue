@@ -15,7 +15,7 @@ const profile = useProfileStore();
 const ui = useUiStore();
 const notifications = useNotificationsStore();
 
-const email = ref("admin@university.edu");
+const email = ref("");
 const password = ref("");
 const showPassword = ref(false);
 const loading = ref(false);

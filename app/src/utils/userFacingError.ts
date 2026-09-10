@@ -16,10 +16,22 @@ export function toUserFacingError(error: unknown, fallback = "Something went wro
   if (!message) return fallback;
 
   const lower = message.toLowerCase();
+  if (
+    lower.includes("supabase is not configured") ||
+    lower.includes("vite_supabase") ||
+    lower.includes("connect supabase")
+  ) {
+    return "This service is temporarily unavailable. Please contact an administrator.";
+  }
   if (lower.includes("rate limit") || lower.includes("too many requests") || lower.includes("429")) {
     return "Too many attempts. Please wait a moment and try again.";
   }
-  if (lower.includes("jwt") || lower.includes("not authenticated") || lower.includes("auth")) {
+  if (
+    lower.includes("jwt") ||
+    lower.includes("not authenticated") ||
+    lower.includes("invalid refresh token") ||
+    lower.includes("session expired")
+  ) {
     return "Your session expired. Please sign in again.";
   }
   if (lower.includes("permission") || lower.includes("row-level security") || lower.includes("rls") || lower.includes("403")) {
@@ -31,9 +43,19 @@ export function toUserFacingError(error: unknown, fallback = "Something went wro
   if (lower.includes("timeout")) {
     return "The request timed out. Please try again.";
   }
+  if (
+    lower.includes("supabase/migrations") ||
+    lower.includes("run migration") ||
+    lower.includes("run the latest sql") ||
+    /[\w-]+\.sql/i.test(message) ||
+    /[\w.+-]+@eventlink\.local/i.test(message) ||
+    /password\s*:/i.test(message)
+  ) {
+    return fallback;
+  }
 
   // Keep short app-thrown messages; hide verbose PostgREST internals.
-  if (message.length > 160 || /PGRST|postgres|permission denied for/i.test(message)) {
+  if (message.length > 160 || /PGRST|postgres|permission denied for|schema cache/i.test(message)) {
     return fallback;
   }
   return message;

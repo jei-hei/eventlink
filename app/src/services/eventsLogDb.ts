@@ -116,6 +116,27 @@ type RequestRow = {
     | null;
 };
 
+type EventLogProjectionRow = {
+  id: string;
+  request_id: string;
+  event_name: string;
+  organization_id: string | null;
+  organization_name: string;
+  college_id: string | null;
+  college_name: string;
+  venue: string;
+  request_status: string;
+  action: string;
+  step: string | null;
+  comment: string | null;
+  metadata: Record<string, unknown> | null;
+  actor_id: string | null;
+  actor_name: string;
+  actor_role: string | null;
+  office: string | null;
+  created_at: string;
+};
+
 const HISTORY_SELECT = `
   id, request_id, actor_id, action, step, comment, metadata, created_at,
   event_requests (
@@ -542,40 +563,36 @@ function mapHistoryRow(
   };
 }
 
-function applyFilters(entries: EventsLogEntry[], filters: EventsLogFilters): EventsLogEntry[] {
-  const dateFrom = filters.dateFrom?.trim() || null;
-  const dateTo = filters.dateTo?.trim() || null;
-  const orgId = filters.organizationId?.trim() || null;
-  const collegeId = filters.collegeId?.trim() || null;
-  const status = filters.status?.trim() || null;
-  const action = filters.action?.trim() || null;
-  const venue = filters.venue?.trim()?.toLowerCase() || null;
-  const office = filters.office?.trim()?.toLowerCase() || null;
-
-  return entries.filter((e) => {
-    const created = e.createdAt.slice(0, 10);
-    if (dateFrom && created < dateFrom) return false;
-    if (dateTo && created > dateTo) return false;
-    if (status && e.requestStatusRaw !== status) return false;
-    if (action && e.action !== action && e.actionLabel.toLowerCase() !== action.toLowerCase()) return false;
-    if (venue && !e.venue.toLowerCase().includes(venue)) return false;
-    if (office) {
-      const o = office.toLowerCase();
-      const officeText = (e.office ?? "").toLowerCase();
-      const notes = (e.notes ?? "").toLowerCase();
-      const matches =
-        officeText.includes(o) ||
-        notes.includes(o) ||
-        (o === "it" && (officeText.includes("it") || notes.includes("it infrastructure"))) ||
-        (o === "sports" && (officeText.includes("sports") || notes.includes("sports office"))) ||
-        (o === "eo" && (officeText.includes("eo") || officeText.includes("executive"))) ||
-        (o === "resource" && officeText.includes("resource"));
-      if (!matches) return false;
-    }
-    if (orgId && e.organizationId !== orgId) return false;
-    if (collegeId && e.collegeId !== collegeId) return false;
-    return true;
-  });
+function mapEventLogProjection(row: EventLogProjectionRow): EventsLogEntry {
+  const metadata = row.metadata ?? {};
+  const step = row.step as DbWorkflowStep | null;
+  const { previousStatus, newStatus } = extractStatusFromMetadata(metadata);
+  const actorRole = row.actor_role;
+  return {
+    id: row.id,
+    requestId: row.request_id,
+    eventName: row.event_name?.trim() || "Untitled event",
+    organizationId: row.organization_id,
+    organizationName: row.organization_name?.trim() || "Organization",
+    collegeId: row.college_id,
+    collegeName: row.college_name?.trim() || "Unassigned College",
+    venue: row.venue?.trim() || "—",
+    requestStatus: statusLabel(row.request_status) ?? row.request_status,
+    requestStatusRaw: row.request_status,
+    action: row.action,
+    actionLabel: refineActionLabel(row.action, step, row.comment, metadata),
+    previousStatus,
+    newStatus,
+    actorName: row.actor_name?.trim() || "System",
+    actorRole,
+    actorRoleLabel: actorRole
+      ? appRoleLabel(actorRole as AppRole) || actorRole.replace(/_/g, " ")
+      : "—",
+    office: officeFromMetadata(step, { ...metadata, office: row.office }),
+    notes: row.comment?.trim() || null,
+    metadata,
+    createdAt: row.created_at,
+  };
 }
 
 export function appRoleToEventsLogScope(role: AppRole): AppRole | null {
@@ -598,76 +615,27 @@ export async function fetchEventsLog(
   if (!isSupabaseConfigured) return emptyPage();
   assertEoEventLogAccess(scope.role);
 
-  const { page, pageSize, from, to } = pageToRange(pagination?.page, pagination?.pageSize);
-  const requestIds = await fetchScopedRequestIds(scope);
-  if (requestIds !== null && requestIds.length === 0) return emptyPage(page, pageSize);
-
-  const supabase = getSupabase();
-
-  async function runHistoryQuery(select: string, withCount: boolean) {
-    let query = supabase
-      .from("event_request_history")
-      .select(select, withCount ? { count: "exact" } : undefined)
-      .order("created_at", { ascending: false })
-      .range(from, to);
-
-    if (requestIds !== null) {
-      query = query.in("request_id", requestIds.slice(0, 500));
-    }
-    if (filters.dateFrom?.trim()) {
-      query = query.gte("created_at", `${filters.dateFrom.trim()}T00:00:00.000Z`);
-    }
-    if (filters.dateTo?.trim()) {
-      query = query.lte("created_at", `${filters.dateTo.trim()}T23:59:59.999Z`);
-    }
-    if (filters.action?.trim()) {
-      query = query.eq("action", filters.action.trim());
-    }
-    return query;
-  }
-
-  let { data, error, count } = await runHistoryQuery(HISTORY_SELECT, true);
-  let needsHydrate = false;
-
-  if (error) {
-    ({ data, error, count } = await runHistoryQuery(HISTORY_SELECT_FALLBACK, true));
-  }
-  if (error) {
-    ({ data, error, count } = await runHistoryQuery(HISTORY_SELECT_PLAIN, true));
-    needsHydrate = !error;
-  }
-  if (error) {
-    ({ data, error, count } = await runHistoryQuery(HISTORY_SELECT_PLAIN_FALLBACK, true));
-    needsHydrate = !error;
-  }
+  const { page, pageSize } = pageToRange(pagination?.page, pagination?.pageSize);
+  const { data, error } = await getSupabase().rpc("eo_event_log_page", {
+    p_date_from: filters.dateFrom?.trim() || null,
+    p_date_to: filters.dateTo?.trim() || null,
+    p_organization_id: filters.organizationId?.trim() || null,
+    p_college_id: filters.collegeId?.trim() || null,
+    p_status: filters.status?.trim() || null,
+    p_action: filters.action?.trim() || null,
+    p_venue: filters.venue?.trim() || null,
+    p_office: filters.office?.trim() || null,
+    p_page: page,
+    p_page_size: pageSize,
+  });
   if (error) throw asError(error);
 
-  let rows = (data ?? []) as unknown as HistoryRow[];
-  if (needsHydrate) {
-    rows = await hydrateHistoryWithRequests(rows);
-  }
-
-  const actorIds = rows.map((r) => r.actor_id).filter(Boolean) as string[];
-  const [collegeNameById, actorRoleById, actorNameById] = await Promise.all([
-    fetchCollegeNameMap(),
-    fetchActorRoleMap(actorIds),
-    fetchActorNameMap(actorIds),
-  ]);
-
-  const entries = rows
-    .map((row) => mapHistoryRow(row, collegeNameById, actorRoleById, actorNameById))
-    .filter((e): e is EventsLogEntry => !!e);
-
-  // Remaining filters (venue/office/org/status/college) apply to the current page only when
-  // they cannot be expressed efficiently on history alone. Date/action are server-side.
-  const filtered = applyFilters(entries, {
-    ...filters,
-    dateFrom: null,
-    dateTo: null,
-    action: null,
-  });
-
-  return buildPaginatedResult(filtered, count ?? filtered.length, page, pageSize);
+  const result = (data ?? {}) as {
+    rows?: EventLogProjectionRow[];
+    total?: number;
+  };
+  const entries = (result.rows ?? []).map(mapEventLogProjection);
+  return buildPaginatedResult(entries, Number(result.total ?? 0), page, pageSize);
 }
 
 export async function fetchEventTrail(

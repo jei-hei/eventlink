@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { defineAsyncComponent, ref } from "vue";
 import { X, MapPin, Calendar, Clock, Building2 } from "lucide-vue-next";
 import type { StudentEvent } from "../types";
 import { formatPostedAgo, getOrgColor } from "../orgColor";
-import FeedbackModal from "./FeedbackModal.vue";
+
+const FeedbackModal = defineAsyncComponent(() => import("./FeedbackModal.vue"));
 
 defineProps<{
   event: StudentEvent;
@@ -52,6 +53,7 @@ function onFeedbackSubmitted() {
             :src="event.posterAvatarUrl"
             :alt="event.posterName || 'Poster'"
             class="h-12 w-12 shrink-0 rounded-full object-cover shadow"
+            decoding="async"
           />
           <div
             v-else
@@ -82,7 +84,13 @@ function onFeedbackSubmitted() {
             :aria-label="`Preview image ${idx + 1}`"
             @click="emit('previewImage', event.imageUrls!, idx, event.title)"
           >
-            <img :src="url" :alt="event.title" class="h-24 w-full cursor-zoom-in object-cover" />
+            <img
+              :src="url"
+              :alt="event.title"
+              class="h-24 w-full cursor-zoom-in object-cover"
+              loading="lazy"
+              decoding="async"
+            />
           </button>
         </div>
       </div>
@@ -97,6 +105,8 @@ function onFeedbackSubmitted() {
           :src="event.imageUrl"
           :alt="event.title"
           class="max-h-72 w-full cursor-zoom-in object-cover"
+          loading="lazy"
+          decoding="async"
         />
       </button>
 

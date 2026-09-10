@@ -39,20 +39,13 @@ const FEED_SELECT = `
 
 const FEED_SELECT_WITH_LETTER = FEED_SELECT;
 
-const POSTER_PROFILE_SELECT = `
-  id,
-  display_name,
-  avatar_url,
-  organizations ( name ),
-  colleges ( name, code )
-`;
-
 type PosterProfileQueryRow = {
   id: string;
   display_name: string;
   avatar_url: string | null;
-  organizations: { name: string } | { name: string }[] | null;
-  colleges: { name: string; code: string } | { name: string; code: string }[] | null;
+  organization_name: string | null;
+  college_name: string | null;
+  college_code: string | null;
 };
 
 export type StudentFeedPostsPage = {
@@ -61,17 +54,14 @@ export type StudentFeedPostsPage = {
   nextOffset: number;
 };
 
-function asSingle<T>(value: T | T[] | null | undefined): T | null {
-  if (value == null) return null;
-  return Array.isArray(value) ? (value[0] ?? null) : value;
-}
-
 function toPosterProfile(row: PosterProfileQueryRow): StudentFeedPosterProfile {
   return {
     display_name: row.display_name,
     avatar_url: row.avatar_url,
-    organizations: asSingle(row.organizations),
-    colleges: asSingle(row.colleges),
+    organizations: row.organization_name ? { name: row.organization_name } : null,
+    colleges: row.college_name
+      ? { name: row.college_name, code: row.college_code ?? "" }
+      : null,
   };
 }
 
@@ -82,10 +72,9 @@ async function attachPosterProfiles(rows: StudentFeedPostRow[]): Promise<Student
   if (!ids.length) return rows;
 
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select(POSTER_PROFILE_SELECT)
-    .in("id", ids);
+  const { data, error } = await supabase.rpc("get_public_feed_author_profiles", {
+    p_user_ids: ids,
+  });
   if (error) throw error;
 
   const byId = new Map<string, StudentFeedPosterProfile>();

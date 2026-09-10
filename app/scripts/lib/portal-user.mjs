@@ -66,13 +66,6 @@ export async function ensurePortalUser({ role, email, password, displayName }) {
     });
     if (error) throw error;
     user = data.user;
-  } else {
-    const { error } = await supabase.auth.admin.updateUserById(user.id, {
-      password,
-      email_confirm: true,
-      user_metadata: { display_name: name, portal_role: role },
-    });
-    if (error) throw error;
   }
 
   const { error: roleErr } = await supabase.from("user_roles").upsert(
@@ -95,7 +88,6 @@ export async function ensurePortalUser({ role, email, password, displayName }) {
     userId: user.id,
     role,
     email: email.trim(),
-    password,
     displayName: name,
     home: ROLE_HOME[role] ?? "/login",
   };

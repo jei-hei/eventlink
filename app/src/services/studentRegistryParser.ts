@@ -89,41 +89,27 @@ export function parseRegistryCsv(text: string): MasterStudent[] {
   return rows;
 }
 
-function cell(row: Record<string, unknown>, keys: string[]): string {
-  for (const k of keys) {
-    const v = row[k];
-    if (v !== undefined && v !== null && String(v).trim() !== "") {
-      return String(v).trim();
-    }
-  }
-  return "";
-}
-
-/** Loads `xlsx` on demand to keep initial bundles small. */
+/** Loads the maintained XLSX parser on demand to keep initial bundles small. */
 export async function parseRegistryXlsx(buffer: ArrayBuffer): Promise<MasterStudent[]> {
-  const XLSX = await import("xlsx");
-  const wb = XLSX.read(buffer, { type: "array" });
-  const sheet = wb.Sheets[wb.SheetNames[0]!];
-  if (!sheet) return [];
-  const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
-  const rows: MasterStudent[] = [];
-  json.forEach((row, i) => {
-    const studentId = normalizeStudentId(
-      cell(row, ["student_id", "Student ID", "studentId", "STUDENT_ID", "id", "ID"]),
-    );
-    const fullName = cell(row, ["full_name", "Full Name", "fullname", "name", "NAME"]);
-    if (!studentId && !fullName) return;
-    rows.push({
-      id: `xlsx-${i}-${studentId}`,
-      studentId,
-      fullName,
-      course: cell(row, ["college", "College", "COLLEGE", "course", "Course", "COURSE"]),
-      program: cell(row, ["program", "Program", "PROGRAM"]),
-      yearLevel: cell(row, ["year_level", "Year Level", "yearLevel", "year"]),
-      email: cell(row, ["email", "Email", "EMAIL"]) || undefined,
-      sourceRow: i + 2,
-    });
+  const { readSheet } = await import("read-excel-file/browser");
+  const sheetRows = await readSheet(buffer);
+  if (sheetRows.length < 2) return [];
+
+  const headerMap: { index: number; key: HeaderField }[] = [];
+  sheetRows[0]!.forEach((value, index) => {
+    const key = headerKey(String(value ?? ""));
+    if (key) headerMap.push({ index, key });
   });
+
+  const rows: MasterStudent[] = [];
+  for (let index = 1; index < sheetRows.length; index += 1) {
+    const parsed = rowFromCells(
+      sheetRows[index]!.map((value) => String(value ?? "").trim()),
+      headerMap,
+      index + 1,
+    );
+    if (parsed) rows.push(parsed);
+  }
   return rows;
 }
 

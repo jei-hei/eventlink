@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from "vue";
 import { MoreHorizontal } from "lucide-vue-next";
 import { storeToRefs } from "pinia";
 import { useEventRequestsStore } from "@/stores/eventRequests";
@@ -9,8 +9,13 @@ import type { StudentEvent } from "@/views/student/types";
 import type { UpdateStudentFeedPostInput } from "@/types/studentPost";
 import { formatPostedAgo } from "@/views/student/orgColor";
 import ProfileSectionCard from "@/components/profile/ProfileSectionCard.vue";
-import DeletePostConfirmModal from "@/components/portal/DeletePostConfirmModal.vue";
-import CreateStudentPostModal from "@/components/portal/CreateStudentPostModal.vue";
+
+const DeletePostConfirmModal = defineAsyncComponent(
+  () => import("@/components/portal/DeletePostConfirmModal.vue"),
+);
+const CreateStudentPostModal = defineAsyncComponent(
+  () => import("@/components/portal/CreateStudentPostModal.vue"),
+);
 
 const store = useEventRequestsStore();
 const ui = useUiStore();
@@ -169,6 +174,7 @@ async function onSaveEdit(payload: UpdateStudentFeedPostInput) {
             :alt="post.title"
             class="max-h-56 w-full object-cover"
             loading="lazy"
+            decoding="async"
           />
         </div>
         <div v-else-if="post.imageUrl" class="border-y border-slate-100">
@@ -177,6 +183,7 @@ async function onSaveEdit(payload: UpdateStudentFeedPostInput) {
             :alt="post.title"
             class="max-h-56 w-full object-cover"
             loading="lazy"
+            decoding="async"
           />
         </div>
 
