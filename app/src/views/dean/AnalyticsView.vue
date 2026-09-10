@@ -7,6 +7,9 @@ import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
 
+const monthlyEvents = ref([
+  { id: "m1", month: "Jan", events: 0, approved: 0, rejected: 0 },
+]);
 const eventStatusData = ref([
   { name: "Approved" as const, value: 0, color: "#4ADE80" },
   { name: "Pending" as const, value: 0, color: "#D97706" },
@@ -24,6 +27,7 @@ async function loadAnalytics() {
       organizationId: auth.organizationId,
       userId: auth.userId,
     });
+    monthlyEvents.value = data.monthlyEvents.length ? data.monthlyEvents : monthlyEvents.value;
     eventStatusData.value = data.eventStatusData;
     recentActivity.value = data.recentActivity;
     totals.value = {
@@ -73,6 +77,20 @@ const statCards = computed(() => [
     bg: "bg-yellow-50",
   },
 ]);
+
+const chartW = 400;
+const chartH = 200;
+const pad = 32;
+const maxY = computed(() => Math.max(1, ...monthlyEvents.value.map((d) => d.events)));
+const linePoints = computed(() => {
+  const n = monthlyEvents.value.length;
+  const x = (i: number) => pad + (n === 1 ? 0 : (i / (n - 1)) * (chartW - 2 * pad));
+  const y = (v: number) => chartH - pad - (v / maxY.value) * (chartH - 2 * pad);
+  return {
+    eventsPts: monthlyEvents.value.map((d, i) => `${x(i)},${y(d.events)}`).join(" "),
+    approvedPts: monthlyEvents.value.map((d, i) => `${x(i)},${y(d.approved)}`).join(" "),
+  };
+});
 
 const pieTotal = computed(() => eventStatusData.value.reduce((s, d) => s + d.value, 0));
 const pieGradient = computed(() => {
@@ -138,74 +156,140 @@ const pieGradient = computed(() => {
       </div>
     </div>
 
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-      <div class="mb-4">
-        <h3 class="font-bold text-gray-800 text-sm">Event Status Overview</h3>
-          <p class="text-gray-400 text-xs">All time · {{ totals.allTimeCount }} events</p>
-      </div>
-      <div class="flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
-        <div class="shrink-0 flex justify-center w-full sm:w-[40%] max-w-[200px]">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <div class="flex items-center justify-between mb-4 gap-2">
+          <div>
+            <h3 class="font-bold text-gray-800 text-sm">Recent Activity</h3>
+            <p class="text-gray-400 text-xs">Latest event actions</p>
+          </div>
+          <ViewAllDashboardButton to="/dean" />
+        </div>
+        <div class="space-y-3">
           <div
-            class="w-44 h-44 sm:w-48 sm:h-48 rounded-full border border-gray-100 shadow-inner relative"
-            :style="{
-              background: pieGradient,
-              mask: 'radial-gradient(transparent 58%, black 59%)',
-              WebkitMask: 'radial-gradient(transparent 58%, black 59%)',
-            }"
-            role="img"
-            aria-label="Event status distribution"
-          />
-        </div>
-        <div class="flex-1 w-full space-y-3 min-w-0">
-          <div v-for="item in eventStatusData" :key="item.name" class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2 min-w-0">
-              <div class="w-4 h-4 rounded shrink-0" :style="{ backgroundColor: item.color }" />
-              <span class="text-sm font-medium text-gray-700 truncate">{{ item.name }}</span>
+            v-for="item in recentActivity"
+            :key="item.id"
+            class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition"
+          >
+            <div class="text-lg w-8 text-center shrink-0">{{ item.icon }}</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-semibold text-gray-800 truncate">{{ item.event }}</div>
+              <div class="text-xs text-gray-400">{{ item.org }}</div>
             </div>
-            <span class="text-lg font-bold text-gray-800 shrink-0">{{ item.value }}</span>
+            <div class="text-right shrink-0">
+              <span
+                :class="[
+                  'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                  item.action === 'Approved'
+                    ? 'bg-green-100 text-green-700'
+                    : item.action === 'Rejected'
+                      ? 'bg-red-100 text-red-700'
+                      : item.action === 'Pending'
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : 'bg-blue-100 text-blue-700',
+                ]"
+              >
+                {{ item.action }}
+              </span>
+              <div class="text-[10px] text-gray-400 mt-0.5">{{ item.time }}</div>
+            </div>
           </div>
+          <p v-if="!recentActivity.length" class="text-center text-xs text-gray-500 py-4">No recent activity yet.</p>
         </div>
       </div>
-    </div>
 
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-      <div class="flex items-center justify-between mb-4 gap-2">
-        <div>
-          <h3 class="font-bold text-gray-800 text-sm">Recent Activity</h3>
-          <p class="text-gray-400 text-xs">Latest event actions</p>
-        </div>
-        <ViewAllDashboardButton to="/dean" />
-      </div>
-      <div class="space-y-3">
-        <div
-          v-for="item in recentActivity"
-          :key="item.id"
-          class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition"
-        >
-          <div class="text-lg w-8 text-center shrink-0">{{ item.icon }}</div>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-semibold text-gray-800 truncate">{{ item.event }}</div>
-            <div class="text-xs text-gray-400">{{ item.org }}</div>
+      <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
+          <div>
+            <h3 class="font-bold text-gray-800 text-sm">Monthly event trend</h3>
+            <p class="text-gray-400 text-xs">Last 6 months</p>
           </div>
-          <div class="text-right shrink-0">
-            <span
-              :class="[
-                'text-[10px] font-bold px-2 py-0.5 rounded-full',
-                item.action === 'Approved'
-                  ? 'bg-green-100 text-green-700'
-                  : item.action === 'Rejected'
-                    ? 'bg-red-100 text-red-700'
-                    : item.action === 'Pending'
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-blue-100 text-blue-700',
-              ]"
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1.5">
+              <div class="w-3 h-0.5 bg-[#16A34A] rounded" />
+              <span class="text-[10px] text-gray-500">Total</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <div class="w-3 h-0.5 bg-[#4ADE80] rounded" />
+              <span class="text-[10px] text-gray-500">Approved</span>
+            </div>
+          </div>
+        </div>
+        <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="w-full h-[200px]" role="img" aria-label="Monthly event trend">
+          <rect width="100%" height="100%" fill="white" />
+          <g stroke="#F3F4F6" stroke-width="1">
+            <line
+              v-for="i in 5"
+              :key="i"
+              :x1="pad"
+              :y1="pad + ((i - 1) / 4) * (chartH - 2 * pad)"
+              :x2="chartW - pad"
+              :y2="pad + ((i - 1) / 4) * (chartH - 2 * pad)"
+            />
+          </g>
+          <polyline fill="none" stroke="#16A34A" stroke-width="2.5" :points="linePoints.eventsPts" />
+          <g v-for="(d, i) in monthlyEvents" :key="`e-${d.id}`">
+            <circle
+              :cx="pad + (monthlyEvents.length === 1 ? 0 : (i / (monthlyEvents.length - 1)) * (chartW - 2 * pad))"
+              :cy="chartH - pad - (d.events / maxY) * (chartH - 2 * pad)"
+              r="4"
+              fill="#16A34A"
+              stroke="white"
+              stroke-width="2"
+            />
+          </g>
+          <polyline fill="none" stroke="#4ADE80" stroke-width="2" stroke-dasharray="4 2" :points="linePoints.approvedPts" />
+          <g v-for="(d, i) in monthlyEvents" :key="`a-${d.id}`">
+            <circle
+              :cx="pad + (monthlyEvents.length === 1 ? 0 : (i / (monthlyEvents.length - 1)) * (chartW - 2 * pad))"
+              :cy="chartH - pad - (d.approved / maxY) * (chartH - 2 * pad)"
+              r="3"
+              fill="#4ADE80"
+              stroke="white"
+              stroke-width="2"
+            />
+          </g>
+          <g fill="#9CA3AF" font-size="11" text-anchor="middle">
+            <text
+              v-for="(d, i) in monthlyEvents"
+              :key="`t-${d.id}`"
+              :x="pad + (monthlyEvents.length === 1 ? 0 : (i / (monthlyEvents.length - 1)) * (chartW - 2 * pad))"
+              :y="chartH - 8"
             >
-              {{ item.action }}
-            </span>
-            <div class="text-[10px] text-gray-400 mt-0.5">{{ item.time }}</div>
+              {{ d.month }}
+            </text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <div class="mb-4">
+          <h3 class="font-bold text-gray-800 text-sm">Event Status Overview</h3>
+            <p class="text-gray-400 text-xs">All time · {{ totals.allTimeCount }} events</p>
+        </div>
+        <div class="flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
+          <div class="shrink-0 flex justify-center w-full sm:w-[40%] max-w-[200px]">
+            <div
+              class="w-44 h-44 sm:w-48 sm:h-48 rounded-full border border-gray-100 shadow-inner relative"
+              :style="{
+                background: pieGradient,
+                mask: 'radial-gradient(transparent 58%, black 59%)',
+                WebkitMask: 'radial-gradient(transparent 58%, black 59%)',
+              }"
+              role="img"
+              aria-label="Event status distribution"
+            />
+          </div>
+          <div class="flex-1 w-full space-y-3 min-w-0">
+            <div v-for="item in eventStatusData" :key="item.name" class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <div class="w-4 h-4 rounded shrink-0" :style="{ backgroundColor: item.color }" />
+                <span class="text-sm font-medium text-gray-700 truncate">{{ item.name }}</span>
+              </div>
+              <span class="text-lg font-bold text-gray-800 shrink-0">{{ item.value }}</span>
+            </div>
           </div>
         </div>
-        <p v-if="!recentActivity.length" class="text-center text-xs text-gray-500 py-4">No recent activity yet.</p>
       </div>
     </div>
 

@@ -43,10 +43,10 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
 </script>
 
 <template>
-  <div class="dash-page">
-    <div class="dash-split">
-      <div class="flex min-h-0 min-w-0 flex-col">
-        <div class="dash-card dash-card-fill">
+  <div class="dash-page !overflow-visible">
+    <div class="dash-split !flex-none">
+      <div class="flex min-w-0 flex-col">
+        <div class="dash-card">
           <div class="px-4 py-3 border-b border-gray-200 flex items-center gap-2 flex-wrap shrink-0">
             <Calendar :size="18" class="text-[#16A34A]" />
             <h2 class="font-bold text-sm text-gray-800 uppercase tracking-wide">Pending Event Requests</h2>
@@ -55,92 +55,122 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
             </span>
           </div>
 
-          <div class="flex-1 overflow-auto min-h-0">
-            <table class="w-full min-w-[900px]">
-              <thead class="bg-gray-50 sticky top-0 z-10">
+          <div class="w-full">
+            <table class="w-full table-fixed">
+              <colgroup>
+                <col class="w-[8%]" />
+                <col class="w-[14%]" />
+                <col class="w-[16%]" />
+                <col class="w-[16%]" />
+                <col class="w-[12%]" />
+                <col class="w-[10%]" />
+                <col class="w-[10%]" />
+                <col class="w-[14%]" />
+              </colgroup>
+              <thead class="hidden bg-gray-50 md:table-header-group">
                 <tr>
                   <th
-                    class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
+                    class="px-1.5 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide lg:px-2"
                   >
                     Type
                   </th>
                   <th
-                    class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
+                    class="px-1.5 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide lg:px-2"
                   >
                     Organization
                   </th>
                   <th
-                    class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
+                    class="px-1.5 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide lg:px-2"
                   >
                     Activity
                   </th>
                   <th
-                    class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
+                    class="px-1.5 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide lg:px-2"
                   >
                     Date/Time
                   </th>
                   <th
-                    class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
+                    class="px-1.5 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide lg:px-2"
                   >
                     Venue
                   </th>
                   <th
-                    class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
+                    class="px-1.5 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide lg:px-2"
                   >
                     Participants
                   </th>
                   <th
-                    class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
+                    class="px-1.5 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide lg:px-2"
                   >
                     SDG/s
                   </th>
-                  <th class="px-3 py-2.5 text-left font-bold text-xs text-gray-600 uppercase tracking-wide">Actions</th>
+                  <th class="px-1.5 py-2.5 text-left font-bold text-xs text-gray-600 uppercase tracking-wide lg:px-2">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody class="block md:table-row-group">
                 <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="8" />
                 <tr
                   v-else
                   v-for="event in pendingEvents"
                   :key="event.id"
                   :class="[
-                    'border-b border-gray-100 hover:bg-gray-50 transition cursor-pointer',
+                    'block border-b border-gray-100 px-3 py-2 hover:bg-gray-50 transition cursor-pointer md:table-row md:px-0 md:py-0',
                     event.status === 'Conflict' ? 'bg-amber-50' : '',
                   ]"
                   @click="selectedEvent = event"
                 >
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">
-                    <span
-                      :class="[
-                        'inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase',
-                        event.eventType === 'SSC Event' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700',
-                      ]"
-                    >
-                      {{ event.eventType === "SSC Event" ? "SSC" : "Org" }}
+                  <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-600 md:table-cell md:border-r md:px-1.5 md:py-2.5 lg:px-2">
+                    <span class="w-24 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Type</span>
+                    <span class="min-w-0 flex-1">
+                      <span
+                        :class="[
+                          'inline-block max-w-full break-words whitespace-normal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase',
+                          event.eventType === 'SSC Event' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700',
+                        ]"
+                      >
+                        {{ event.eventType === "SSC Event" ? "SSC" : "Org" }}
+                      </span>
                     </span>
                   </td>
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.organization }}</td>
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm font-medium text-gray-800">
-                    {{ event.activity || event.name }}
+                  <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-600 md:table-cell md:border-r md:px-1.5 md:py-2.5 lg:px-2">
+                    <span class="w-24 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Organization</span>
+                    <span class="min-w-0 flex-1 break-words whitespace-normal">{{ event.organization }}</span>
                   </td>
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">
-                    <div>{{ event.date }}</div>
-                    <div v-if="event.startTime || event.endTime" class="text-xs text-gray-500 mt-0.5">
-                      {{
-                        event.startTime && event.endTime
-                          ? `${event.startTime} - ${event.endTime}`
-                          : event.startTime || event.endTime
-                      }}
-                    </div>
+                  <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm font-medium text-gray-800 md:table-cell md:border-r md:px-1.5 md:py-2.5 lg:px-2">
+                    <span class="w-24 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Activity</span>
+                    <span class="min-w-0 flex-1 break-words whitespace-normal">{{ event.activity || event.name }}</span>
                   </td>
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.venue }}</td>
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.participants ?? "—" }}</td>
-                  <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">{{ event.sdgs ?? "—" }}</td>
-                  <td class="px-3 py-2.5">
-                    <div class="flex gap-1.5">
+                  <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-600 md:table-cell md:border-r md:px-1.5 md:py-2.5 lg:px-2">
+                    <span class="w-24 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Date/Time</span>
+                    <span class="min-w-0 flex-1 break-words whitespace-normal">
+                      <span class="block">{{ event.date }}</span>
+                      <span v-if="event.startTime || event.endTime" class="mt-0.5 block text-xs text-gray-500">
+                        {{
+                          event.startTime && event.endTime
+                            ? `${event.startTime} - ${event.endTime}`
+                            : event.startTime || event.endTime
+                        }}
+                      </span>
+                    </span>
+                  </td>
+                  <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-600 md:table-cell md:border-r md:px-1.5 md:py-2.5 lg:px-2">
+                    <span class="w-24 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Venue</span>
+                    <span class="min-w-0 flex-1 break-words whitespace-normal">{{ event.venue }}</span>
+                  </td>
+                  <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-600 md:table-cell md:border-r md:px-1.5 md:py-2.5 lg:px-2">
+                    <span class="w-24 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Participants</span>
+                    <span class="min-w-0 flex-1 break-words whitespace-normal">{{ event.participants ?? "—" }}</span>
+                  </td>
+                  <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-600 md:table-cell md:border-r md:px-1.5 md:py-2.5 lg:px-2">
+                    <span class="w-24 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">SDG/s</span>
+                    <span class="min-w-0 flex-1 break-words whitespace-normal">{{ event.sdgs ?? "—" }}</span>
+                  </td>
+                  <td class="flex min-w-0 gap-3 py-1.5 md:table-cell md:px-1.5 md:py-2.5 lg:px-2">
+                    <span class="w-24 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Actions</span>
+                    <div class="flex min-w-0 flex-1 flex-col items-start gap-1.5">
                       <button
                         type="button"
-                        class="bg-[#4ADE80] hover:bg-[#3BC56D] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm disabled:opacity-60"
+                        class="flex max-w-full items-center gap-1 rounded-lg bg-[#4ADE80] px-2 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3BC56D] disabled:opacity-60"
                         :disabled="busy"
                         @click.stop="handleApprove(event.id)"
                       >
@@ -149,7 +179,7 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
                       </button>
                       <button
                         type="button"
-                        class="bg-[#DC2626] hover:bg-[#B91C1C] text-white px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 text-xs shadow-sm disabled:opacity-60"
+                        class="flex max-w-full items-center gap-1 rounded-lg bg-[#DC2626] px-2 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-[#B91C1C] disabled:opacity-60"
                         :disabled="busy"
                         @click.stop="handleReject(event.id)"
                       >
@@ -159,8 +189,8 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
                     </div>
                   </td>
                 </tr>
-                <tr v-if="!eventsLoading && pendingEvents.length === 0">
-                  <td colspan="8" class="py-12 text-center text-gray-400 text-sm">No pending event requests</td>
+                <tr v-if="!eventsLoading && pendingEvents.length === 0" class="block md:table-row">
+                  <td colspan="8" class="block py-12 text-center text-sm text-gray-400 md:table-cell">No pending event requests</td>
                 </tr>
               </tbody>
             </table>

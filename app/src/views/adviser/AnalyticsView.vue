@@ -155,7 +155,48 @@ const pieGradient = computed(() => {
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <div class="flex items-center justify-between mb-4 gap-2">
+          <div>
+            <h3 class="font-bold text-gray-800 text-sm">Recent activity</h3>
+            <p class="text-gray-400 text-xs">Latest event actions</p>
+          </div>
+          <ViewAllDashboardButton to="/adviser" />
+        </div>
+        <div class="space-y-3">
+          <div
+            v-for="item in recentActivity"
+            :key="item.id"
+            class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition"
+          >
+            <div class="text-lg w-8 text-center shrink-0">{{ item.icon }}</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-semibold text-gray-800 truncate">{{ item.event }}</div>
+              <div class="text-xs text-gray-400">{{ item.org }}</div>
+            </div>
+            <div class="text-right shrink-0">
+              <span
+                :class="[
+                  'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                  item.action === 'Approved'
+                    ? 'bg-green-100 text-green-700'
+                    : item.action === 'Rejected'
+                      ? 'bg-red-100 text-red-700'
+                      : item.action === 'Pending'
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : 'bg-blue-100 text-blue-700',
+                ]"
+              >
+                {{ item.action }}
+              </span>
+              <div class="text-[10px] text-gray-400 mt-0.5">{{ item.time }}</div>
+            </div>
+          </div>
+          <p v-if="!recentActivity.length" class="text-center text-xs text-gray-500 py-4">No recent activity yet.</p>
+        </div>
+      </div>
+
       <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
           <div>
@@ -245,47 +286,6 @@ const pieGradient = computed(() => {
             <span class="text-xs font-bold text-gray-700">{{ item.value }}</span>
           </div>
         </div>
-      </div>
-    </div>
-
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-      <div class="flex items-center justify-between mb-4 gap-2">
-        <div>
-          <h3 class="font-bold text-gray-800 text-sm">Recent activity</h3>
-          <p class="text-gray-400 text-xs">Latest event actions</p>
-        </div>
-        <ViewAllDashboardButton to="/adviser" />
-      </div>
-      <div class="space-y-3">
-        <div
-          v-for="item in recentActivity"
-          :key="item.id"
-          class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition"
-        >
-          <div class="text-lg w-8 text-center shrink-0">{{ item.icon }}</div>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-semibold text-gray-800 truncate">{{ item.event }}</div>
-            <div class="text-xs text-gray-400">{{ item.org }}</div>
-          </div>
-          <div class="text-right shrink-0">
-            <span
-              :class="[
-                'text-[10px] font-bold px-2 py-0.5 rounded-full',
-                item.action === 'Approved'
-                  ? 'bg-green-100 text-green-700'
-                  : item.action === 'Rejected'
-                    ? 'bg-red-100 text-red-700'
-                    : item.action === 'Pending'
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-blue-100 text-blue-700',
-              ]"
-            >
-              {{ item.action }}
-            </span>
-            <div class="text-[10px] text-gray-400 mt-0.5">{{ item.time }}</div>
-          </div>
-        </div>
-        <p v-if="!recentActivity.length" class="text-center text-xs text-gray-500 py-4">No recent activity yet.</p>
       </div>
     </div>
 
