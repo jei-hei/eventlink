@@ -4,6 +4,8 @@ import { X } from "lucide-vue-next";
 import { useUiStore } from "@/stores/ui";
 import { updatePortalUser } from "@/services/adminCreateUser";
 import { fetchCollegesWithOrganizations, type CollegeWithOrgs } from "@/services/collegesDb";
+import { fetchRequireIsuEmail } from "@/services/appSettingsDb";
+import { EMAIL_FORMAT_ERROR, ISU_EMAIL_ERROR, emailMeetsAdminPolicy } from "@/utils/isuEmail";
 import { LEGACY_STUDENT_ROLE, type AppRole } from "@/types/appRole";
 import {
   adminRoleLabel,
@@ -46,6 +48,7 @@ const saving = ref(false);
 const loadingOptions = ref(false);
 const colleges = ref<CollegeWithOrgs[]>([]);
 const orgAssignments = ref<AdminOrgAssignmentRow[]>([]);
+const requireIsuEmail = ref(true);
 
 const role = ref<EditableRole>("adviser");
 const name = ref("");
@@ -105,7 +108,7 @@ function resetForm() {
   if (!props.user) return;
   role.value = coerceEditableRole(props.user.appRole);
   name.value = props.user.name;
-  email.value = props.user.email;
+  email.value = props.user.email.trim() === "—" ? "" : props.user.email;
   collegeId.value = "";
   organizationId.value = "";
 }
@@ -133,16 +136,19 @@ watch(
     resetForm();
     loadingOptions.value = true;
     try {
-      const [collegeRows, assignments] = await Promise.all([
+      const [collegeRows, assignments, isuRequired] = await Promise.all([
         fetchCollegesWithOrganizations(),
         fetchAdminOrgAssignments().catch(() => [] as AdminOrgAssignmentRow[]),
+        fetchRequireIsuEmail().catch(() => true),
       ]);
       colleges.value = collegeRows;
       orgAssignments.value = assignments;
+      requireIsuEmail.value = isuRequired;
       prefillCollegeAndOrganizationByName();
     } catch {
       colleges.value = [];
       orgAssignments.value = [];
+      requireIsuEmail.value = true;
     } finally {
       loadingOptions.value = false;
     }
@@ -173,8 +179,16 @@ async function submitEdit(e: Event) {
     ui.pushToast("Missing fields", "Full name is required.", "error");
     return;
   }
-  if (!email.value.trim() || email.value === "—") {
-    ui.pushToast("Missing email", "This account has no valid email to update.", "error");
+  if (!email.value.trim() || email.value.trim() === "—") {
+    ui.pushToast("Missing email", "A valid email is required.", "error");
+    return;
+  }
+  if (!emailMeetsAdminPolicy(email.value, requireIsuEmail.value)) {
+    ui.pushToast(
+      "Invalid email",
+      requireIsuEmail.value ? ISU_EMAIL_ERROR : EMAIL_FORMAT_ERROR,
+      "error",
+    );
     return;
   }
   if (requiresCollege.value && !collegeId.value) {
@@ -196,7 +210,14 @@ async function submitEdit(e: Event) {
       collegeId: collegeId.value || null,
       organizationId: organizationId.value || null,
     });
-    ui.pushToast("User updated", "Account details were saved.", "success");
+    const emailChanged = email.value.trim().toLowerCase() !== props.user.email.trim().toLowerCase();
+    ui.pushToast(
+      "User updated",
+      emailChanged
+        ? `Saved. This account now signs in with ${email.value.trim()}.`
+        : "Account details were saved.",
+      "success",
+    );
     emit("updated");
     emit("close");
   } catch (err) {
@@ -232,7 +253,7 @@ async function submitEdit(e: Event) {
         <div class="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
           <p class="font-semibold">Update account assignment</p>
           <p class="mt-1 text-sky-900/90">
-            Use this to fix role mapping and align adviser/dean/officer with the correct college and organization.
+            Use this to fix role mapping, email, and college or organization assignment.
           </p>
         </div>
 
@@ -316,13 +337,23 @@ async function submitEdit(e: Event) {
           </div>
 
           <div>
-            <label class="mb-2 block text-sm font-medium text-gray-700">Email</label>
+            <label class="mb-2 block text-sm font-medium text-gray-700">
+              Email <span class="text-red-500">*</span>
+            </label>
             <input
               v-model="email"
               type="email"
-              disabled
-              class="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-gray-600"
+              required
+              :placeholder="requireIsuEmail ? 'user@isu.edu.ph' : 'user@email.com'"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <p class="mt-1 text-xs text-gray-500">
+              {{
+                requireIsuEmail
+                  ? "Official ISU email required (@isu.edu.ph). The user will sign in with this address."
+                  : "Any valid email address is allowed. The user will sign in with this address."
+              }}
+            </p>
           </div>
 
           <div class="flex gap-3 pt-4">
