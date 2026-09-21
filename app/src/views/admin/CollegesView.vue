@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Plus, ChevronDown, ChevronUp, Pencil, Trash2 } from "lucide-vue-next";
+import { Plus, ChevronDown, ChevronUp, Pencil, Trash2, Upload, Download, FileSpreadsheet } from "lucide-vue-next";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   createCollege,
@@ -11,10 +11,33 @@ import {
   type CollegeWithOrgs,
 } from "@/services/collegesDb";
 import { UNIVERSITY_WIDE_COLLEGE_CODE } from "@/services/organizationsDb";
-import { fetchAdminPortalUsers, type AdminPortalUserRow } from "@/services/adminUsersDb";
+import {
+  adviserNamesByOrganizationId,
+  fetchAdminOrgAssignments,
+  fetchAdminPortalUsers,
+  officerNamesByOrganizationId,
+  type AdminOrgAssignmentRow,
+  type AdminPortalUserRow,
+} from "@/services/adminUsersDb";
+import { importCollegesOrganizations } from "@/services/collegeOrgImportDb";
+import {
+  COLLEGE_ORG_IMPORT_MAX_BYTES,
+  COLLEGE_ORG_IMPORT_MAX_ROWS,
+  collegeOrgImportHasBlockers,
+  downloadCollegeOrgTemplate,
+  parseCollegeOrgCsv,
+  parseCollegeOrgXlsx,
+  validateCollegeOrgImportRows,
+  type CollegeOrgImportPreviewRow,
+} from "@/services/collegeOrgImportParser";
+import StatusBadge from "@/components/portal/StatusBadge.vue";
+import { useUiStore } from "@/stores/ui";
+import { toUserFacingError } from "@/utils/userFacingError";
 
+const ui = useUiStore();
 const colleges = ref<CollegeWithOrgs[]>([]);
 const portalUsers = ref<AdminPortalUserRow[]>([]);
+const orgAssignments = ref<AdminOrgAssignmentRow[]>([]);
 
 const universityWide = computed(() =>
   colleges.value.find((c) => c.code === UNIVERSITY_WIDE_COLLEGE_CODE) ?? null,
@@ -35,7 +58,130 @@ const deanByCollegeName = computed(() => {
   return map;
 });
 
-const loading = ref(false);
+const officerByOrgId = computed(() => officerNamesByOrganizationId(orgAssignments.value));
+const adviserByOrgId = computed(() => adviserNamesByOrganizationId(orgAssignments.value));
+
+function officerLabel(organizationId: string): string {
+  return officerByOrgId.value.get(organizationId) || "Not assigned";
+}
+
+function adviserLabel(organizationId: string): string {
+  return adviserByOrgId.value.get(organizationId) || "Not assigned";
+}
+
+const fileInput = ref<HTMLInputElement | null>(null);
+const previewRows = ref<CollegeOrgImportPreviewRow[]>([]);
+const parsing = ref(false);
+const importing = ref(false);
+const lastImportSummary = ref<string | null>(null);
+
+function statusTone(status: CollegeOrgImportPreviewRow["status"]) {
+  if (status === "Valid") return "success" as const;
+  if (status === "Duplicate") return "info" as const;
+  if (status === "Warning") return "warning" as const;
+  return "danger" as const;
+}
+
+const previewBlockers = computed(() => collegeOrgImportHasBlockers(previewRows.value));
+const previewInvalidCount = computed(() => previewRows.value.filter((r) => r.status === "Invalid").length);
+
+function triggerUpload() {
+  fileInput.value?.click();
+}
+
+function downloadTemplate() {
+  downloadCollegeOrgTemplate();
+  ui.pushToast(
+    "Template downloaded",
+    "Replace the EXAMPLE rows before uploading. Example rows are not imported.",
+    "info",
+  );
+}
+
+async function onImportFile(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+
+  lastImportSummary.value = null;
+  previewRows.value = [];
+
+  if (file.size > COLLEGE_ORG_IMPORT_MAX_BYTES) {
+    ui.pushToast("File too large", "Use a CSV or XLSX file smaller than 1 MB.", "error");
+    return;
+  }
+
+  parsing.value = true;
+  try {
+    const name = file.name.toLowerCase();
+    let parsed;
+    if (name.endsWith(".csv")) {
+      parsed = parseCollegeOrgCsv(await file.text());
+    } else if (name.endsWith(".xlsx")) {
+      parsed = await parseCollegeOrgXlsx(await file.arrayBuffer());
+    } else if (name.endsWith(".xls")) {
+      ui.pushToast(
+        "Legacy XLS is not supported",
+        "Save the workbook as XLSX or export it as CSV, then upload it again.",
+        "error",
+      );
+      return;
+    } else {
+      ui.pushToast("Unsupported file", "Use CSV or XLSX.", "error");
+      return;
+    }
+
+    const dataRows = parsed.filter((row) => row.collegeName || row.organizationName || row.organizationCode);
+    if (dataRows.length > COLLEGE_ORG_IMPORT_MAX_ROWS) {
+      ui.pushToast("Too many rows", `Import at most ${COLLEGE_ORG_IMPORT_MAX_ROWS} organizations at a time.`, "error");
+      return;
+    }
+
+    const catalog = colleges.value.map((college) => ({
+      name: college.name,
+      organizations: college.organizations.map((org) => ({ name: org.name, slug: org.slug })),
+    }));
+    previewRows.value = validateCollegeOrgImportRows(parsed, catalog);
+
+    if (!previewRows.value.length) {
+      ui.pushToast("Nothing to import", "No data rows were found. Example rows are skipped.", "info");
+      return;
+    }
+
+    const invalid = previewRows.value.filter((r) => r.status === "Invalid").length;
+    ui.pushToast(
+      "Import preview ready",
+      invalid
+        ? `${previewRows.value.length} row(s) parsed. ${invalid} need to be fixed before import.`
+        : `${previewRows.value.length} row(s) parsed. Review the preview, then confirm.`,
+      invalid ? "warning" : "success",
+    );
+  } catch (err) {
+    console.error(err);
+    ui.pushToast("Could not read file", toUserFacingError(err, "Use the downloadable template and try again."), "error");
+  } finally {
+    parsing.value = false;
+  }
+}
+
+async function confirmImport() {
+  if (importing.value || previewBlockers.value) return;
+  importing.value = true;
+  lastImportSummary.value = null;
+  try {
+    const result = await importCollegesOrganizations(previewRows.value);
+    lastImportSummary.value = `Import completed. Colleges created: ${result.collegesCreated}. Organizations created: ${result.organizationsCreated}. Existing records reused: ${result.reused}. Failed rows: ${result.failed}.`;
+    ui.pushToast("Import completed", lastImportSummary.value, "success");
+    previewRows.value = [];
+    await load();
+  } catch (err) {
+    lastImportSummary.value = `Import failed. No changes were applied. Reason: ${toUserFacingError(err, "Import failed. No changes were applied.")}`;
+    ui.pushToast("Import failed", "No changes were applied.", "error");
+  } finally {
+    importing.value = false;
+  }
+}
 const expandedCollege = ref<string | null>(null);
 const newCollegeName = ref("");
 const newCollegeCode = ref("");
@@ -44,17 +190,20 @@ const addingOrgFor = ref<string | null>(null);
 const editingCollegeId = ref<string | null>(null);
 const editCollegeName = ref("");
 const editCollegeCode = ref("");
+const loading = ref(false);
 
 async function load() {
   if (!isSupabaseConfigured) return;
   loading.value = true;
   try {
-    const [collegeRows, users] = await Promise.all([
+    const [collegeRows, users, assignments] = await Promise.all([
       fetchCollegesWithOrganizations(),
       fetchAdminPortalUsers().catch(() => [] as AdminPortalUserRow[]),
+      fetchAdminOrgAssignments().catch(() => [] as AdminOrgAssignmentRow[]),
     ]);
     colleges.value = collegeRows;
     portalUsers.value = users;
+    orgAssignments.value = assignments;
   } catch (e) {
     window.alert(e instanceof Error ? e.message : String(e));
   } finally {
@@ -142,6 +291,79 @@ async function removeOrg(id: string) {
     </div>
 
     <div class="mb-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+      <h3 class="mb-1 font-semibold text-gray-900">College & organization import</h3>
+      <p class="mb-4 text-sm text-gray-600">
+        Download the template, fill real rows, then upload a CSV or XLSX. Example rows are skipped and nothing is saved until you confirm.
+      </p>
+      <input
+        ref="fileInput"
+        type="file"
+        accept=".csv,.xlsx,.xls"
+        class="sr-only"
+        @change="onImportFile"
+      />
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          @click="downloadTemplate"
+        >
+          <Download class="h-4 w-4" />
+          Download Template
+        </button>
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+          :disabled="parsing || importing"
+          @click="triggerUpload"
+        >
+          <Upload class="h-4 w-4" />
+          {{ parsing ? "Reading…" : "Upload File" }}
+        </button>
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="previewBlockers || importing || parsing"
+          @click="confirmImport"
+        >
+          <FileSpreadsheet class="h-4 w-4" />
+          {{ importing ? "Importing…" : "Confirm import" }}
+        </button>
+      </div>
+      <p v-if="previewInvalidCount" class="mt-3 text-sm font-medium text-red-700">
+        {{ previewInvalidCount }} invalid row(s). Fix the file before confirming.
+      </p>
+      <p v-if="lastImportSummary" class="mt-3 text-sm text-slate-700">{{ lastImportSummary }}</p>
+
+      <div v-if="previewRows.length" class="mt-4 overflow-x-auto">
+        <table class="min-w-[720px] w-full text-left text-sm">
+          <thead>
+            <tr class="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500">
+              <th class="py-2 pr-3">Row</th>
+              <th class="py-2 pr-3">College</th>
+              <th class="py-2 pr-3">Organization</th>
+              <th class="py-2 pr-3">Organization Code</th>
+              <th class="py-2 pr-3">Status</th>
+              <th class="py-2">Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in previewRows" :key="`${row.row}-${row.collegeName}-${row.organizationName}`" class="border-b border-gray-100">
+              <td class="py-2 pr-3 font-mono text-xs">{{ row.row }}</td>
+              <td class="py-2 pr-3">{{ row.collegeName || "—" }}</td>
+              <td class="py-2 pr-3">{{ row.organizationName || "—" }}</td>
+              <td class="py-2 pr-3 font-mono text-xs">{{ row.organizationCode || "—" }}</td>
+              <td class="py-2 pr-3">
+                <StatusBadge :label="row.status" :tone="statusTone(row.status)" />
+              </td>
+              <td class="py-2 text-xs text-gray-600">{{ row.message }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mb-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <h3 class="mb-4 font-semibold text-gray-900">Add college</h3>
       <div class="flex flex-col gap-3 sm:flex-row">
         <input
@@ -182,7 +404,15 @@ async function removeOrg(id: string) {
           :key="org.id"
           class="flex items-center justify-between px-6 py-3"
         >
-          <span class="font-medium text-gray-800">{{ org.name }}</span>
+          <div class="min-w-0">
+            <span class="font-medium text-gray-800">{{ org.name }}</span>
+            <p class="mt-0.5 text-xs text-slate-500">
+              Student Officer:
+              <span class="font-medium text-slate-700">{{ officerLabel(org.id) }}</span>
+              · Adviser:
+              <span class="font-medium text-slate-700">{{ adviserLabel(org.id) }}</span>
+            </p>
+          </div>
           <span class="text-xs text-purple-700">SSC · slug: {{ org.slug || "ssc" }}</span>
         </li>
         <li v-if="!universityWide.organizations.length" class="px-6 py-4 text-sm text-gray-400">
@@ -299,7 +529,15 @@ async function removeOrg(id: string) {
               :key="org.id"
               class="flex items-center justify-between px-6 py-3 hover:bg-gray-50"
             >
-              <span class="font-medium text-gray-800">{{ org.name }}</span>
+              <div class="min-w-0">
+                <span class="font-medium text-gray-800">{{ org.name }}</span>
+                <p class="mt-0.5 text-xs text-slate-500">
+                  Student Officer:
+                  <span class="font-medium text-slate-700">{{ officerLabel(org.id) }}</span>
+                  · Adviser:
+                  <span class="font-medium text-slate-700">{{ adviserLabel(org.id) }}</span>
+                </p>
+              </div>
               <button
                 type="button"
                 class="rounded-lg p-2 text-red-600 hover:bg-red-50"

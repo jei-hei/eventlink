@@ -4,8 +4,14 @@ import { X } from "lucide-vue-next";
 import { useUiStore } from "@/stores/ui";
 import { createPortalUser, AdminCreateUserError } from "@/services/adminCreateUser";
 import { fetchCollegesWithOrganizations, type CollegeWithOrgs } from "@/services/collegesDb";
+import {
+  fetchAdminOrgAssignments,
+  officerNamesByOrganizationId,
+  type AdminOrgAssignmentRow,
+} from "@/services/adminUsersDb";
+import { fetchRequireIsuEmail } from "@/services/appSettingsDb";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { ISU_EMAIL_ERROR, isOfficialIsuEmail } from "@/utils/isuEmail";
+import { EMAIL_FORMAT_ERROR, ISU_EMAIL_ERROR, emailMeetsAdminPolicy } from "@/utils/isuEmail";
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: []; created: [] }>();
@@ -36,6 +42,8 @@ const organizationId = ref("");
 const creating = ref(false);
 const loadingOptions = ref(false);
 const colleges = ref<CollegeWithOrgs[]>([]);
+const orgAssignments = ref<AdminOrgAssignmentRow[]>([]);
+const requireIsuEmail = ref(true);
 
 const roleOptions: Array<{ label: string; value: Exclude<RoleValue, ""> }> = [
   { label: "Student Officer", value: "student_officer" },
@@ -63,6 +71,15 @@ const organizationOptions = computed(() => {
   const selectedCollege = colleges.value.find((c) => c.id === collegeId.value);
   return selectedCollege?.organizations ?? [];
 });
+const officerByOrgId = computed(() => officerNamesByOrganizationId(orgAssignments.value));
+const selectedOrgOfficer = computed(() =>
+  organizationId.value ? officerByOrgId.value.get(organizationId.value) ?? "" : "",
+);
+
+function organizationOptionLabel(orgId: string, orgName: string): string {
+  const officer = officerByOrgId.value.get(orgId);
+  return officer ? `${orgName} — Officer: ${officer}` : orgName;
+}
 
 watch(
   () => props.open,
@@ -71,9 +88,18 @@ watch(
       if (isSupabaseConfigured) {
         loadingOptions.value = true;
         try {
-          colleges.value = await fetchCollegesWithOrganizations();
+          const [collegeRows, isuRequired, assignments] = await Promise.all([
+            fetchCollegesWithOrganizations(),
+            fetchRequireIsuEmail().catch(() => true),
+            fetchAdminOrgAssignments().catch(() => [] as AdminOrgAssignmentRow[]),
+          ]);
+          colleges.value = collegeRows;
+          requireIsuEmail.value = isuRequired;
+          orgAssignments.value = assignments;
         } catch {
           colleges.value = [];
+          requireIsuEmail.value = true;
+          orgAssignments.value = [];
         } finally {
           loadingOptions.value = false;
         }
@@ -130,8 +156,12 @@ async function handleSubmit(e: Event) {
     ui.pushToast("Missing fields", "Name, email, and password are required.", "error");
     return;
   }
-  if (!isOfficialIsuEmail(email.value)) {
-    ui.pushToast("Invalid email", ISU_EMAIL_ERROR, "error");
+  if (!emailMeetsAdminPolicy(email.value, requireIsuEmail.value)) {
+    ui.pushToast(
+      "Invalid email",
+      requireIsuEmail.value ? ISU_EMAIL_ERROR : EMAIL_FORMAT_ERROR,
+      "error",
+    );
     return;
   }
   if (password.value.length < 8) {
@@ -235,6 +265,16 @@ async function handleSubmit(e: Event) {
             </p>
           </div>
 
+          <div
+            v-if="role === 'student_officer' && selectedOrgOfficer"
+            class="rounded-lg border border-amber-200 bg-amber-50 p-4"
+          >
+            <p class="text-sm text-amber-900">
+              <strong>Note:</strong> This organization already has a Student Officer:
+              {{ selectedOrgOfficer }}.
+            </p>
+          </div>
+
           <div v-if="requiresCollege">
             <label class="mb-2 block text-sm font-medium text-gray-700">
               College <span class="text-red-500">*</span>
@@ -262,7 +302,7 @@ async function handleSubmit(e: Event) {
             >
               <option value="">{{ collegeId ? "Select organization" : "Select college first" }}</option>
               <option v-for="org in organizationOptions" :key="org.id" :value="org.id">
-                {{ org.name }}
+                {{ organizationOptionLabel(org.id, org.name) }}
               </option>
             </select>
           </div>
@@ -288,10 +328,16 @@ async function handleSubmit(e: Event) {
               v-model="email"
               type="email"
               required
-              placeholder="user@isu.edu.ph"
+              :placeholder="requireIsuEmail ? 'user@isu.edu.ph' : 'user@email.com'"
               class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <p class="mt-1 text-xs text-gray-500">Official ISU email required (@isu.edu.ph).</p>
+            <p class="mt-1 text-xs text-gray-500">
+              {{
+                requireIsuEmail
+                  ? "Official ISU email required (@isu.edu.ph)."
+                  : "Any valid email address is allowed."
+              }}
+            </p>
           </div>
 
           <div>

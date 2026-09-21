@@ -5,7 +5,12 @@ import { useUiStore } from "@/stores/ui";
 import { updatePortalUser } from "@/services/adminCreateUser";
 import { fetchCollegesWithOrganizations, type CollegeWithOrgs } from "@/services/collegesDb";
 import { LEGACY_STUDENT_ROLE, type AppRole } from "@/types/appRole";
-import { adminRoleLabel } from "@/services/adminUsersDb";
+import {
+  adminRoleLabel,
+  fetchAdminOrgAssignments,
+  officerNamesByOrganizationId,
+  type AdminOrgAssignmentRow,
+} from "@/services/adminUsersDb";
 
 type EditableRole =
   | "student_officer"
@@ -40,6 +45,7 @@ const ui = useUiStore();
 const saving = ref(false);
 const loadingOptions = ref(false);
 const colleges = ref<CollegeWithOrgs[]>([]);
+const orgAssignments = ref<AdminOrgAssignmentRow[]>([]);
 
 const role = ref<EditableRole>("adviser");
 const name = ref("");
@@ -72,6 +78,23 @@ const organizationOptions = computed(() => {
   const selected = colleges.value.find((c) => c.id === collegeId.value);
   return selected?.organizations ?? [];
 });
+const officerByOrgId = computed(() => officerNamesByOrganizationId(orgAssignments.value));
+const selectedOrgOfficer = computed(() => {
+  if (!organizationId.value) return "";
+  const assigned = officerByOrgId.value.get(organizationId.value) ?? "";
+  if (!assigned) return "";
+  const currentName = props.user?.name.trim();
+  const others = assigned
+    .split(", ")
+    .map((n) => n.trim())
+    .filter((n) => n && n !== currentName);
+  return others.join(", ");
+});
+
+function organizationOptionLabel(orgId: string, orgName: string): string {
+  const officer = officerByOrgId.value.get(orgId);
+  return officer ? `${orgName} — Officer: ${officer}` : orgName;
+}
 
 function coerceEditableRole(value: AppRole | typeof LEGACY_STUDENT_ROLE): EditableRole {
   if (value === LEGACY_STUDENT_ROLE) return "student_officer";
@@ -110,10 +133,16 @@ watch(
     resetForm();
     loadingOptions.value = true;
     try {
-      colleges.value = await fetchCollegesWithOrganizations();
+      const [collegeRows, assignments] = await Promise.all([
+        fetchCollegesWithOrganizations(),
+        fetchAdminOrgAssignments().catch(() => [] as AdminOrgAssignmentRow[]),
+      ]);
+      colleges.value = collegeRows;
+      orgAssignments.value = assignments;
       prefillCollegeAndOrganizationByName();
     } catch {
       colleges.value = [];
+      orgAssignments.value = [];
     } finally {
       loadingOptions.value = false;
     }
@@ -234,6 +263,16 @@ async function submitEdit(e: Event) {
             </select>
           </div>
 
+          <div
+            v-if="role === 'student_officer' && selectedOrgOfficer"
+            class="rounded-lg border border-amber-200 bg-amber-50 p-4"
+          >
+            <p class="text-sm text-amber-900">
+              <strong>Note:</strong> This organization already has a Student Officer:
+              {{ selectedOrgOfficer }}.
+            </p>
+          </div>
+
           <div v-if="requiresCollege">
             <label class="mb-2 block text-sm font-medium text-gray-700">College <span class="text-red-500">*</span></label>
             <select
@@ -259,7 +298,7 @@ async function submitEdit(e: Event) {
             >
               <option value="">{{ collegeId ? "Select organization" : "Select college first" }}</option>
               <option v-for="org in organizationOptions" :key="org.id" :value="org.id">
-                {{ org.name }}
+                {{ organizationOptionLabel(org.id, org.name) }}
               </option>
             </select>
           </div>

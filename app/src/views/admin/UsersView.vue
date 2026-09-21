@@ -3,6 +3,8 @@ import { computed, ref } from "vue";
 import { Edit2, KeyRound, Plus, RefreshCw, Search } from "lucide-vue-next";
 import AddUserModal from "./components/AddUserModal.vue";
 import EditUserModal from "./components/EditUserModal.vue";
+import StudentOfficerImportPanel from "./components/StudentOfficerImportPanel.vue";
+import StaffImportPanel from "./components/StaffImportPanel.vue";
 import PaginationControls from "@/components/PaginationControls.vue";
 import { usePaginatedQuery } from "@/composables/usePaginatedQuery";
 import { useAuthStore } from "@/stores/auth";
@@ -207,6 +209,12 @@ async function resetUserPassword(user: UserRow) {
         </button>
       </div>
     </header>
+
+    <div v-if="canLoad" class="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <StudentOfficerImportPanel @imported="refresh()" />
+      <StaffImportPanel kind="adviser" @imported="refresh()" />
+      <StaffImportPanel kind="dean" @imported="refresh()" />
+    </div>
 
     <p
       v-if="!canLoad"

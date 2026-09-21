@@ -20,8 +20,17 @@ const error = ref("");
 
 async function verifyRecoverySession() {
   const { data, error: sessionError } = await getSupabase().auth.getSession();
-  sessionValid.value =
-    !sessionError && !!data.session && auth.passwordRecoveryPending;
+  const hasSession = !sessionError && !!data.session;
+  const query = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const fromAuthLink = Boolean(
+    query.get("code") ||
+      query.get("token_hash") ||
+      hash.get("access_token") ||
+      query.get("type") ||
+      hash.get("type"),
+  );
+  sessionValid.value = hasSession && (auth.passwordRecoveryPending || fromAuthLink);
   if (!sessionValid.value) {
     error.value = "This password reset link is invalid or has expired. Request a new link.";
   } else {
@@ -37,7 +46,11 @@ onMounted(async () => {
   }
   try {
     await auth.whenReady();
-    await verifyRecoverySession();
+    for (let i = 0; i < 8; i++) {
+      await verifyRecoverySession();
+      if (sessionValid.value) break;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
   } catch (e) {
     error.value = toUserFacingError(e, "Could not verify this password reset link.");
   } finally {

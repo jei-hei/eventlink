@@ -27,6 +27,26 @@ In SQL Editor, run (in order):
 
 Students can then **Sign up** at `/signup` with that exact ID and any email.
 
+## Reset data (keep admin)
+
+To empty the app for real data, keep schema + one admin login, and delete demo
+events/users/files: run [`reset_data_keep_admin.sql`](./reset_data_keep_admin.sql)
+in the SQL Editor.
+
+Edit `admin_email` at the top of that file if your admin login is not
+`admin@eventlink.local`. Then log in as admin and create colleges, orgs,
+students, and staff from the Admin UI.
+
+Do **not** use [`reset_public_schema.sql`](./reset_public_schema.sql) for this.
+That script drops the `public` schema and requires re-running migrations.
+
+Do **not** re-run `seed/01_students.sql` or `npm run seed:staff` afterward
+unless you want demo accounts again. If the admin login is missing, from `app/`:
+
+```bash
+npm run seed:admin
+```
+
 ## Deploy database vs Edge Functions
 
 `supabase db push` applies SQL migrations only. It does **not** deploy Edge Functions.

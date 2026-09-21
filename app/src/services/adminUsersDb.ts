@@ -86,3 +86,41 @@ export async function countAdminPortalUsers(): Promise<number> {
   const page = await fetchAdminPortalUsersPage({ page: 1, pageSize: 1 });
   return page.total;
 }
+
+export type AdminOrgAssignmentRow = {
+  organization_id: string;
+  display_name: string;
+  app_role: AppRole | typeof LEGACY_STUDENT_ROLE;
+};
+
+export async function fetchAdminOrgAssignments(): Promise<AdminOrgAssignmentRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc("admin_list_org_assignments");
+  if (error) throw error;
+  return (data ?? []) as AdminOrgAssignmentRow[];
+}
+
+export function namesByOrganizationId(
+  rows: AdminOrgAssignmentRow[],
+  role: "student_officer" | "adviser",
+): Map<string, string> {
+  const map = new Map<string, string[]>();
+  for (const row of rows) {
+    if (row.app_role !== role) continue;
+    const id = row.organization_id;
+    const name = row.display_name?.trim();
+    if (!id || !name) continue;
+    const list = map.get(id) ?? [];
+    if (!list.includes(name)) list.push(name);
+    map.set(id, list);
+  }
+  return new Map([...map.entries()].map(([id, names]) => [id, names.join(", ")]));
+}
+
+export function officerNamesByOrganizationId(rows: AdminOrgAssignmentRow[]): Map<string, string> {
+  return namesByOrganizationId(rows, "student_officer");
+}
+
+export function adviserNamesByOrganizationId(rows: AdminOrgAssignmentRow[]): Map<string, string> {
+  return namesByOrganizationId(rows, "adviser");
+}

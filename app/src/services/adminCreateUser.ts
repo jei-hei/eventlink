@@ -1,5 +1,4 @@
 import { getSupabase } from "@/lib/supabase";
-import { ISU_EMAIL_ERROR, isOfficialIsuEmail } from "@/utils/isuEmail";
 
 export type CreatePortalUserInput = {
   role:
@@ -89,15 +88,8 @@ async function invokeAdminCreateUser(body: Record<string, unknown>): Promise<Cre
   };
 }
 
-function assertIsuEmail(email: string): void {
-  if (!isOfficialIsuEmail(email)) {
-    throw new AdminCreateUserError(ISU_EMAIL_ERROR, "email_validation");
-  }
-}
-
 export async function createPortalUser(input: CreatePortalUserInput): Promise<CreatePortalUserResult> {
   const email = input.email.trim();
-  assertIsuEmail(email);
   return invokeAdminCreateUser({
     role: input.role,
     email,

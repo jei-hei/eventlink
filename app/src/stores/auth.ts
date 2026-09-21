@@ -20,10 +20,32 @@ export function formatAuthError(err: unknown): string {
   return toUserFacingError(err, "Authentication failed. Please try again.");
 }
 
-function recoveryAccessTokenFromUrl(): string | null {
-  if (typeof window === "undefined") return null;
+function passwordSetupParams(): {
+  type: string | null;
+  tokenHash: string | null;
+  code: string | null;
+  recoveryAccessToken: string | null;
+} {
+  if (typeof window === "undefined") {
+    return { type: null, tokenHash: null, code: null, recoveryAccessToken: null };
+  }
+  const query = new URLSearchParams(window.location.search);
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  return hash.get("type") === "recovery" ? hash.get("access_token") : null;
+  const type = query.get("type") || hash.get("type");
+  return {
+    type,
+    tokenHash: query.get("token_hash") || hash.get("token_hash"),
+    code: query.get("code") || hash.get("code"),
+    recoveryAccessToken: hash.get("type") === "recovery" || hash.get("type") === "invite" ? hash.get("access_token") : null,
+  };
+}
+
+function isPasswordSetupLocation(): boolean {
+  if (typeof window === "undefined") return false;
+  const path = window.location.pathname.replace(/\/$/, "") || "/";
+  if (path === "/reset-password") return true;
+  const { type } = passwordSetupParams();
+  return type === "recovery" || type === "invite" || type === "signup" || type === "magiclink";
 }
 
 export const useAuthStore = defineStore("auth", () => {
@@ -632,16 +654,30 @@ export const useAuthStore = defineStore("auth", () => {
 
     const supabase = getSupabase();
     try {
+      const setup = passwordSetupParams();
+      if (setup.tokenHash && setup.type) {
+        const { data: otpData } = await supabase.auth.verifyOtp({
+          token_hash: setup.tokenHash,
+          type: setup.type as "recovery" | "invite" | "signup" | "magiclink" | "email",
+        });
+        if (otpData.session) passwordRecoveryPending.value = true;
+      }
+
       const { data } = await supabase.auth.getSession();
-      const recoveryToken = recoveryAccessTokenFromUrl();
-      passwordRecoveryPending.value =
-        !!recoveryToken && data.session?.access_token === recoveryToken;
+      if (isPasswordSetupLocation() && data.session) {
+        passwordRecoveryPending.value = true;
+      } else if (setup.recoveryAccessToken && data.session?.access_token === setup.recoveryAccessToken) {
+        passwordRecoveryPending.value = true;
+      }
       await applySession(data.session, { enforceSingleSession: false, showLoginAlert: false });
 
       supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === "PASSWORD_RECOVERY") {
+        if (
+          event === "PASSWORD_RECOVERY" ||
+          (event === "SIGNED_IN" && isPasswordSetupLocation() && session)
+        ) {
           passwordRecoveryPending.value = !!session;
-          return;
+          if (event === "PASSWORD_RECOVERY" || isPasswordSetupLocation()) return;
         }
         if (event === "SIGNED_OUT") {
           passwordRecoveryPending.value = false;
@@ -835,7 +871,11 @@ export const useAuthStore = defineStore("auth", () => {
     }
     const supabase = getSupabase();
     if (!passwordRecoveryPending.value) {
-      throw new Error("This password reset link is invalid or has expired.");
+      const { data } = await supabase.auth.getSession();
+      if (!data.session || !isPasswordSetupLocation()) {
+        throw new Error("This password reset link is invalid or has expired.");
+      }
+      passwordRecoveryPending.value = true;
     }
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session) {

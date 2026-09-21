@@ -22,14 +22,58 @@ const validRoles = new Set([
 ]);
 
 const ISU_EMAIL_DOMAIN = "isu.edu.ph";
+const ISU_EMAIL_ERROR = "Please use a valid ISU email address.";
 
-function isOfficialIsuEmail(email: string): boolean {
+function emailParts(email: string): { local: string; domain: string } | null {
   const trimmed = email.trim().toLowerCase();
   const at = trimmed.lastIndexOf("@");
-  if (at <= 0 || at === trimmed.length - 1) return false;
+  if (at <= 0 || at === trimmed.length - 1) return null;
   const local = trimmed.slice(0, at);
   const domain = trimmed.slice(at + 1);
-  return Boolean(local) && domain === ISU_EMAIL_DOMAIN;
+  if (!local || !domain) return null;
+  return { local, domain };
+}
+
+function isValidEmailAddress(email: string): boolean {
+  const parts = emailParts(email);
+  if (!parts) return false;
+  const { domain } = parts;
+  if (!domain.includes(".") || domain.startsWith(".") || domain.endsWith(".")) return false;
+  return !domain.includes(" ") && !parts.local.includes(" ");
+}
+
+function isOfficialIsuEmail(email: string): boolean {
+  const parts = emailParts(email);
+  return Boolean(parts?.local) && parts?.domain === ISU_EMAIL_DOMAIN;
+}
+
+function emailMeetsAdminPolicy(email: string, requireIsuEmail: boolean): boolean {
+  if (!isValidEmailAddress(email)) return false;
+  if (requireIsuEmail) return isOfficialIsuEmail(email);
+  return true;
+}
+
+function emailPolicyError(requireIsuEmail: boolean): string {
+  return requireIsuEmail ? ISU_EMAIL_ERROR : "Enter a valid email address.";
+}
+
+async function loadRequireIsuEmail(
+  admin: ReturnType<typeof createClient>,
+): Promise<{ ok: true; value: boolean } | { ok: false; response: Response }> {
+  const { data, error } = await admin
+    .from("app_settings")
+    .select("require_isu_email")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error) {
+    console.error("[admin-create-user] app_settings", error);
+    return {
+      ok: false,
+      response: json(500, { error: "Could not load application settings.", source: "app_settings" }),
+    };
+  }
+  // Fail closed: missing row means ISU email is required.
+  return { ok: true, value: data?.require_isu_email !== false };
 }
 
 const singletonRoles = new Set(["osas", "eo", "gso"]);
@@ -119,8 +163,15 @@ Deno.serve(async (req) => {
   if (!displayName) {
     return json(400, { error: "Display name is required.", source: "validation" });
   }
-  if (!requestedUserId && !isOfficialIsuEmail(email)) {
-    return json(400, { error: "Please use a valid ISU email address.", source: "email_validation" });
+
+  const settings = await loadRequireIsuEmail(admin);
+  if (!settings.ok) return settings.response;
+  const requireIsuEmail = settings.value;
+
+  if (!requestedUserId) {
+    if (!emailMeetsAdminPolicy(email, requireIsuEmail)) {
+      return json(400, { error: emailPolicyError(requireIsuEmail), source: "email_validation" });
+    }
   }
   const needsCollege = role === "dean" || role === "adviser" || role === "student_officer";
   const needsOrganization = role === "adviser" || role === "student_officer";
@@ -252,8 +303,8 @@ Deno.serve(async (req) => {
     };
     if (password) updatePayload.password = password;
     if (email && email !== (existing.email ?? "").toLowerCase()) {
-      if (!isOfficialIsuEmail(email)) {
-        return json(400, { error: "Please use a valid ISU email address.", source: "email_validation" });
+      if (!emailMeetsAdminPolicy(email, requireIsuEmail)) {
+        return json(400, { error: emailPolicyError(requireIsuEmail), source: "email_validation" });
       }
       updatePayload.email = email;
     }

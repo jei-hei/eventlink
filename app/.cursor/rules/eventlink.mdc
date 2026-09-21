@@ -1,0 +1,810 @@
+---
+
+description: Permanent rules and system context for the EventLink web system
+alwaysApply: true
+-----------------
+
+# EventLink Project Rules
+
+## 1. PROJECT OVERVIEW
+
+EventLink is a web-based University Student Event Management and Coordination System for Isabela State University.
+
+The system manages:
+
+* Event requests
+* Event approvals
+* Event scheduling
+* Venue management
+* Equipment/resource management
+* Event monitoring
+* Event feedback
+* Event calendar
+* Notifications
+* Analytics
+* Event history and Event Trail
+* Public event posting
+
+Always inspect the existing implementation before making changes.
+
+---
+
+## 2. TECHNOLOGY STACK
+
+The current stack is:
+
+* Vue 3
+* TypeScript
+* Vite
+* Tailwind CSS
+* Pinia
+* Vue Router
+* lucide-vue-next
+* Supabase
+* Supabase Auth
+* Supabase Database
+* Supabase Storage
+* Edge Functions (workflow-adjacent: user create, public feedback, notifications)
+* Vercel
+
+Do NOT replace the existing stack.
+
+Do NOT introduce React, Laravel, PHP, MySQL, Material UI, Ant Design, or another framework unless explicitly requested.
+
+Always verify the actual codebase before making assumptions.
+
+---
+
+# 3. AUTHENTICATED USER ROLES
+
+The authenticated roles are:
+
+1. Admin
+2. Student Officer
+3. SSC
+4. Adviser
+5. Dean
+6. OSAS
+7. EO
+8. GSO
+9. Sports Office
+10. IT Infrastructure
+11. Infirmary
+12. NSTP
+
+Student is NOT an authenticated system role.
+
+A legacy database value `student` may still appear in old rows. It must not unlock a portal. Authenticated users with no assignable `app_role` are sent to the Public Event Portal.
+
+The old Student interface is now the Public Event Portal at `/events` (views may still live under `views/student/` as a leftover folder name). `/student` redirects to `/events`.
+
+---
+
+# 4. PUBLIC EVENT PORTAL
+
+The Public Event Portal is accessible without login.
+
+It is for viewing officially posted events.
+
+Public users must NOT have access to:
+
+* Internal approval information
+* Private event data
+* Internal workflow
+* Private user information
+* Internal analytics
+* Approval history
+* Event management functions
+
+Public feedback may be submitted without a Student account.
+
+If an event requires an access code for feedback, verification must happen server-side (existing Edge Functions / RPCs: `verify-feedback-code`, `submit-public-feedback`). Do not verify only in the browser.
+
+Posted public feed queries must not expose internal workflow fields (`current_step`, letters, decline reasons, submitter, equipment internals, feedback code hashes).
+
+Do not expose private data through the public portal.
+
+---
+
+# 5. EVENT WORKFLOW
+
+The implemented chains (see `eventRequestWorkflow.ts` and transactional workflow RPCs) are:
+
+### Student Officer / Student Organization
+
+Student Officer → Adviser → Dean → OSAS → EO (assign resources) → parallel resource-office approvals → auto-schedule
+
+### SSC (request)
+
+SSC → OSAS → EO (assign resources) → parallel resource-office approvals → auto-schedule
+
+### EO / Admin direct create
+
+`eo_direct`: no approval chain; the event is created already posted.
+
+### What EO actually does
+
+EO does **not** approve-and-finish at the OSAS handoff.
+
+At step `eo_schedule`, EO **Approve & Forward** and must assign responsible offices for:
+
+* Venues (required)
+* Equipment/resources (when requested)
+
+Assignable offices in the current system: **GSO**, **Sports Office**, **IT Infrastructure**, and **SSC**.
+
+After forwarding, step is `resource_offices`. Offices decide in parallel.
+
+When **every** assigned office has approved:
+
+* the request is auto-scheduled (`status = approved`, calendar posted)
+* step becomes `eo_publish`
+
+A resource-office decline declines the whole request.
+
+Public posting (`student_post`, `status = posted`) is a later organization action after the event is scheduled. Do not assume EO clicks a separate “final schedule” after resource approvals.
+
+Other implemented actions: revision requested, resubmit, cancel, unpost, soft-delete, calendar post when needed.
+
+Workflow mutations go through security-definer RPCs (`create_event_request_transactional`, `event_workflow_decide`, `eo_forward_event_request`, `resource_office_decide_event_request`, `event_request_lifecycle`, `update_event_request_transactional`). Do not reimplement workflow only in the frontend.
+
+Legacy step values `gso` and `eo_publish` may still exist in enums/transitions; reuse them, do not invent a second chain.
+
+---
+
+# 6. RESOURCE OFFICES
+
+Resource offices approve **assignments** EO created. They are not the same as the first-half approval chain (Adviser / Dean / OSAS).
+
+### Portal UI (sidebar / managers)
+
+### GSO
+
+Handles:
+
+* Venues
+* Equipment/resources
+* Analytics (office resource analytics; both venue and equipment)
+
+### Sports Office
+
+Handles:
+
+* Sports venues/facilities
+* Analytics with equipment hidden in the UI
+
+### IT Infrastructure
+
+Handles:
+
+* Equipment
+* Analytics with venues hidden in the UI
+
+### SSC as a resource office
+
+SSC is both a **requester** (SSC → OSAS → EO) and, in the current system, an **assignable resource office** (venue/equipment inbox when EO assigns SSC). Label in assignment UI: “SSC Venue Manager”.
+
+Do not add a second SSC workflow. Extend the existing assignment + `resource_office_decide_event_request` path.
+
+### Assignment vs portal UI
+
+Office **portals** filter by responsibility (GSO both, Sports venues, IT equipment).
+
+EO assignment pickers currently allow **all four offices** for both venue and equipment. Do not “fix” that lock unless the user explicitly asks. Do not invent a new office type.
+
+All required resource-office approvals must complete before auto-schedule. Do not give an office a new Event Management / Analytics / Event Log module outside what it already has unless explicitly requested.
+
+---
+
+# 7. SPECIAL ROLES
+
+## Infirmary
+
+Infirmary is a calendar-only role.
+
+It has:
+
+* One Campus event calendar page (sidebar label: Dashboard)
+* Profile
+
+The calendar uses `list-layout="calendar-only"` (upcoming strip on the calendar, not a separate Event Management list).
+
+It is:
+
+* View-only
+* No Event Management
+* No Analytics
+* No Event Log
+
+## NSTP
+
+NSTP is a calendar-only role.
+
+It has:
+
+* One Campus event calendar page (sidebar label: Dashboard)
+* Profile
+
+Same calendar-only layout as Infirmary.
+
+It is:
+
+* View-only
+* No Event Management
+* No Analytics
+* No Event Log
+
+## EO
+
+EO sidebar:
+
+* Dashboard (analytics page — this is the post-login home)
+* Event Management
+* Event Monitoring
+* Settings
+* Profile
+
+Event Log is **on the EO Dashboard (analytics) page**, not a sidebar item. Route `/executive-officer/event-log` redirects to EO analytics.
+
+Event Trail is accessed through:
+
+Event Log → View → Event Trail
+
+Event Trail is NOT a separate sidebar module.
+
+Only EO should have Event Log access (frontend `canAccessEventLog` and RLS / `eo_event_log_page`).
+
+---
+
+# 8. DASHBOARDS
+
+For normal authenticated operational roles, Dashboard is the first page after login (`ROLE_HOME_PATH` in `appRole.ts`).
+
+For most staff roles, the sidebar item labeled **Dashboard** is the **analytics** route. The item labeled **Event Management** is the workflow/calendar home (`path: ""`). Do not confuse route name `*-dashboard` (often Event Management) with the sidebar Dashboard label.
+
+Infirmary and NSTP Dashboard is the calendar page, not analytics.
+
+Dashboards may contain:
+
+* Statistics
+* Analytics
+* Reports
+* Recent Activity
+* Event Trends
+* Pending Approval
+* Event summaries
+
+Admin Reports & Analytics is integrated into Admin Dashboard.
+
+EO Event Log is integrated into EO Dashboard.
+
+Do not create duplicate Dashboard/Reports modules.
+
+---
+
+# 9. PENDING APPROVAL
+
+Pending Approval counts must match the actual pending work for the current role.
+
+Do NOT simply count:
+
+`status = pending`
+
+The pending count must be based on the user's actual workflow responsibility.
+
+Examples:
+
+* Adviser / Dean / OSAS → `pending` and `current_step` matching that role (plus org/college scope)
+* EO → `eo_schedule`, or `eo_publish` with calendar not posted yet
+* Resource offices (GSO / IT / Sports / SSC assignments) → pending assignments for that office at `resource_offices` (plus legacy `current_step = gso` for GSO)
+* Student Officer / SSC as requesters → their own in-flight submissions (not the same as a resource inbox)
+* Admin → system-wide authorized pending work
+
+Use `isPendingForRole` / `getPendingEventsForCurrentUser` / `countPendingForRole` (`eventRequestsDb.ts`). Do not invent a second pending formula.
+
+The Dashboard count and Request/Review table should use the same underlying logic whenever possible.
+
+---
+
+# 10. EVENT MANAGEMENT
+
+The existing Event Management area contains functionality such as:
+
+* Request and Review
+* Event monitoring
+* Event tables
+* Event details
+* Approval/review
+* Campus Calendar
+* Approved/scheduled events
+
+Typical sidebars already in the app (do not add duplicate items):
+
+* Student Officer / Adviser / Dean: Dashboard, Event Management, Event Monitoring, Profile
+* OSAS / EO: same, plus Settings
+* SSC: Dashboard, Event Management, Event Monitoring, Venue, Profile (an `equipment` route exists but is not in the sidebar)
+* GSO: Dashboard, Event Management, Venues, Equipment, Settings, Profile
+* Sports: Dashboard, Event Management, Venue, Profile
+* IT: Dashboard, Event Management, Equipment, Profile
+* Admin: Dashboard, Users, Colleges, Settings, Profile (`/admin/reports` and `/admin/ssc` are not sidebar modules; reports embed on Admin Dashboard)
+
+Do NOT create duplicate modules when existing functionality already handles the requirement.
+
+---
+
+# 11. EVENT LOG AND EVENT TRAIL
+
+Only EO can access Event Log.
+
+Event Log columns (current table):
+
+* Date
+* Event
+* Action
+* User
+* Role
+* Notes
+* View
+
+Do not drop the Event column unless explicitly requested. Filters (date, org, college, status, action, venue, office) already exist on this panel.
+
+Clicking View opens the complete Event Trail for the selected event.
+
+Event Trail should preserve relevant event history such as:
+
+* Created
+* Submitted
+* Edited
+* Approved
+* Declined
+* Revision requested
+* Forwarded
+* Resource assigned
+* Resource approved
+* Resource declined
+* Scheduled
+* Rescheduled
+* Moved
+* Cancelled
+* Posted
+* Unposted
+* Other important event changes
+
+Use the existing `event_request_history` table and `EventsLogPanel` / `EventTrailPanel`. Data for the EO log is paged through RPC `eo_event_log_page`.
+
+Do NOT create duplicate history tables or duplicate Event Trail systems unless the existing implementation absolutely requires it.
+
+History must be persistent in Supabase and must not depend only on frontend state, localStorage, sessionStorage, or the currently logged-in account.
+
+---
+
+# 12. UI AND DESIGN RULES
+
+Preserve the existing EventLink design.
+
+Use the existing:
+
+* Green theme
+* Topbar
+* Sidebar
+* Cards
+* Tables
+* Buttons
+* Badges
+* Modals
+* Typography
+* Spacing
+* Icons
+* Responsive behavior
+
+Do NOT redesign the entire system unless explicitly requested.
+
+When making a UI change:
+
+1. Find the existing component.
+2. Understand its current layout.
+3. Modify the existing implementation.
+4. Reuse existing styles/components.
+5. Keep the current visual identity.
+6. Make only the requested change.
+
+Do NOT replace an entire page for a small UI change.
+
+---
+
+# 13. LAYOUT RULES
+
+Desktop layouts should use available space properly.
+
+Avoid:
+
+* Stretched calendars
+* Stretched cards
+* Excessively narrow tables
+* Excessively wide empty areas
+* Tiny unreadable text
+* Unnecessary horizontal scrolling
+* Unnecessary nested scrollbars
+* Awkward proportions
+
+Tables and calendars should have balanced proportions.
+
+For layouts containing a table and calendar, make both visible and properly sized when possible.
+
+Mobile layouts should remain usable.
+
+Do NOT simply shrink the desktop interface.
+
+---
+
+# 14. CALENDAR RULES
+
+Calendars should:
+
+* Be balanced
+* Be readable
+* Use available space properly
+* Have sensible day-cell proportions
+* Avoid unnecessary internal scrolling
+* Use `+X more` when there are too many events
+* Allow the PAGE to scroll vertically when needed
+* Remain responsive on mobile
+
+Do NOT add unnecessary nested calendar scrollbars.
+
+Past/completed events should remain readable but can use muted styling.
+
+Today should be clearly identifiable.
+
+Ongoing events should be clearly identifiable.
+
+Use the existing EventLink visual style.
+
+---
+
+# 15. TABLE RULES
+
+Tables should:
+
+* Use real database data
+* Preserve existing columns unless explicitly requested
+* Remain readable
+* Wrap long text where appropriate
+* Keep important actions visible
+* Avoid unnecessary horizontal scrolling
+* Use existing pagination where available
+
+Do not remove useful information simply to make a table fit.
+
+Do not replace existing tables unnecessarily.
+
+---
+
+# 16. DATABASE RULES
+
+EventLink uses Supabase as its backend.
+
+Before changing database functionality, inspect:
+
+* Existing migrations
+* Tables
+* Relationships
+* Foreign keys
+* RLS policies
+* Database functions
+* RPCs
+* Supabase services
+* Edge Functions
+* Existing queries
+
+Reuse existing structures when possible.
+
+Do NOT create duplicate tables or database fields when the existing schema already supports the requirement.
+
+---
+
+# 17. SECURITY RULES
+
+Never rely only on frontend route guards for authorization.
+
+When changing permissions or sensitive functionality, inspect:
+
+* Supabase RLS
+* Edge Functions
+* Database functions/RPCs
+* Server-side validation
+* Role assignments
+
+Frontend hiding is NOT sufficient security.
+
+Do not expose internal EventLink data to public users.
+
+Do not weaken RLS just to make a feature work.
+
+---
+
+# 18. EVENT HISTORY
+
+Event history must be persistent.
+
+Do not store important history only in:
+
+* Component state
+* localStorage
+* sessionStorage
+* Temporary arrays
+* Mock data
+* Current user session
+
+When an authorized user performs an event action, the relevant history should be stored in the existing database history system.
+
+Changing accounts must NOT remove or reset existing event history.
+
+---
+
+# 19. REAL DATA
+
+Use the existing Supabase data.
+
+Do NOT introduce mock/sample data when real database data already exists.
+
+Role `initialData.ts` files are leftover fixtures and are not the live data path. Layouts use empty mocks unless DEV `auth.useMock` is on. Do not revive mock event lists for production features.
+
+If a feature requires new data, first inspect whether the existing schema already contains the required information.
+
+---
+
+# 20. PERFORMANCE
+
+Do not perform unnecessary large database queries.
+
+For large datasets, prefer:
+
+* Server-side pagination
+* Database filtering
+* Database sorting
+* Date-range queries
+* Aggregate/count queries
+* Limited queries
+
+Do not load the entire database just to display a small dashboard statistic.
+
+Do not add unnecessary optimization for a small requested change.
+
+---
+
+# 21. RESPONSIVE DESIGN
+
+Desktop:
+
+* Use available space properly.
+* Keep tables and calendars readable.
+* Keep layouts balanced.
+
+Mobile:
+
+* Stack sections when necessary.
+* Keep buttons accessible.
+* Avoid excessively compressed text.
+* Avoid breaking tables.
+* Avoid unnecessary horizontal scrolling.
+* Avoid nested scrolling when possible.
+
+Do not redesign the mobile UI unless specifically requested.
+
+---
+
+# 22. EXISTING COMPONENTS
+
+Before creating a new component:
+
+1. Search the codebase.
+2. Check whether an existing component already performs the same function.
+3. Reuse it when possible.
+
+Avoid duplicate:
+
+* Tables
+* Calendars
+* Modals
+* Cards
+* Buttons
+* Event detail components
+* History components
+* Database services
+* Workflow logic
+
+---
+
+# 23. WHEN THE USER REQUESTS A CHANGE
+
+Always follow this process:
+
+1. Understand exactly what the user wants.
+2. Find the relevant existing implementation.
+3. Inspect related components.
+4. Inspect related services/data fetching.
+5. Inspect database logic if relevant.
+6. Determine the smallest correct change.
+7. Modify only the necessary files.
+8. Preserve existing functionality.
+9. Test the affected functionality.
+10. Run type checking/build when appropriate.
+11. Report what was changed.
+
+Do NOT make unrelated improvements.
+
+---
+
+# 24. UI REQUESTS
+
+If the user asks for a UI/layout change:
+
+* Treat it as a UI change first.
+* Do not modify database logic unless necessary.
+* Do not change business rules.
+* Do not change workflow.
+* Do not redesign unrelated pages.
+* Reuse the existing EventLink style.
+
+Example:
+
+If the user says:
+
+"Move Recent Activity to the left of Monthly Event Trend"
+
+Only modify the relevant dashboard layout.
+
+If the user says:
+
+"Add Date, Time, and Venue to Request and Review"
+
+Use the existing event request fields if they already exist.
+
+Do not create duplicate database fields.
+
+---
+
+# 25. WORKFLOW REQUESTS
+
+If the user asks to change an approval/workflow:
+
+Inspect the complete workflow before editing.
+
+Check:
+
+* Frontend
+* Services
+* Supabase queries
+* RLS
+* Database functions/RPCs
+* Notifications
+* History/Event Trail
+
+Do not fix only the frontend if the actual workflow is controlled by the backend.
+
+---
+
+# 26. BUG FIXES
+
+When fixing a bug:
+
+Do not immediately rewrite the affected component.
+
+First determine:
+
+* What is supposed to happen?
+* What actually happens?
+* Which component controls it?
+* Which service/query controls the data?
+* Whether RLS affects it
+* Whether the issue is caused by state/session/cache
+* Whether another role is affected
+
+Fix the root cause.
+
+---
+
+# 27. ACCOUNT SWITCHING
+
+When users log out and another user logs in:
+
+* Clear old user session state.
+* Load the new user's authorized data.
+* Do not delete database data.
+* Do not reset persistent history.
+* Do not reuse stale user-specific state.
+* Refresh role-specific queries when necessary.
+
+The system must correctly support switching between different authenticated accounts.
+
+---
+
+# 28. FILES AND ATTACHMENTS
+
+Before adding file functionality, inspect the existing:
+
+* Supabase Storage implementation
+* Storage buckets
+* Upload services
+* File references
+* RLS/storage policies
+
+Do not create duplicate upload systems.
+
+Private documents must remain protected.
+
+---
+
+# 29. NOTIFICATIONS
+
+Use the existing notification system.
+
+When changing event actions such as:
+
+* Approval
+* Decline
+* Revision
+* Scheduling
+* Rescheduling
+* Cancellation
+* Forwarding
+* Resource decisions
+* Posting
+
+Check whether the existing notification flow needs to be updated.
+
+Do not create a second notification system.
+
+---
+
+# 30. DO NOT DO THESE
+
+Unless explicitly requested:
+
+* Do NOT rewrite the entire system.
+* Do NOT redesign the entire UI.
+* Do NOT replace Vue.
+* Do NOT replace Supabase.
+* Do NOT introduce unnecessary libraries.
+* Do NOT create duplicate tables.
+* Do NOT create duplicate workflows.
+* Do NOT create duplicate history systems.
+* Do NOT remove working functionality.
+* Do NOT replace real data with mock data.
+* Do NOT change unrelated pages.
+* Do NOT change business rules silently.
+* Do NOT modify security policies casually.
+* Do NOT optimize everything for a small request.
+* Do NOT perform large refactors for a small UI change.
+
+---
+
+# 31. CODE QUALITY
+
+Keep changes:
+
+* Simple
+* Clear
+* Consistent with the existing code
+* Easy to maintain
+* Appropriate for the current project
+
+Do not introduce unnecessary abstractions or complicated architecture.
+
+Follow the existing coding patterns where they are reasonable.
+
+---
+
+# 32. IMPORTANT FINAL RULE
+
+The existing EventLink codebase is the source of truth for implementation details.
+
+These rules describe the intended system behavior, but if something differs from the actual code:
+
+1. Inspect the implementation.
+2. Identify the contradiction.
+3. Do not silently rewrite unrelated functionality.
+4. Tell the user about important contradictions before making major changes.
+
+For every future request, understand the existing EventLink implementation first and then make the smallest change necessary to accomplish the user's request.
