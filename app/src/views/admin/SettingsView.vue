@@ -116,9 +116,9 @@ onMounted(() => {
         </div>
         <ul class="space-y-2 text-sm text-slate-700">
           <li>
-            <strong>Dev:</strong> Staff Email OTP is skipped while
-            <code>DEV_SKIP_STAFF_EMAIL_OTP</code> is true in
-            <code>app/src/config/devAuth.ts</code> (set false for production).
+            <strong>Email OTP:</strong> Admin must verify OTP on every sign-in. Other roles
+            verify once per browser (trusted device); local Vite can still skip OTP via
+            <code>DEV_SKIP_STAFF_EMAIL_OTP</code>.
           </li>
           <li>Admin-created users are created with email already confirmed (no verification link).</li>
           <li>Three failed password attempts trigger a 60-second lockout.</li>

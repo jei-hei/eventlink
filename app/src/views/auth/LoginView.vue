@@ -7,6 +7,7 @@ import { useProfileStore } from "@/stores/profile";
 import { useUiStore } from "@/stores/ui";
 import { useNotificationsStore } from "@/stores/notifications";
 import { shouldSkipStaffEmailOtp } from "@/config/devAuth";
+import { isAdminRole, isTrustedDevice, markDeviceTrusted } from "@/config/trustedDevice";
 import { usePageVisibility } from "@/composables/usePageVisibility";
 
 const route = useRoute();
@@ -193,13 +194,16 @@ async function onSubmit() {
     await assertRateLimitAllowed("login", email.value.trim().toLowerCase());
     await auth.signIn(email.value.trim(), password.value, { provisional: true });
     clearLockoutState(email.value);
+    const mail = email.value.trim();
     const skipOtp =
-      auth.useMock || shouldSkipStaffEmailOtp(email.value.trim(), auth.appRole);
+      auth.useMock ||
+      shouldSkipStaffEmailOtp(mail, auth.appRole) ||
+      (!isAdminRole(auth.appRole) && isTrustedDevice(mail));
     if (!skipOtp) {
       try {
-        await auth.sendEmailOtp(email.value.trim());
+        await auth.sendEmailOtp(mail);
         otpRequired.value = true;
-        otpEmail.value = email.value.trim();
+        otpEmail.value = mail
         otpCode.value = "";
         ui.pushToast("OTP sent", `Enter the code sent to ${otpEmail.value}.`, "info");
       } catch (otpErr) {
@@ -249,8 +253,12 @@ async function verifyOtpAndSignIn() {
   }
   otpLoading.value = true;
   try {
-    await auth.verifyEmailOtp(otpEmail.value || email.value.trim(), otpCode.value.trim());
+    const mail = otpEmail.value || email.value.trim();
+    await auth.verifyEmailOtp(mail, otpCode.value.trim());
     otpRequired.value = false;
+    if (!isAdminRole(auth.appRole)) {
+      markDeviceTrusted(mail);
+    }
     await completeLogin();
   } catch (e) {
     error.value = formatAuthError(e);
@@ -389,7 +397,11 @@ function cancelOtpFlow() {
                 placeholder="Enter 6-digit code"
               />
             </div>
-            <p class="mt-1 text-xs text-slate-500">Code sent to {{ otpEmail || email }}</p>
+            <p class="mt-1 text-xs text-slate-500">
+              Code sent to {{ otpEmail || email }}.
+              <span v-if="!isAdminRole(auth.appRole)">This browser will skip OTP on later sign-ins.</span>
+              <span v-else>Admin accounts require OTP on every sign-in.</span>
+            </p>
           </div>
 
           <p v-if="error" class="text-sm font-medium text-red-700">{{ error }}</p>
