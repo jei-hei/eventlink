@@ -96,6 +96,8 @@ export const useAuthStore = defineStore("auth", () => {
   let singleSessionTimer: ReturnType<typeof setInterval> | null = null;
   let inactivityListenersBound = false;
   let currentSessionMarker: string | null = null;
+  let sessionClaimEpoch = 0;
+  let applySessionTail: Promise<void> = Promise.resolve();
   let singleSessionVerificationPromise: Promise<void> | null = null;
   const lastActivityAt = ref(0);
   const inactivityWarning = ref(false);
@@ -300,8 +302,9 @@ export const useAuthStore = defineStore("auth", () => {
     return { userAgent, ip, location };
   }
 
-  async function writeActiveSession(marker: string, showLoginAlert: boolean) {
+  async function writeActiveSession(marker: string, showLoginAlert: boolean, epoch: number) {
     if (!userId.value) return;
+    const uid = userId.value;
     const supabase = getSupabase();
     const loginMeta = showLoginAlert
       ? await fetchLoginMeta()
@@ -310,6 +313,7 @@ export const useAuthStore = defineStore("auth", () => {
           ip: "unknown",
           location: "unknown",
         };
+    if (epoch !== sessionClaimEpoch || userId.value !== uid) return;
     const metadata = {
       browser: loginMeta.userAgent,
       ip: loginMeta.ip,
@@ -323,12 +327,13 @@ export const useAuthStore = defineStore("auth", () => {
         active_session_updated_at: new Date().toISOString(),
         last_login_metadata: metadata,
       })
-      .eq("id", userId.value);
+      .eq("id", uid);
     if (error) throw error;
+    if (epoch !== sessionClaimEpoch || userId.value !== uid) return;
 
     if (typeof window !== "undefined") {
-      const key = sessionMarkerKey();
-      if (key) window.localStorage.setItem(key, marker);
+      const key = `eventlink:session-marker:${uid}`;
+      window.localStorage.setItem(key, marker);
     }
 
     let notificationCreated = false;
@@ -372,16 +377,22 @@ export const useAuthStore = defineStore("auth", () => {
     if (singleSessionVerificationPromise) return singleSessionVerificationPromise;
 
     singleSessionVerificationPromise = (async () => {
-      if (!userId.value || !currentSessionMarker) return;
+      const uid = userId.value;
+      const marker = currentSessionMarker;
+      const epoch = sessionClaimEpoch;
+      if (!uid || !marker) return;
       const supabase = getSupabase();
       const { data, error } = await supabase
         .from("profiles")
         .select("active_session_id")
-        .eq("id", userId.value)
+        .eq("id", uid)
         .maybeSingle();
       if (error) return;
+      if (userId.value !== uid || currentSessionMarker !== marker || epoch !== sessionClaimEpoch) {
+        return;
+      }
       const active = (data?.active_session_id as string | null) ?? null;
-      if (active && active !== currentSessionMarker) {
+      if (active && active !== marker) {
         await signOut();
         if (typeof window !== "undefined") {
           window.alert(
@@ -419,10 +430,14 @@ export const useAuthStore = defineStore("auth", () => {
   async function activateCurrentSessionSecurity(showLoginAlert: boolean) {
     if (useMock.value || !userId.value || isSecurityExemptEmail(email.value)) return;
     pauseSingleSessionPolling();
+    const uid = userId.value;
+    const epoch = ++sessionClaimEpoch;
     const marker = generateSessionMarker();
     currentSessionMarker = marker;
-    await writeActiveSession(marker, showLoginAlert);
+    await writeActiveSession(marker, showLoginAlert, epoch);
+    if (epoch !== sessionClaimEpoch || userId.value !== uid) return;
     await verifySingleSessionStillActive();
+    if (epoch !== sessionClaimEpoch || userId.value !== uid) return;
     startSingleSessionPolling();
   }
 
@@ -568,7 +583,32 @@ export const useAuthStore = defineStore("auth", () => {
 
   async function applySession(
     session: { user: { id: string; email?: string | null } } | null,
-    opts?: { enforceSingleSession?: boolean; showLoginAlert?: boolean; resetIdleClock?: boolean },
+    opts?: {
+      enforceSingleSession?: boolean;
+      showLoginAlert?: boolean;
+      resetIdleClock?: boolean;
+      provisional?: boolean;
+    },
+  ) {
+    const run = applySessionTail.then(
+      () => applySessionUnlocked(session, opts),
+      () => applySessionUnlocked(session, opts),
+    );
+    applySessionTail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  async function applySessionUnlocked(
+    session: { user: { id: string; email?: string | null } } | null,
+    opts?: {
+      enforceSingleSession?: boolean;
+      showLoginAlert?: boolean;
+      resetIdleClock?: boolean;
+      provisional?: boolean;
+    },
   ) {
     const enforceSingleSession = opts?.enforceSingleSession ?? true;
     const showLoginAlert = opts?.showLoginAlert ?? false;
@@ -620,6 +660,9 @@ export const useAuthStore = defineStore("auth", () => {
     startInactivityMonitor();
     if (isSecurityExemptEmail(session.user.email ?? email.value)) {
       clearSingleSessionTimer();
+      currentSessionMarker = null;
+    } else if (opts?.provisional) {
+      pauseSingleSessionPolling();
       currentSessionMarker = null;
     } else if (enforceSingleSession) {
       void activateCurrentSessionSecurity(showLoginAlert);
@@ -776,6 +819,7 @@ export const useAuthStore = defineStore("auth", () => {
       enforceSingleSession: !opts?.provisional,
       showLoginAlert: !opts?.provisional,
       resetIdleClock: true,
+      provisional: opts?.provisional === true,
     });
     return { mock: false as const };
   }
@@ -886,7 +930,8 @@ export const useAuthStore = defineStore("auth", () => {
     passwordRecoveryPending.value = false;
   }
 
-  async function signOut(opts?: { reason?: "inactivity" }) {
+  async function signOut(opts?: { reason?: "inactivity"; scope?: "local" | "global" | "others" }) {
+    sessionClaimEpoch += 1;
     clearIdleCheckTimer();
     clearSingleSessionTimer();
     currentSessionMarker = null;
@@ -900,7 +945,7 @@ export const useAuthStore = defineStore("auth", () => {
     if (opts?.reason === "inactivity") goToInactivityLogin();
     try {
       await Promise.race([
-        supabase.auth.signOut({ scope: "global" }),
+        supabase.auth.signOut({ scope: opts?.scope ?? "local" }),
         new Promise<void>((resolve) => {
           window.setTimeout(resolve, 4000);
         }),
