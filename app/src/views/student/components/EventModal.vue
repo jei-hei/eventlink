@@ -31,7 +31,7 @@ function onFeedbackSubmitted() {
     @click.self="emit('close')"
   >
     <div
-      class="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+      class="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[min(90dvh,90vh)] overflow-y-auto"
       @click.stop
     >
       <div class="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">

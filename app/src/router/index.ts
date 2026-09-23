@@ -10,12 +10,8 @@ const router = createRouter({
     return { top: 0 };
   },
   routes: [
-    { path: "/", redirect: "/login" },
-    {
-      path: "/login",
-      name: "login",
-      component: () => import("@/views/auth/LoginView.vue"),
-    },
+    { path: "/", name: "login", component: () => import("@/views/auth/LoginView.vue") },
+    { path: "/login", redirect: (to) => ({ path: "/", query: to.query }) },
     {
       path: "/signup",
       redirect: { name: "login", query: { notice: "signup-disabled" } },

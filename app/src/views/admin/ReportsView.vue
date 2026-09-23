@@ -25,6 +25,8 @@ import {
   type AdminReportsData,
   type NameCount,
 } from "@/services/adminReportsDb";
+import PaginationControls from "@/components/PaginationControls.vue";
+import { DEFAULT_PAGE_SIZE, clampPage, clampPageSize } from "@/types/pagination";
 
 withDefaults(defineProps<{ embedded?: boolean }>(), {
   embedded: false,
@@ -37,16 +39,33 @@ const loadError = ref<string | null>(null);
 const filters = reactive<AdminReportFilters>(defaultAdminReportFilters());
 
 const reports = ref<AdminReportsData | null>(null);
+const detailPage = ref(1);
+const detailPageSize = ref(DEFAULT_PAGE_SIZE);
+
+const detailTotal = computed(() => reports.value?.detailRows.length ?? 0);
+const pagedDetailRows = computed(() => {
+  const rows = reports.value?.detailRows ?? [];
+  const size = clampPageSize(detailPageSize.value);
+  const page = clampPage(detailPage.value);
+  const from = (page - 1) * size;
+  return rows.slice(from, from + size);
+});
 
 const usersByRole = computed(() => reports.value?.userStats.byRole ?? []);
 
 watch(
   () => ({ ...filters }),
   () => {
+    detailPage.value = 1;
     void loadReportData();
   },
   { immediate: true },
 );
+
+watch([detailTotal, detailPageSize], () => {
+  const maxPage = Math.max(1, Math.ceil(detailTotal.value / Math.max(1, detailPageSize.value)));
+  if (detailPage.value > maxPage) detailPage.value = maxPage;
+});
 
 async function loadReportData() {
   if (!isSupabaseConfigured) return;
@@ -550,7 +569,7 @@ function countList(items: NameCount[] | undefined): NameCount[] {
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-6 py-4">
         <div>
           <h3 class="text-lg font-semibold text-gray-900">Detailed Event Report</h3>
-          <p class="text-sm text-gray-500">{{ reports?.detailRows.length ?? 0 }} event(s) matching filters</p>
+          <p class="text-sm text-gray-500">{{ detailTotal }} event(s) matching filters</p>
         </div>
         <button
           type="button"
@@ -575,15 +594,15 @@ function countList(items: NameCount[] | undefined): NameCount[] {
             </tr>
           </thead>
           <tbody>
-            <tr v-if="loading && !(reports?.detailRows.length)">
+            <tr v-if="loading && !detailTotal">
               <td colspan="7" class="py-8 text-center text-sm text-gray-500">Loading…</td>
             </tr>
-            <tr v-else-if="!(reports?.detailRows.length)">
+            <tr v-else-if="!detailTotal">
               <td colspan="7" class="py-8 text-center text-sm text-gray-500">
                 No events match the current filters.
               </td>
             </tr>
-            <tr v-for="row in reports?.detailRows ?? []" :key="row.id">
+            <tr v-for="row in pagedDetailRows" :key="row.id">
               <td class="font-medium text-gray-900">{{ row.event }}</td>
               <td>{{ row.organization }}</td>
               <td>{{ row.college }}</td>
@@ -598,6 +617,17 @@ function countList(items: NameCount[] | undefined): NameCount[] {
           </tbody>
         </table>
       </div>
+      <PaginationControls
+        :page="detailPage"
+        :page-size="detailPageSize"
+        :total="detailTotal"
+        :loading="loading"
+        @update:page="detailPage = $event"
+        @update:page-size="
+          detailPageSize = $event;
+          detailPage = 1;
+        "
+      />
     </div>
 
     <!-- Export (preserved) -->

@@ -9,7 +9,7 @@ const { toasts } = storeToRefs(ui);
 
 <template>
   <div
-    class="pointer-events-none fixed bottom-0 right-0 z-[110] flex max-w-[100vw] flex-col gap-2 p-3 sm:bottom-4 sm:right-4 sm:p-0"
+    class="pointer-events-none fixed right-0 bottom-0 z-[110] flex max-w-[100vw] flex-col gap-2 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:right-4 sm:bottom-4 sm:p-0"
     aria-live="polite"
   >
     <TransitionGroup

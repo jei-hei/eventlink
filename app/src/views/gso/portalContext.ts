@@ -6,7 +6,7 @@ export interface GsoPortalContext {
   events: Ref<GsoEvent[]>;
   approvedEvents: Ref<GsoEvent[]>;
   scheduledEvents: Ref<GsoEvent[]>;
-  handleApprove: (id: string) => void;
+  handleApprove: (id: string) => boolean;
   handleReject: (id: string) => void;
   handleCreateEvent: (e: GsoEvent) => void;
   useDb: Ref<boolean>;

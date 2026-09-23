@@ -83,7 +83,7 @@ function openNotification(n: (typeof items.value)[number]) {
     >
       <div
         v-if="open"
-        class="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-xl ring-1 ring-slate-900/[0.04]"
+        class="fixed inset-x-2 top-[4.25rem] z-50 max-h-[min(24rem,70dvh)] overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-xl ring-1 ring-slate-900/[0.04] sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[min(22rem,calc(100vw-2rem))]"
         role="menu"
       >
         <div class="flex items-center justify-between border-b border-slate-100 px-3 py-2">

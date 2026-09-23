@@ -6,7 +6,7 @@ export interface DeanPortalContext {
   events: Ref<DeanEvent[]>;
   approvedEvents: Ref<DeanEvent[]>;
   scheduledEvents: Ref<DeanEvent[]>;
-  handleApprove: (id: string) => void;
+  handleApprove: (id: string) => boolean;
   handleReject: (id: string) => void;
   handleRequestRevision: (
     id: string,

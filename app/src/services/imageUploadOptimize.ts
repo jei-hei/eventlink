@@ -20,23 +20,30 @@ export async function optimizeImageForUpload(
   const maxHeight = opts?.maxHeight ?? 1600;
   const quality = opts?.quality ?? 0.84;
 
-  const bitmap = await createImageBitmap(file);
-  const target = clampSize(bitmap.width, bitmap.height, maxWidth, maxHeight);
+  try {
+    const bitmap = await createImageBitmap(file);
+    const target = clampSize(bitmap.width, bitmap.height, maxWidth, maxHeight);
 
-  const canvas = document.createElement("canvas");
-  canvas.width = target.width;
-  canvas.height = target.height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
+    const canvas = document.createElement("canvas");
+    canvas.width = target.width;
+    canvas.height = target.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return file;
+    }
 
-  ctx.drawImage(bitmap, 0, 0, target.width, target.height);
-  bitmap.close();
+    ctx.drawImage(bitmap, 0, 0, target.width, target.height);
+    bitmap.close();
 
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, "image/webp", quality);
-  });
-  if (!blob) return file;
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/webp", quality);
+    });
+    if (!blob) return file;
 
-  const base = file.name.replace(/\.[^.]+$/, "").replace(/[^\w.\-() ]+/g, "_").trim() || "image";
-  return new File([blob], `${base}.webp`, { type: "image/webp" });
+    const base = file.name.replace(/\.[^.]+$/, "").replace(/[^\w.\-() ]+/g, "_").trim() || "image";
+    return new File([blob], `${base}.webp`, { type: "image/webp" });
+  } catch {
+    return file;
+  }
 }

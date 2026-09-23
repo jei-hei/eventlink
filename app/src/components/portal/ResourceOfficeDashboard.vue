@@ -7,6 +7,7 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 import EventLetterLink from "@/components/EventLetterLink.vue";
+import { isProposalReviewed, PROPOSAL_REVIEW_HINT } from "@/utils/proposalReview";
 import { resourceOfficeLabel, type ResourceOffice } from "@/types/resourceOffice";
 
 const props = defineProps<{
@@ -204,7 +205,7 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
         <div class="flex justify-end gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
           <button type="button" class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold" @click="selectedEvent = null">Close</button>
           <button type="button" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" :disabled="busy" @click="onReject(selectedEvent)">Decline</button>
-          <button type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" :disabled="busy" @click="onApprove(selectedEvent)">Approve</button>
+          <button type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60" :disabled="busy || !isProposalReviewed(selectedEvent.letterPath)" :title="isProposalReviewed(selectedEvent.letterPath) ? '' : PROPOSAL_REVIEW_HINT" @click="onApprove(selectedEvent)">Approve</button>
         </div>
       </div>
     </div>

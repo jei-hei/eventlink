@@ -34,6 +34,7 @@ const imagePreviews = ref<string[]>([]);
 const existingImageUrls = ref<string[]>([]);
 const imagesReplaced = ref(false);
 const imageError = ref("");
+const uploadingImages = computed(() => !!props.publishing && imageFiles.value.length > 0);
 
 const postableEvents = computed(() =>
   (props.myEvents ?? []).filter(
@@ -383,7 +384,16 @@ function submit() {
                   class="relative overflow-hidden rounded-lg border border-gray-200"
                 >
                   <img :src="preview" alt="Post preview" class="h-32 w-full object-cover" />
+                  <div
+                    v-if="uploadingImages"
+                    class="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/55 text-white"
+                    aria-live="polite"
+                  >
+                    <Loader2 :size="22" class="animate-spin" />
+                    <span class="text-[11px] font-semibold">Uploading…</span>
+                  </div>
                   <button
+                    v-else
                     type="button"
                     class="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
                     aria-label="Remove image"
@@ -393,20 +403,25 @@ function submit() {
                   </button>
                 </div>
               </div>
-              <label class="inline-flex cursor-pointer text-xs font-semibold text-emerald-700 hover:underline">
+              <label
+                class="inline-flex text-xs font-semibold"
+                :class="publishing ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer text-emerald-700 hover:underline'"
+              >
                 Replace photos…
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif"
                   multiple
                   class="sr-only"
+                  :disabled="publishing"
                   @change="onImageChange"
                 />
               </label>
             </div>
             <label
               v-else
-              class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-8 transition hover:border-[#16A34A] hover:bg-green-50/50"
+              class="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-8 transition"
+              :class="publishing ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-[#16A34A] hover:bg-green-50/50'"
             >
               <ImagePlus :size="28" class="text-gray-400" />
               <span class="text-sm font-medium text-gray-700">Add a photo</span>
@@ -416,6 +431,7 @@ function submit() {
                 accept="image/jpeg,image/png,image/webp,image/gif"
                 multiple
                 class="sr-only"
+                :disabled="publishing"
                 @change="onImageChange"
               />
             </label>
@@ -426,7 +442,8 @@ function submit() {
         <div class="flex gap-3 border-t border-gray-200 bg-gray-50 px-5 py-4">
           <button
             type="button"
-            class="flex-1 rounded-lg bg-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-300"
+            class="flex-1 rounded-lg bg-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-300 disabled:opacity-60"
+            :disabled="publishing"
             @click="close"
           >
             Cancel

@@ -26,6 +26,7 @@ export default defineConfig(({ mode }) => ({
           if (id.includes('@supabase')) return 'supabase'
           if (id.includes('xlsx')) return 'xlsx'
           if (id.includes('lucide-vue-next')) return 'icons'
+          if (id.includes('pdfjs-dist')) return 'pdfjs'
           if (
             id.includes('/vue/') ||
             id.includes('vue-router') ||

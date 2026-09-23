@@ -2,6 +2,7 @@
 import { CheckCircle, X, XCircle } from "lucide-vue-next";
 import EventLetterLink from "@/components/EventLetterLink.vue";
 import type { GsoEvent } from "../types";
+import { isProposalReviewed, PROPOSAL_REVIEW_HINT } from "@/utils/proposalReview";
 
 const props = defineProps<{ event: GsoEvent }>();
 const emit = defineEmits<{ close: []; approve: []; reject: [] }>();
@@ -144,7 +145,9 @@ const showCloseOnly = props.event.createdBy === "EO" || props.event.status !== "
           </button>
           <button
             type="button"
-            class="px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-sm font-semibold transition flex items-center gap-2"
+            class="px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-sm font-semibold transition flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="!isProposalReviewed(event.letterPath)"
+            :title="isProposalReviewed(event.letterPath) ? '' : PROPOSAL_REVIEW_HINT"
             @click="emit('approve')"
           >
             <CheckCircle :size="15" />

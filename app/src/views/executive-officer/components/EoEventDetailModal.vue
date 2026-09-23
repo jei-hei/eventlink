@@ -11,6 +11,7 @@ import {
   resourceOfficeLabel,
 } from "@/types/resourceOffice";
 import { useEventRequestsStore } from "@/stores/eventRequests";
+import { isProposalReviewed, PROPOSAL_REVIEW_HINT } from "@/utils/proposalReview";
 
 const props = defineProps<{ event: EoEvent; canPostToCalendar?: boolean; busy?: boolean }>();
 const emit = defineEmits<{
@@ -505,8 +506,9 @@ async function onRevisionSubmit(payload: { comment: string; attachmentFile: File
         <button
           v-else-if="needsAssignment"
           type="button"
-          class="rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#15803D] disabled:opacity-60"
-          :disabled="busy"
+          class="rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#15803D] disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="busy || !isProposalReviewed(detailEvent.letterPath || event.letterPath)"
+          :title="isProposalReviewed(detailEvent.letterPath || event.letterPath) ? '' : PROPOSAL_REVIEW_HINT"
           @click="onForward"
         >
           Approve &amp; Forward

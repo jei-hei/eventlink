@@ -6,7 +6,7 @@ export interface SportsPortalContext {
   events: Ref<SportsEvent[]>;
   approvedEvents: Ref<SportsEvent[]>;
   scheduledEvents: Ref<SportsEvent[]>;
-  handleApprove: (id: string) => void;
+  handleApprove: (id: string) => boolean;
   handleReject: (id: string) => void;
   useDb: Ref<boolean>;
   busy: Ref<boolean>;

@@ -10,7 +10,7 @@ export interface OfficerPortalContext {
   approvedEvents: Ref<OfficerEvent[]>;
   declinedEvents: Ref<OfficerEvent[]>;
   scheduledEvents: Ref<OfficerEvent[]>;
-  handleApprove: (id: string) => void;
+  handleApprove: (id: string) => boolean;
   handleReject: (id: string) => void;
   handleCreateEvent: (e: OfficerEvent) => void;
   handlePostEvent: (id: string) => void;

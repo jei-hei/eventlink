@@ -43,6 +43,16 @@ export async function getEventLetterSignedUrl(path: string): Promise<string | nu
   return data.signedUrl;
 }
 
+/** Authenticated blob download — avoids CORS on the public signed URL. */
+export async function downloadEventLetterBytes(path: string): Promise<ArrayBuffer> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.storage.from(BUCKET).download(path);
+  if (error || !data) {
+    throw new Error(error?.message || "Could not load the proposal PDF.");
+  }
+  return data.arrayBuffer();
+}
+
 export function letterFileNameFromPath(path: string): string {
   const part = path.split("/").pop();
   return part || "proposal.pdf";
@@ -52,20 +62,22 @@ export function isPdfPath(path: string): boolean {
   return PDF_EXT.test(path);
 }
 
-/** Download helper for non-PDF legacy files. Prefer in-app PDF viewer for proposals. */
+/** Save the proposal as a file in this tab — do not open the signed storage URL. */
 export async function downloadEventLetter(letterPath: string): Promise<boolean> {
-  const url = await getEventLetterSignedUrl(letterPath);
-  if (!url) {
-    window.alert("Could not open the proposal file.");
+  try {
+    const bytes = await downloadEventLetterBytes(letterPath);
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = letterFileNameFromPath(letterPath);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    return true;
+  } catch {
+    window.alert("Could not download the proposal file.");
     return false;
   }
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = letterFileNameFromPath(letterPath);
-  a.target = "_blank";
-  a.rel = "noopener noreferrer";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  return true;
 }

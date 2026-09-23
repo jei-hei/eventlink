@@ -503,7 +503,7 @@ const weeks = computed(() => {
 const weekRowTemplate = computed(() => {
   const count = Math.max(weeks.value.length, 1);
   if (props.listLayout === "calendar-only") {
-    return `repeat(${count}, minmax(5.5rem, 6.25rem))`;
+    return `repeat(${count}, minmax(4.75rem, 5.25rem))`;
   }
   return `repeat(${count}, minmax(0, 1fr))`;
 });
@@ -576,7 +576,7 @@ const weekRowTemplate = computed(() => {
         listLayout === 'below'
           ? 'contents'
           : listLayout === 'calendar-only'
-            ? 'flex min-h-0 flex-col gap-4 p-0 lg:flex-row lg:items-start lg:gap-0'
+            ? 'grid min-h-0 grid-cols-1 items-start gap-0 lg:grid-cols-[minmax(0,1fr)_18rem]'
             : 'flex min-h-0 flex-none flex-col lg:flex-1 lg:flex-row',
       ]"
     >
@@ -586,7 +586,7 @@ const weekRowTemplate = computed(() => {
           listLayout === 'management'
             ? 'min-h-[32rem] flex-1 lg:min-h-0 lg:w-3/4 lg:flex-none'
             : listLayout === 'calendar-only'
-              ? 'min-h-0 min-w-0 flex-1'
+              ? 'min-h-0 min-w-0 w-full'
               : 'min-h-[32rem] flex-1 lg:min-h-0',
         ]"
       >
@@ -775,7 +775,7 @@ const weekRowTemplate = computed(() => {
         listLayout === 'management'
           ? 'shrink-0 lg:w-1/4 lg:border-l lg:border-t-0'
           : listLayout === 'calendar-only'
-            ? 'min-w-0 w-full lg:w-72 lg:shrink-0 lg:self-stretch lg:border-l lg:border-t-0 xl:w-80'
+            ? 'min-w-0 w-full lg:h-full lg:max-h-[min(34rem,calc(100dvh-16rem))] lg:overflow-y-auto lg:border-l lg:border-t-0'
             : 'shrink-0',
       ]"
     >

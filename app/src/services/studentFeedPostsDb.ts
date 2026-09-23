@@ -1,5 +1,9 @@
 import { getSupabase } from "@/lib/supabase";
-import { getEventPostImagePublicUrl, uploadEventPostImage } from "@/services/eventPostImageStorage";
+import {
+  deleteEventPostImages,
+  getEventPostImagePublicUrl,
+  uploadEventPostImage,
+} from "@/services/eventPostImageStorage";
 import { getProfileAvatarPublicUrl } from "@/services/profileAvatarStorage";
 import { fetchSscOrganization } from "@/services/organizationsDb";
 import type { AppRole } from "@/types/appRole";
@@ -331,8 +335,8 @@ export async function createStudentFeedPost(
   if (insertErr) throw insertErr;
 
   if (files.length) {
+    const uploadedPaths: string[] = [];
     try {
-      const uploadedPaths: string[] = [];
       for (const file of files) {
         const imagePath = await uploadEventPostImage(file, actorId, postId);
         uploadedPaths.push(imagePath);
@@ -350,10 +354,11 @@ export async function createStudentFeedPost(
       const [withPoster] = await attachPosterProfiles([updated as StudentFeedPostRow]);
       return withPoster!;
     } catch (imgErr) {
-      const msg = imgErr instanceof Error ? imgErr.message : String(imgErr);
-      console.warn("Post saved but image upload failed:", msg);
-      const [withPoster] = await attachPosterProfiles([inserted as StudentFeedPostRow]);
-      return withPoster!;
+      await deleteEventPostImages(uploadedPaths).catch(() => undefined);
+      await supabase.from("student_feed_posts").delete().eq("id", postId).eq("submitted_by", actorId);
+      throw imgErr instanceof Error
+        ? imgErr
+        : new Error("Could not upload the photo. The post was not published.");
     }
   }
 

@@ -10,6 +10,7 @@ import type { CreateEventRequestInput } from "@/types/eventRequest";
 import type { UpdateEventRequestInput } from "@/services/eventRequestsDb";
 import type { CreateStudentFeedPostInput } from "@/types/studentPost";
 import { toUserFacingError } from "@/utils/userFacingError";
+import { requireProposalReviewed } from "@/utils/proposalReview";
 
 type MockState = {
   events: Ref<PortalEvent[]>;
@@ -148,20 +149,27 @@ export function usePortalEvents(
     }
   }
 
-  function handleApprove(id: string) {
-    if (!window.confirm("Are you sure you want to approve this event?")) return;
+  function pendingById(id: string): PortalEvent | undefined {
+    return events.value.find((e) => e.id === id) ?? mock.events.value.find((e) => e.id === id);
+  }
+
+  function handleApprove(id: string): boolean {
+    const ev = pendingById(id);
+    if (!requireProposalReviewed(ev?.letterPath)) return false;
+    const label = ev?.name?.trim() || "this event";
+    if (!window.confirm(`Are you sure you want to approve "${label}"?`)) return false;
     if (useDb.value) {
       void runAction(() => store.approve(id), {
         title: "Event approved successfully.",
         description: "The event request was approved.",
       });
-      return;
+      return true;
     }
-    const ev = mock.events.value.find((e) => e.id === id);
-    if (!ev) return;
+    if (!ev) return false;
     mock.approvedEvents.value = [...mock.approvedEvents.value, { ...ev, status: "Approved" }];
     mock.events.value = mock.events.value.filter((e) => e.id !== id);
     ui.pushToast("Request approved successfully.", "The event request was approved.", "success");
+    return true;
   }
 
   function handleReject(id: string) {
@@ -182,6 +190,8 @@ export function usePortalEvents(
     id: string,
     assignments: import("@/types/resourceOffice").ResourceAssignmentInput[],
   ) {
+    const ev = pendingById(id);
+    if (!requireProposalReviewed(ev?.letterPath)) return;
     if (!window.confirm("Are you sure you want to forward this event to the selected offices?")) return;
     if (useDb.value) {
       await runAction(() => store.approveAndForward(id, assignments), {

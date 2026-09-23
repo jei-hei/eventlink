@@ -45,6 +45,16 @@ export function installRouterGuards(router: Router) {
 
     return true;
   });
+
+  router.afterEach((to) => {
+    if (typeof window === "undefined") return;
+    const name = String(to.name ?? "");
+    if (PUBLIC_NAMES.has(name)) return;
+    const path = `${window.location.origin}/`;
+    if (window.location.href.split("?")[0] !== path) {
+      window.history.replaceState(window.history.state, "", "/");
+    }
+  });
 }
 
 export function roleHome(role: AppRole): string {

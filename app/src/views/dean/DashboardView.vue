@@ -8,6 +8,7 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 import { useDashboardLifecycleLog } from "@/composables/useDashboardLifecycleLog";
+import { isProposalReviewed, PROPOSAL_REVIEW_HINT } from "@/utils/proposalReview";
 
 useDashboardLifecycleLog("dean/DashboardView");
 
@@ -26,7 +27,7 @@ const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.
 
 function onModalApprove() {
   if (!selectedEvent.value) return;
-  handleApprove(selectedEvent.value.id);
+  if (!handleApprove(selectedEvent.value.id)) return;
   selectedEvent.value = null;
 }
 
@@ -126,8 +127,9 @@ async function onModalRevision(comment: string, attachmentFile: File | null) {
                     <div class="flex items-center justify-center gap-2 flex-wrap">
                       <button
                         type="button"
-                        class="bg-[#16A34A] hover:bg-[#15803D] text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm disabled:opacity-60"
-                        :disabled="busy"
+                        class="bg-[#16A34A] hover:bg-[#15803D] text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="busy || !isProposalReviewed(event.letterPath)"
+                        :title="isProposalReviewed(event.letterPath) ? '' : PROPOSAL_REVIEW_HINT"
                         @click.stop="handleApprove(event.id)"
                       >
                         <Check :size="14" />

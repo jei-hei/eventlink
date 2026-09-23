@@ -4,6 +4,7 @@ import { CheckCircle, X, XCircle } from "lucide-vue-next";
 import EventLetterLink from "@/components/EventLetterLink.vue";
 import ComplianceRevisionModal from "@/components/portal/ComplianceRevisionModal.vue";
 import type { OsasEvent } from "../types";
+import { isProposalReviewed, PROPOSAL_REVIEW_HINT } from "@/utils/proposalReview";
 
 const props = defineProps<{ event: OsasEvent }>();
 const emit = defineEmits<{
@@ -172,7 +173,9 @@ async function onRevisionSubmit(payload: { comment: string; attachmentFile: File
           </button>
           <button
             type="button"
-            class="px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-sm font-semibold transition flex items-center gap-2"
+            class="px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-sm font-semibold transition flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="!isProposalReviewed(event.letterPath)"
+            :title="isProposalReviewed(event.letterPath) ? '' : PROPOSAL_REVIEW_HINT"
             @click="emit('approve')"
           >
             <CheckCircle :size="15" />

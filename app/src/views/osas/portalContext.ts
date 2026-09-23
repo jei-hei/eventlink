@@ -6,7 +6,7 @@ export interface OsasPortalContext {
   events: Ref<OsasEvent[]>;
   approvedEvents: Ref<OsasEvent[]>;
   scheduledEvents: Ref<OsasEvent[]>;
-  handleApprove: (id: string) => void;
+  handleApprove: (id: string) => boolean;
   handleReject: (id: string) => void;
   handleRequestRevision: (
     id: string,

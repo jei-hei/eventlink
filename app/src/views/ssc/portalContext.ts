@@ -10,7 +10,7 @@ export interface SscPortalContext {
   approvedEvents: Ref<SscEvent[]>;
   declinedEvents: Ref<SscEvent[]>;
   scheduledEvents: Ref<SscEvent[]>;
-  handleApprove: (id: string) => void;
+  handleApprove: (id: string) => boolean;
   handleReject: (id: string) => void;
   handleCreateEvent: (e: SscEvent) => void;
   handlePostEvent: (id: string) => void;

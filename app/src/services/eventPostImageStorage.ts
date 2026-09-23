@@ -27,9 +27,17 @@ export async function uploadEventPostImage(
   const supabase = getSupabase();
   const { error } = await supabase.storage.from(BUCKET).upload(path, optimized, {
     upsert: true,
-    contentType: optimized.type || undefined,
+    contentType: optimized.type || "image/webp",
   });
-  if (error) throw error;
+  if (error) {
+    const raw = error.message || "Storage upload failed";
+    if (/row-level security|violates|not allowed|unauthorized|403/i.test(raw)) {
+      throw new Error(
+        "Could not upload the photo. Check that you are signed in and try a JPEG, PNG, WebP, or GIF under 5 MB.",
+      );
+    }
+    throw new Error(raw);
+  }
   return path;
 }
 

@@ -269,8 +269,8 @@ async function resetUserPassword(user: UserRow) {
     </div>
 
     <div class="dash-card dash-card-fill min-h-0">
-      <div class="min-h-0 flex-1 overflow-auto">
-      <table class="portal-table min-w-0">
+      <div class="min-h-0 flex-1 overflow-x-auto overflow-y-auto">
+      <table class="portal-table">
         <thead>
           <tr>
             <th>Name</th>

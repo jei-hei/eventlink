@@ -6,7 +6,7 @@ export interface AdviserPortalContext {
   events: Ref<AdviserEvent[]>;
   approvedEvents: Ref<AdviserEvent[]>;
   scheduledEvents: Ref<AdviserEvent[]>;
-  handleApprove: (id: string) => void;
+  handleApprove: (id: string) => boolean;
   handleReject: (id: string) => void;
   handleRequestRevision: (
     id: string,

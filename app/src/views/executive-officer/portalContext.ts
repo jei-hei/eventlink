@@ -8,7 +8,7 @@ export interface ExecutivePortalContext {
   events: Ref<EoEvent[]>;
   approvedEvents: Ref<EoEvent[]>;
   scheduledEvents: Ref<EoEvent[]>;
-  handleApprove: (id: string) => void;
+  handleApprove: (id: string) => boolean;
   handleReject: (id: string) => void;
   handleApproveAndForward: (
     id: string,

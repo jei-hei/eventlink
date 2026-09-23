@@ -6,7 +6,7 @@ export interface ItPortalContext {
   events: Ref<ItEvent[]>;
   approvedEvents: Ref<ItEvent[]>;
   scheduledEvents: Ref<ItEvent[]>;
-  handleApprove: (id: string) => void;
+  handleApprove: (id: string) => boolean;
   handleReject: (id: string) => void;
   useDb: Ref<boolean>;
   busy: Ref<boolean>;
