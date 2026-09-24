@@ -26,12 +26,10 @@ export type AnalyticsScopeOptions = {
 type RequestRow = {
   id: string;
   activity: string;
-  request_type: "ssc" | "student_officer" | "eo_direct";
   status: "pending" | "approved" | "declined" | "posted";
   current_step: string | null;
   created_at: string;
   sdgs?: string | null;
-  organization_id?: string | null;
   organizations?:
     | { name: string | null; college_id?: string | null }[]
     | { name: string | null; college_id?: string | null }
@@ -198,6 +196,7 @@ async function fetchResourceOfficeRequestIds(office: ResourceOffice): Promise<st
         .from("event_requests")
         .select("id")
         .eq("current_step", "gso")
+        .is("deleted_at", null)
         .gte("created_at", since.toISOString())
         .order("id", { ascending: true })
         .range(from, from + pageSize - 1);
@@ -393,8 +392,9 @@ export async function fetchAnalyticsOverview(
     let query = supabase
       .from("event_requests")
       .select(
-        `id, activity, request_type, status, current_step, created_at, sdgs, organization_id, ${orgSelect}`,
+        `id, activity, status, current_step, created_at, sdgs, ${orgSelect}`,
       )
+      .is("deleted_at", null)
       .gte("created_at", sinceIso)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false });

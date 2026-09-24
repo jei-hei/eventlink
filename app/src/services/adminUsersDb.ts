@@ -87,6 +87,19 @@ export async function countAdminPortalUsers(): Promise<number> {
   return page.total;
 }
 
+/** All portal users for reports (paged RPC). Caps at 5_000 rows. */
+export async function fetchAllAdminPortalUsers(): Promise<AdminPortalUserRow[]> {
+  const pageSize = 100;
+  const first = await fetchAdminPortalUsersPage({ page: 1, pageSize });
+  const rows = [...first.rows];
+  const totalPages = Math.min(50, Math.max(1, Math.ceil(first.total / pageSize)));
+  for (let page = 2; page <= totalPages; page += 1) {
+    const next = await fetchAdminPortalUsersPage({ page, pageSize });
+    rows.push(...next.rows);
+  }
+  return rows;
+}
+
 export type AdminOrgAssignmentRow = {
   organization_id: string;
   display_name: string;

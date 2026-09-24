@@ -1,7 +1,5 @@
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
-import { fetchAdminPortalUsers, adminRoleLabel } from "@/services/adminUsersDb";
-import { fetchAllVenues } from "@/services/venuesDb";
-import { fetchAllEquipment } from "@/services/equipmentDb";
+import { fetchAllAdminPortalUsers, adminRoleLabel } from "@/services/adminUsersDb";
 import { fetchCollegesWithOrganizations } from "@/services/organizationsDb";
 
 export type AdminReportFilters = {
@@ -193,6 +191,38 @@ function matchesFilters(
   return true;
 }
 
+function eventSelectForReports(filters: AdminReportFilters, includeNested: boolean): string {
+  const orgEmbed = filters.collegeId
+    ? "organizations!inner ( id, name, college_id )"
+    : "organizations ( id, name, college_id )";
+  const nested = includeNested
+    ? `,
+    event_request_resource_assignments (
+      assigned_office, resource_kind, venue_id, equipment_id, resource_name, status
+    ),
+    event_request_equipment (
+      equipment_id, quantity_requested,
+      equipment ( id, name )
+    )`
+    : "";
+  return `
+    id, activity, status, request_type, venue, start_date, created_at,
+    organization_id, submitted_by, current_step,
+    ${orgEmbed}${nested}
+  `;
+}
+
+function applyReportEventFilters<Q extends {
+  eq: (column: string, value: string) => Q;
+}>(query: Q, filters: AdminReportFilters): Q {
+  let next = query;
+  if (filters.organizationId) next = next.eq("organization_id", filters.organizationId);
+  if (filters.status) next = next.eq("status", filters.status);
+  if (filters.requestType) next = next.eq("request_type", filters.requestType);
+  if (filters.collegeId) next = next.eq("organizations.college_id", filters.collegeId);
+  return next;
+}
+
 /**
  * System-wide Admin Reports & Analytics bundle.
  * Event totals are always unique event_requests (never resource-assignment duplicates).
@@ -206,46 +236,49 @@ export async function fetchAdminReportsData(
 
   // submitted_by references auth.users, not profiles — do not embed profiles via FK.
   // Requester names come from admin_list_portal_users instead.
-  const eventSelectPrimary = `
-    id, activity, status, request_type, venue, start_date, created_at,
-    organization_id, submitted_by, current_step,
-    organizations ( id, name, college_id ),
-    event_request_resource_assignments (
-      assigned_office, resource_kind, venue_id, equipment_id, resource_name, status
-    ),
-    event_request_equipment (
-      equipment_id, quantity_requested,
-      equipment ( id, name )
-    )
-  `;
-  const eventSelectFallback = `
-    id, activity, status, request_type, venue, start_date, created_at,
-    organization_id, submitted_by, current_step,
-    organizations ( id, name, college_id )
-  `;
+  const eventSelectPrimary = eventSelectForReports(filters, true);
+  const eventSelectFallback = eventSelectForReports(filters, false);
 
   const settled = await Promise.allSettled([
-    fetchAdminPortalUsers(),
+    fetchAllAdminPortalUsers(),
     fetchCollegesWithOrganizations(),
-    fetchAllVenues(),
-    fetchAllEquipment(),
+    supabase.from("venues").select("id", { count: "exact", head: true }),
+    supabase
+      .from("venues")
+      .select("id", { count: "exact", head: true })
+      .eq("active", true)
+      .neq("availability", "unavailable")
+      .neq("status", "inactive"),
+    supabase.from("equipment").select("id", { count: "exact", head: true }),
+    supabase
+      .from("equipment")
+      .select("id", { count: "exact", head: true })
+      .eq("active", true)
+      .neq("availability", "unavailable")
+      .neq("status", "inactive"),
     supabase
       .from("students")
       .select("student_id", { count: "exact", head: true })
       .eq("archived", true),
-    supabase
-      .from("event_requests")
-      .select(eventSelectPrimary)
-      .order("created_at", { ascending: false })
-      .limit(1000),
+    applyReportEventFilters(
+      supabase
+        .from("event_requests")
+        .select(eventSelectPrimary)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1000),
+      filters,
+    ),
   ]);
 
   const users = settled[0].status === "fulfilled" ? settled[0].value : [];
   const collegesWithOrgs = settled[1].status === "fulfilled" ? settled[1].value : [];
-  const venues = settled[2].status === "fulfilled" ? settled[2].value : [];
-  const equipment = settled[3].status === "fulfilled" ? settled[3].value : [];
+  const venueTotal = settled[2].status === "fulfilled" ? (settled[2].value.count ?? 0) : 0;
+  const venueAvailable = settled[3].status === "fulfilled" ? (settled[3].value.count ?? 0) : 0;
+  const eqTotal = settled[4].status === "fulfilled" ? (settled[4].value.count ?? 0) : 0;
+  const eqAvailable = settled[5].status === "fulfilled" ? (settled[5].value.count ?? 0) : 0;
   const archivedStudentsRes =
-    settled[4].status === "fulfilled" ? settled[4].value : { count: 0, error: null };
+    settled[6].status === "fulfilled" ? settled[6].value : { count: 0, error: null };
 
   type EventQueryResult = {
     data: unknown;
@@ -253,16 +286,20 @@ export async function fetchAdminReportsData(
   };
 
   let eventRes: EventQueryResult =
-    settled[5].status === "fulfilled"
-      ? settled[5].value
+    settled[7].status === "fulfilled"
+      ? settled[7].value
       : { data: null, error: { message: "event_requests query failed" } };
 
   if (eventRes.error) {
-    const retry = await supabase
-      .from("event_requests")
-      .select(eventSelectFallback)
-      .order("created_at", { ascending: false })
-      .limit(1000);
+    const retry = await applyReportEventFilters(
+      supabase
+        .from("event_requests")
+        .select(eventSelectFallback)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1000),
+      filters,
+    );
     if (retry.error) {
       throw new Error(
         retry.error.message ||
@@ -403,14 +440,8 @@ export async function fetchAdminReportsData(
   const activeUsers = totalUsers;
   const inactiveUsers = inactiveStudents;
 
-  const venueAvailable = venues.filter(
-    (v) => v.active && v.availability !== "unavailable" && v.status !== "inactive",
-  ).length;
-  const venueUnavailable = venues.length - venueAvailable;
-  const eqAvailable = equipment.filter(
-    (e) => e.active && e.availability !== "unavailable" && e.status !== "inactive",
-  ).length;
-  const eqUnavailable = equipment.length - eqAvailable;
+  const venueUnavailable = Math.max(0, venueTotal - venueAvailable);
+  const eqUnavailable = Math.max(0, eqTotal - eqAvailable);
 
   const organizations = collegesWithOrgs.flatMap((c) =>
     c.organizations.map((o) => ({ id: o.id, name: o.name, collegeId: c.id as string | null })),
@@ -447,13 +478,13 @@ export async function fetchAdminReportsData(
     },
     resourceStats: {
       venues: {
-        total: venues.length,
+        total: venueTotal,
         available: venueAvailable,
         unavailable: venueUnavailable,
         mostRequested: topCounts(venueRequestMap),
       },
       equipment: {
-        total: equipment.length,
+        total: eqTotal,
         available: eqAvailable,
         unavailable: eqUnavailable,
         mostRequested: topCounts(equipmentRequestMap),

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { TrendingUp, CalendarDays, CheckCircle2, BarChart2, Clock } from "lucide-vue-next";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
+import PortalStatSkeleton from "@/components/portal/PortalStatSkeleton.vue";
 import { fetchAnalyticsOverview } from "@/services/analyticsDb";
 import { useAuthStore } from "@/stores/auth";
 
@@ -19,8 +20,10 @@ const recentActivity = ref<{ id: number; action: string; event: string; time: st
 const totals = ref({ totalThisYear: 0, approvedThisMonth: 0, approvedLastMonth: 0, pendingCount: 0, allTimeCount: 0 });
 const peakMonthLabel = ref("No data yet");
 const analyticsError = ref<string | null>(null);
+const analyticsLoading = ref(true);
 
 async function loadAnalytics() {
+  analyticsLoading.value = true;
   try {
     const data = await fetchAnalyticsOverview("dean", {
       collegeId: auth.collegeId,
@@ -40,6 +43,8 @@ async function loadAnalytics() {
     peakMonthLabel.value = data.peakMonthLabel;
   } catch (e) {
     analyticsError.value = e instanceof Error ? e.message : "Could not load analytics.";
+  } finally {
+    analyticsLoading.value = false;
   }
 }
 
@@ -128,7 +133,8 @@ const pieGradient = computed(() => {
       Live analytics unavailable: {{ analyticsError }}
     </p>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <PortalStatSkeleton v-if="analyticsLoading" :count="3" />
+    <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-3">
       <div
         v-for="card in statCards"
         :key="card.label"

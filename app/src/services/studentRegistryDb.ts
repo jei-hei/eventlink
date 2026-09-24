@@ -39,13 +39,23 @@ export function masterStudentToDb(row: MasterStudent): StudentDbRow {
 
 export async function fetchAllStudents(): Promise<MasterStudent[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("students")
-    .select("student_id, full_name, course, program, year_level, email, archived")
-    .order("student_id", { ascending: true });
+  const pageSize = 1000;
+  const hardSafetyLimit = 20_000;
+  const all: MasterStudent[] = [];
 
-  if (error) throw error;
-  return (data ?? []).map((r) => masterStudentFromDb(r as StudentDbRow));
+  for (let from = 0; from < hardSafetyLimit; from += pageSize) {
+    const { data, error } = await supabase
+      .from("students")
+      .select("student_id, full_name, course, program, year_level, email, archived")
+      .order("student_id", { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    const page = (data ?? []).map((r) => masterStudentFromDb(r as StudentDbRow));
+    all.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return all;
 }
 
 export async function upsertStudents(rows: MasterStudent[]): Promise<number> {

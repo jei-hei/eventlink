@@ -36,6 +36,7 @@ function avatarColor(event: StudentEvent) {
         :src="event.posterAvatarUrl"
         :alt="event.posterName || 'Poster'"
         class="h-11 w-11 shrink-0 rounded-full object-cover shadow-sm"
+        loading="lazy"
         decoding="async"
       />
       <div

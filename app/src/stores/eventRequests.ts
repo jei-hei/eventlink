@@ -6,6 +6,7 @@ import {
   createEventRequest,
   declineEventRequest,
   fetchPortalEventRequestsForRole,
+  countPendingForRole,
   fetchHistoryForRequest,
   filterApprovedForRole,
   filterCalendarEvents,
@@ -66,6 +67,8 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     const auth = useAuthStore();
     return `${auth.appRole ?? ""}:${auth.collegeId ?? ""}:${auth.organizationId ?? ""}:${auth.userId ?? ""}`;
   }
+  /** Server head-count of pending actions for the current role (not capped at PORTAL_LIST_LIMIT). */
+  const pendingActionCount = ref(0);
   const studentBoardLoaded = ref(false);
   const studentFeedOffset = ref(0);
   const studentFeedHasMore = ref(false);
@@ -184,6 +187,19 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
         rebuildPortalCache(nextRows);
         loaded.value = true;
         lastLoadedAt.value = Date.now();
+        const listPending = getPendingEventsForCurrentUser(nextRows, auth.appRole!, auth.userId!, {
+          collegeId: auth.collegeId,
+          organizationId: auth.organizationId,
+        }).length;
+        try {
+          const counted = await countPendingForRole(auth.appRole!, auth.userId!, {
+            collegeId: auth.collegeId,
+            organizationId: auth.organizationId,
+          });
+          pendingActionCount.value = Math.max(counted, listPending);
+        } catch {
+          pendingActionCount.value = listPending;
+        }
         return true;
       } catch (e) {
         error.value = toUserFacingError(e, "Could not load event requests.");
@@ -491,6 +507,7 @@ export const useEventRequestsStore = defineStore("eventRequests", () => {
     myFeedPosts,
     studentFeedHasMore,
     scheduledEvents,
+    pendingActionCount,
     load,
     loadCalendarRange,
     loadForStudentDashboard,

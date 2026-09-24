@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, ref } from "vue";
 import { Calendar, CheckCircle, XCircle } from "lucide-vue-next";
 import type { GsoEvent } from "./types";
 import { useGsoPortal } from "./portalContext";
+import { useEventRequestsStore } from "@/stores/eventRequests";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
@@ -18,6 +19,7 @@ const GsoEventDetailModal = defineAsyncComponent(
 
 const { events, scheduledEvents, handleApprove, handleReject, busy } = useGsoPortal();
 const eventsLoading = useEventsTableLoading();
+const eventStore = useEventRequestsStore();
 
 const selectedEvent = ref<GsoEvent | null>(null);
 
@@ -29,7 +31,7 @@ function gsoAssignments(event: GsoEvent) {
 
 const gsoEvents = computed(() => events.value);
 
-const pendingCount = computed(() => gsoEvents.value.length);
+const pendingCount = computed(() => Math.max(eventStore.pendingActionCount, gsoEvents.value.length));
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.value));
 

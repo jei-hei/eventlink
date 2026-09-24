@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, ref } from "vue";
 import { Calendar, CheckCircle, XCircle } from "lucide-vue-next";
 import type { OsasEvent } from "./types";
 import { useOsasPortal } from "./portalContext";
+import { useEventRequestsStore } from "@/stores/eventRequests";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
@@ -18,12 +19,13 @@ const OsasEventDetailModal = defineAsyncComponent(
 
 const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision, busy } = useOsasPortal();
 const eventsLoading = useEventsTableLoading();
+const eventStore = useEventRequestsStore();
 
 const selectedEvent = ref<OsasEvent | null>(null);
 
 const pendingEvents = computed(() => events.value);
 
-const pendingCount = computed(() => pendingEvents.value.length);
+const pendingCount = computed(() => Math.max(eventStore.pendingActionCount, pendingEvents.value.length));
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.value));
 

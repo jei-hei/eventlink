@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, ref } from "vue";
 import { Calendar, Check, XCircle } from "lucide-vue-next";
 import type { AdviserEvent } from "./types";
 import { useAdviserPortal } from "./portalContext";
+import { useEventRequestsStore } from "@/stores/eventRequests";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
@@ -18,10 +19,11 @@ const AdviserEventDetailModal = defineAsyncComponent(
 
 const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision, busy } = useAdviserPortal();
 const eventsLoading = useEventsTableLoading();
+const eventStore = useEventRequestsStore();
 
 const selectedEvent = ref<AdviserEvent | null>(null);
 
-const pendingCount = computed(() => events.value.length);
+const pendingCount = computed(() => Math.max(eventStore.pendingActionCount, events.value.length));
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.value));
 

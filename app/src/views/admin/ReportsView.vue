@@ -26,6 +26,7 @@ import {
   type NameCount,
 } from "@/services/adminReportsDb";
 import PaginationControls from "@/components/PaginationControls.vue";
+import PortalStatSkeleton from "@/components/portal/PortalStatSkeleton.vue";
 import { DEFAULT_PAGE_SIZE, clampPage, clampPageSize } from "@/types/pagination";
 
 withDefaults(defineProps<{ embedded?: boolean }>(), {
@@ -295,6 +296,7 @@ function countList(items: NameCount[] | undefined): NameCount[] {
     </div>
 
     <!-- Event statistics -->
+    <PortalStatSkeleton v-if="loading && !reports" :count="5" class="mb-8" />
     <h2 class="mb-3 text-lg font-semibold text-gray-900">Event Statistics</h2>
     <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
       <div

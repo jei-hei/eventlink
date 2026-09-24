@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, ref } from "vue";
 import { Calendar, Check, XCircle } from "lucide-vue-next";
 import type { DeanEvent } from "./types";
 import { useDeanPortal } from "./portalContext";
+import { useEventRequestsStore } from "@/stores/eventRequests";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
@@ -18,10 +19,11 @@ const DeanEventDetailModal = defineAsyncComponent(
 
 const { events, scheduledEvents, handleApprove, handleReject, handleRequestRevision, busy } = useDeanPortal();
 const eventsLoading = useEventsTableLoading();
+const eventStore = useEventRequestsStore();
 
 const selectedEvent = ref<DeanEvent | null>(null);
 
-const pendingCount = computed(() => events.value.length);
+const pendingCount = computed(() => Math.max(eventStore.pendingActionCount, events.value.length));
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.value));
 

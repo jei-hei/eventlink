@@ -16,6 +16,7 @@ const props = defineProps<{
   scheduledEvents: PortalEvent[];
   title: string;
   busy?: boolean;
+  pendingCount?: number;
 }>();
 
 const emit = defineEmits<{
@@ -49,6 +50,7 @@ function officeAssignments(event: PortalEvent) {
 }
 
 const pending = computed(() => props.events);
+const badgeCount = computed(() => Math.max(props.pendingCount ?? 0, pending.value.length));
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(props.scheduledEvents));
 
@@ -85,10 +87,10 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
             <Calendar :size="18" class="text-emerald-600" />
             <h2 class="text-xs font-bold uppercase tracking-wide text-slate-800 sm:text-sm">{{ title }}</h2>
             <span
-              v-if="pending.length > 0"
+              v-if="badgeCount > 0"
               class="rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 px-2 py-0.5 text-xs font-bold text-white shadow-sm"
             >
-              {{ pending.length }}
+              {{ badgeCount }}
             </span>
           </div>
 

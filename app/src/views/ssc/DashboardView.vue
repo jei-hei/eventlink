@@ -9,6 +9,7 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { publishStatusLabel } from "@/composables/eventPublish";
 import { mergeMyPortalEvents } from "@/composables/mergeMyPortalEvents";
 import { useAuthStore } from "@/stores/auth";
+import { useEventRequestsStore } from "@/stores/eventRequests";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 import { useDashboardLifecycleLog } from "@/composables/useDashboardLifecycleLog";
@@ -25,6 +26,7 @@ const DashboardEventDetailModal = defineAsyncComponent(
 const { events, approvedEvents, scheduledEvents, handleCreateFeedPost, pushToast } = useSscPortal();
 const eventsLoading = useEventsTableLoading();
 const auth = useAuthStore();
+const eventStore = useEventRequestsStore();
 
 const selectedEvent = ref<SscEvent | null>(null);
 const createOpen = ref(false);
@@ -32,7 +34,7 @@ const seenReminderToken = ref("");
 
 const myEvents = computed(() => mergeMyPortalEvents(events, approvedEvents));
 
-const pendingCount = computed(() => events.value.length);
+const pendingCount = computed(() => Math.max(eventStore.pendingActionCount, events.value.length));
 const approvedNoticeCount = computed(
   () => approvedEvents.value.filter((e) => e.awaitingPublish || e.status === "Approved" || e.posted).length,
 );

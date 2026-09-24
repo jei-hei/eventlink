@@ -4,12 +4,10 @@ import { RouterView } from "vue-router";
 import PortalToastHost from "@/components/portal/PortalToastHost.vue";
 import { usePageVisibility } from "@/composables/usePageVisibility";
 import { useAuthStore } from "@/stores/auth";
-import { useEventRequestsStore } from "@/stores/eventRequests";
 import { useNotificationsStore } from "@/stores/notifications";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 const auth = useAuthStore();
-const events = useEventRequestsStore();
 const notifications = useNotificationsStore();
 const { visible } = usePageVisibility();
 
@@ -17,7 +15,6 @@ watch(
   () => Boolean(auth.ready && auth.userId && auth.appRole),
   (ok) => {
     if (!ok || !isSupabaseConfigured) return;
-    void events.load(false);
     void notifications.hydrate(false);
   },
   { immediate: true },

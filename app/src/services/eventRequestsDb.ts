@@ -1341,9 +1341,8 @@ const CALENDAR_LIST_SELECT = `
   id, request_type, status, current_step, organization_id, submitted_by,
   activity, start_date, end_date, start_time, end_time, venue, venue_id,
   number_of_participants, sdgs, purpose, needs_gso,
-  letter_path, decline_reason, declined_at_step,
-  posted_at, calendar_posted_at, student_post_caption, student_post_image_path,
-  created_at, updated_at,
+  letter_path, original_letter_path, decline_reason, declined_at_step,
+  posted_at, calendar_posted_at, created_at, updated_at,
   organizations ( id, name, college_id )
 `;
 

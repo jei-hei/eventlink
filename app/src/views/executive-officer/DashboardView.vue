@@ -3,6 +3,7 @@ import { ref, computed, defineAsyncComponent } from "vue";
 import { Calendar, XCircle } from "lucide-vue-next";
 import type { EoEvent } from "./types";
 import { useExecutivePortal } from "./portalContext";
+import { useEventRequestsStore } from "@/stores/eventRequests";
 import type { EoCreateDirectPayload } from "./components/EoCreateSscEventModal.vue";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import type { ScheduledCalendarEvent } from "@/components/ScheduledEventsCalendar.vue";
@@ -27,6 +28,7 @@ const EoEventDetailModal = defineAsyncComponent(
 );
 
 const eventsLoading = useEventsTableLoading();
+const eventStore = useEventRequestsStore();
 
 const {
   events,
@@ -81,7 +83,7 @@ const selectedEvent = ref<EoEvent | null>(null);
 const editEvent = ref<EoEvent | null>(null);
 const createOpen = ref(false);
 
-const pendingCount = computed(() => events.value.length);
+const pendingCount = computed(() => Math.max(eventStore.pendingActionCount, events.value.length));
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.value));
 

@@ -9,6 +9,7 @@ import {
 } from "lucide-vue-next";
 import OrgFeedbackSection from "@/components/portal/OrgFeedbackSection.vue";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
+import PortalStatSkeleton from "@/components/portal/PortalStatSkeleton.vue";
 import {
   fetchAnalyticsOverview,
   type ActivityItem,
@@ -35,8 +36,10 @@ const totals = ref({
 });
 const peakMonthLabel = ref("No data yet");
 const analyticsError = ref<string | null>(null);
+const analyticsLoading = ref(true);
 
 async function loadAnalytics() {
+  analyticsLoading.value = true;
   try {
     const data = await fetchAnalyticsOverview("ssc");
     monthlyEvents.value = data.monthlyEvents;
@@ -53,6 +56,8 @@ async function loadAnalytics() {
   } catch (e) {
     analyticsError.value =
       e instanceof Error ? e.message : "Could not load analytics.";
+  } finally {
+    analyticsLoading.value = false;
   }
 }
 
@@ -167,7 +172,8 @@ const pieGradient = computed(() => {
       Live analytics unavailable: {{ analyticsError }}
     </p>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <PortalStatSkeleton v-if="analyticsLoading" :count="3" />
+    <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-3">
       <div
         v-for="card in statCards"
         :key="card.label"

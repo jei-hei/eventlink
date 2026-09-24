@@ -53,6 +53,7 @@ function onFeedbackSubmitted() {
             :src="event.posterAvatarUrl"
             :alt="event.posterName || 'Poster'"
             class="h-12 w-12 shrink-0 rounded-full object-cover shadow"
+            loading="lazy"
             decoding="async"
           />
           <div

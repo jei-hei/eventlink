@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, defineAsyncComponent, ref } from "vue";
 import { FileText } from "lucide-vue-next";
 import { isPdfPath, letterFileNameFromPath } from "@/services/eventLetterStorage";
-import ProposalPdfViewer from "@/components/ProposalPdfViewer.vue";
 import { downloadEventLetter } from "@/services/eventLetterStorage";
+
+const ProposalPdfViewer = defineAsyncComponent(() => import("@/components/ProposalPdfViewer.vue"));
 
 const props = withDefaults(
   defineProps<{

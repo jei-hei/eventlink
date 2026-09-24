@@ -31,6 +31,7 @@ import {
   type CollegeOrgImportPreviewRow,
 } from "@/services/collegeOrgImportParser";
 import StatusBadge from "@/components/portal/StatusBadge.vue";
+import PortalListSkeleton from "@/components/portal/PortalListSkeleton.vue";
 import { useUiStore } from "@/stores/ui";
 import { toUserFacingError } from "@/utils/userFacingError";
 
@@ -389,7 +390,8 @@ async function removeOrg(id: string) {
       </div>
     </div>
 
-    <p v-if="loading" class="text-sm text-gray-500">Loading…</p>
+    <PortalListSkeleton v-if="loading && !colleges.length" :rows="6" />
+    <p v-else-if="loading" class="text-sm text-gray-500">Loading…</p>
 
     <div v-if="universityWide" class="mb-6 rounded-lg border border-purple-200 bg-purple-50/50 shadow-sm">
       <div class="border-b border-purple-100 px-6 py-4">

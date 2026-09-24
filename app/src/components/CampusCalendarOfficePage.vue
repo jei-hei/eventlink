@@ -9,6 +9,7 @@ const props = defineProps<{
   officeTitle: string;
   officeLead: string;
   events: ScheduledCalendarEvent[];
+  loading?: boolean;
 }>();
 
 const stats = computed(() => {
@@ -46,6 +47,13 @@ const stats = computed(() => {
             <p class="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">{{ officeLead }}</p>
           </div>
           <div class="grid grid-cols-3 gap-2 sm:min-w-[17rem]">
+            <template v-if="loading">
+              <div v-for="n in 3" :key="n" class="rounded-lg border border-slate-200 bg-white/80 px-2.5 py-2 text-center">
+                <div class="mx-auto mb-1 h-6 w-8 animate-pulse rounded bg-slate-200" />
+                <div class="mx-auto h-3 w-12 animate-pulse rounded bg-slate-200" />
+              </div>
+            </template>
+            <template v-else>
             <div class="rounded-lg border border-slate-200 bg-white/80 px-2.5 py-2 text-center">
               <p class="text-lg font-semibold tabular-nums text-slate-900">{{ stats.thisMonth }}</p>
               <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">This month</p>
@@ -58,6 +66,7 @@ const stats = computed(() => {
               <p class="text-lg font-semibold tabular-nums text-slate-900">{{ stats.total }}</p>
               <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">On calendar</p>
             </div>
+            </template>
           </div>
         </div>
       </header>

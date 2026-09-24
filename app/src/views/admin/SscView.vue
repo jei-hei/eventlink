@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { RefreshCw, ShieldCheck } from "lucide-vue-next";
 import { fetchAdminPortalUsers, type AdminPortalUserRow } from "@/services/adminUsersDb";
+import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
 
@@ -87,9 +88,7 @@ function displayName(row: AdminPortalUserRow): string {
             </tr>
           </thead>
           <tbody>
-            <tr v-if="loading">
-              <td colspan="4" class="py-8 text-center text-sm text-slate-500">Loading...</td>
-            </tr>
+            <PortalTableSkeleton v-if="loading" :rows="4" :columns="4" />
             <tr v-else-if="sscUsers.length === 0">
               <td colspan="4" class="py-8 text-center text-sm text-slate-500">No SSC accounts found.</td>
             </tr>
@@ -116,9 +115,7 @@ function displayName(row: AdminPortalUserRow): string {
             </tr>
           </thead>
           <tbody>
-            <tr v-if="loading">
-              <td colspan="3" class="py-8 text-center text-sm text-slate-500">Loading...</td>
-            </tr>
+            <PortalTableSkeleton v-if="loading" :rows="4" :columns="3" />
             <tr v-else-if="advisers.length === 0">
               <td colspan="3" class="py-8 text-center text-sm text-slate-500">No adviser accounts found.</td>
             </tr>

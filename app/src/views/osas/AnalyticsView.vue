@@ -9,6 +9,7 @@ import {
   AlertTriangle,
 } from "lucide-vue-next";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
+import PortalStatSkeleton from "@/components/portal/PortalStatSkeleton.vue";
 import { fetchAnalyticsOverview, type SdgUsagePoint } from "@/services/analyticsDb";
 
 const monthlyEvents = ref([
@@ -31,8 +32,10 @@ const totals = ref({
 });
 const peakMonthLabel = ref("No data yet");
 const analyticsError = ref<string | null>(null);
+const analyticsLoading = ref(true);
 
 async function loadAnalytics() {
+  analyticsLoading.value = true;
   try {
     const data = await fetchAnalyticsOverview("osas");
     monthlyEvents.value = data.monthlyEvents.length ? data.monthlyEvents : monthlyEvents.value;
@@ -50,6 +53,8 @@ async function loadAnalytics() {
     peakMonthLabel.value = data.peakMonthLabel;
   } catch (e) {
     analyticsError.value = e instanceof Error ? e.message : "Could not load analytics.";
+  } finally {
+    analyticsLoading.value = false;
   }
 }
 
@@ -163,7 +168,8 @@ const sdgGradient = computed(() => {
       Live analytics unavailable: {{ analyticsError }}
     </p>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+    <PortalStatSkeleton v-if="analyticsLoading" :count="4" />
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
       <div
         v-for="card in statCards"
         :key="card.label"
