@@ -14,6 +14,12 @@ export type AnalyticsScope =
   | "it_infrastructure"
   | "sports_office";
 
+export type AnalyticsPeriod = {
+  year: number;
+  /** 1–12 */
+  month: number;
+};
+
 export type AnalyticsScopeOptions = {
   /** profiles.college_id — required for adviser/dean */
   collegeId?: string | null;
@@ -21,6 +27,18 @@ export type AnalyticsScopeOptions = {
   organizationId?: string | null;
   /** auth user id — fallback for student_officer when org is missing */
   userId?: string | null;
+  /** Selected calendar month. Cards, pie, and records use this month; the trend uses the prior 6 months. */
+  period?: AnalyticsPeriod | null;
+};
+
+export type AnalyticsEventRecord = {
+  id: string;
+  activity: string;
+  status: "Approved" | "Pending" | "Rejected";
+  org: string;
+  college: string;
+  createdAt: string;
+  sdgIds: number[];
 };
 
 type RequestRow = {
@@ -79,9 +97,31 @@ export type AnalyticsOverview = {
   organizationData: OrganizationPoint[];
   collegeData: CollegePoint[];
   sdgUsage: SdgUsagePoint[];
+  records: AnalyticsEventRecord[];
   totals: StatTotals;
   peakMonthLabel: string;
 };
+
+export function currentAnalyticsPeriod(from = new Date()): AnalyticsPeriod {
+  return { year: from.getFullYear(), month: from.getMonth() + 1 };
+}
+
+export function analyticsPeriodLabel(period: AnalyticsPeriod): string {
+  return new Date(period.year, period.month - 1, 1).toLocaleString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export function shiftAnalyticsPeriod(period: AnalyticsPeriod, deltaMonths: number): AnalyticsPeriod {
+  const d = new Date(period.year, period.month - 1 + deltaMonths, 1);
+  return { year: d.getFullYear(), month: d.getMonth() + 1 };
+}
+
+export function isAnalyticsPeriodInFuture(period: AnalyticsPeriod, now = new Date()): boolean {
+  const cur = currentAnalyticsPeriod(now);
+  return period.year > cur.year || (period.year === cur.year && period.month > cur.month);
+}
 
 type ResourceOffice = "gso" | "it_infrastructure" | "sports_office";
 
@@ -141,6 +181,7 @@ function emptyOverview(): AnalyticsOverview {
     organizationData: [],
     collegeData: [],
     sdgUsage: [],
+    records: [],
     totals: {
       totalThisYear: 0,
       approvedThisMonth: 0,
@@ -210,17 +251,40 @@ async function fetchResourceOfficeRequestIds(office: ResourceOffice): Promise<st
   return [...ids];
 }
 
-function buildOverview(rows: RequestRow[], collegeNameById: Map<string, string>): AnalyticsOverview {
-  if (!rows.length) return emptyOverview();
+function collegeNameForRow(row: RequestRow, collegeNameById: Map<string, string>): string {
+  const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations;
+  return org?.college_id
+    ? (collegeNameById.get(org.college_id) ?? "Unassigned College")
+    : "Unassigned College";
+}
 
-  const now = new Date();
-  const thisMonthStart = startOfMonth(now);
+function toRecord(
+  row: RequestRow,
+  collegeNameById: Map<string, string>,
+): AnalyticsEventRecord {
+  return {
+    id: row.id,
+    activity: row.activity || "Untitled event",
+    status: actionFromStatus(row.status),
+    org: organizationName(row),
+    college: collegeNameForRow(row, collegeNameById),
+    createdAt: row.created_at,
+    sdgIds: parseSdgsFromStorage(row.sdgs),
+  };
+}
+
+function buildOverview(
+  rows: RequestRow[],
+  collegeNameById: Map<string, string>,
+  anchor: Date,
+): AnalyticsOverview {
+  const thisMonthStart = startOfMonth(anchor);
   const lastMonthStart = new Date(thisMonthStart.getFullYear(), thisMonthStart.getMonth() - 1, 1);
   const nextMonthStart = new Date(thisMonthStart.getFullYear(), thisMonthStart.getMonth() + 1, 1);
 
   const months: Date[] = [];
   for (let i = 5; i >= 0; i--) {
-    months.push(new Date(now.getFullYear(), now.getMonth() - i, 1));
+    months.push(new Date(anchor.getFullYear(), anchor.getMonth() - i, 1));
   }
   const monthMap = new Map<string, MonthlyPoint>();
   months.forEach((m) => {
@@ -228,33 +292,43 @@ function buildOverview(rows: RequestRow[], collegeNameById: Map<string, string>)
     monthMap.set(key, { id: key, month: monthLabel(m), events: 0, approved: 0, rejected: 0 });
   });
 
+  rows.forEach((row) => {
+    const d = new Date(row.created_at);
+    const point = monthMap.get(`${d.getFullYear()}-${d.getMonth()}`);
+    if (!point) return;
+    point.events += 1;
+    if (isApprovedLike(row.status)) point.approved += 1;
+    if (row.status === "declined") point.rejected += 1;
+  });
+
+  const monthRows = rows.filter((row) => {
+    const d = new Date(row.created_at);
+    return d >= thisMonthStart && d < nextMonthStart;
+  });
+
+  if (!monthRows.length && !rows.length) return emptyOverview();
+
   const orgMap = new Map<string, number>();
   const collegeMap = new Map<string, number>();
   const sdgMap = new Map<number, number>();
   let approved = 0;
   let pending = 0;
   let rejected = 0;
-  let totalThisYear = 0;
   let approvedThisMonth = 0;
   let approvedLastMonth = 0;
   let awaitingPublish = 0;
 
   rows.forEach((row) => {
     const d = new Date(row.created_at);
-    if (d.getFullYear() === now.getFullYear()) totalThisYear += 1;
-
-    const monthKey = `${d.getFullYear()}-${d.getMonth()}`;
-    const point = monthMap.get(monthKey);
-    if (point) {
-      point.events += 1;
-      if (isApprovedLike(row.status)) point.approved += 1;
-      if (row.status === "declined") point.rejected += 1;
+    if (isApprovedLike(row.status) && d >= lastMonthStart && d < thisMonthStart) {
+      approvedLastMonth += 1;
     }
+  });
 
+  monthRows.forEach((row) => {
     if (isApprovedLike(row.status)) {
       approved += 1;
-      if (d >= thisMonthStart && d < nextMonthStart) approvedThisMonth += 1;
-      if (d >= lastMonthStart && d < thisMonthStart) approvedLastMonth += 1;
+      approvedThisMonth += 1;
     } else if (row.status === "declined") {
       rejected += 1;
     } else {
@@ -270,13 +344,8 @@ function buildOverview(rows: RequestRow[], collegeNameById: Map<string, string>)
 
     const orgName = organizationName(row);
     orgMap.set(orgName, (orgMap.get(orgName) ?? 0) + 1);
-
-    const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations;
-    const collegeName = org?.college_id
-      ? (collegeNameById.get(org.college_id) ?? "Unassigned College")
-      : "Unassigned College";
+    const collegeName = collegeNameForRow(row, collegeNameById);
     collegeMap.set(collegeName, (collegeMap.get(collegeName) ?? 0) + 1);
-
     for (const sdgId of parseSdgsFromStorage(row.sdgs)) {
       sdgMap.set(sdgId, (sdgMap.get(sdgId) ?? 0) + 1);
     }
@@ -284,9 +353,10 @@ function buildOverview(rows: RequestRow[], collegeNameById: Map<string, string>)
 
   const monthlyEvents = Array.from(monthMap.values());
   const peak = monthlyEvents.reduce((a, b) => (a.events >= b.events ? a : b), monthlyEvents[0]!);
-  const peakMonthLabel = peak && peak.events > 0 ? `${peak.month} ${now.getFullYear()}` : "No data yet";
+  const peakMonthLabel =
+    peak && peak.events > 0 ? `${peak.month} ${anchor.getFullYear()}` : "No data yet";
 
-  const recentActivity = rows.slice(0, 5).map((row, idx) => {
+  const recentActivity = monthRows.slice(0, 5).map((row, idx) => {
     const action = actionFromStatus(row.status);
     return {
       id: idx + 1,
@@ -300,17 +370,14 @@ function buildOverview(rows: RequestRow[], collegeNameById: Map<string, string>)
 
   const organizationData = Array.from(orgMap.entries())
     .map(([org, events]) => ({ org, events }))
-    .sort((a, b) => b.events - a.events)
-    .slice(0, 6);
+    .sort((a, b) => b.events - a.events);
   const collegeData = Array.from(collegeMap.entries())
     .map(([college, events]) => ({ college, events }))
-    .sort((a, b) => b.events - a.events)
-    .slice(0, 8);
+    .sort((a, b) => b.events - a.events);
   const sdgColors = ["#16A34A", "#0D9488", "#2563EB", "#D97706", "#7C3AED", "#DC2626"];
   const sdgUsage = Array.from(sdgMap.entries())
     .map(([id, value]) => ({ id, name: sdgLabel(id), value }))
     .sort((a, b) => b.value - a.value || a.id - b.id)
-    .slice(0, 6)
     .map((item, index) => ({ ...item, color: sdgColors[index % sdgColors.length]! }));
 
   return {
@@ -324,13 +391,14 @@ function buildOverview(rows: RequestRow[], collegeNameById: Map<string, string>)
     organizationData,
     collegeData,
     sdgUsage,
+    records: monthRows.map((row) => toRecord(row, collegeNameById)),
     totals: {
-      totalThisYear,
+      totalThisYear: monthRows.length,
       approvedThisMonth,
       approvedLastMonth,
       pendingCount: pending,
       awaitingPublishCount: awaitingPublish,
-      allTimeCount: rows.length,
+      allTimeCount: monthRows.length,
     },
     peakMonthLabel,
   };
@@ -349,6 +417,10 @@ export async function fetchAnalyticsOverview(
   const collegeId = options.collegeId?.trim() || null;
   const organizationId = options.organizationId?.trim() || null;
   const userId = options.userId?.trim() || null;
+  const period = options.period ?? currentAnalyticsPeriod();
+  const anchor = new Date(period.year, period.month - 1, 1);
+  const since = new Date(anchor.getFullYear(), anchor.getMonth() - 5, 1);
+  const until = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1);
 
   // Missing required scope keys must not fall back to campus-wide data.
   if (scope === "dean" && !collegeId) {
@@ -362,9 +434,8 @@ export async function fetchAnalyticsOverview(
   }
 
   const supabase = getSupabase();
-  const since = new Date();
-  since.setFullYear(since.getFullYear() - 1);
   const sinceIso = since.toISOString();
+  const untilIso = until.toISOString();
 
   const useInnerOrg = scope === "dean" || (scope === "adviser" && !!collegeId);
   const orgSelect = useInnerOrg
@@ -396,6 +467,7 @@ export async function fetchAnalyticsOverview(
       )
       .is("deleted_at", null)
       .gte("created_at", sinceIso)
+      .lt("created_at", untilIso)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false });
 
@@ -444,13 +516,6 @@ export async function fetchAnalyticsOverview(
     ]),
   );
 
-  const overview = buildOverview(rows, collegeNameById);
-  const pendingCount = await countPendingForRole(scope as AppRole, userId ?? "", {
-    collegeId,
-    organizationId,
-  });
-  overview.totals.pendingCount = pendingCount;
-  const pendingSlice = overview.eventStatusData.find((slice) => slice.name === "Pending");
-  if (pendingSlice) pendingSlice.value = pendingCount;
+  const overview = buildOverview(rows, collegeNameById, anchor);
   return overview;
 }

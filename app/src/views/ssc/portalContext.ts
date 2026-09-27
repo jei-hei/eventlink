@@ -10,7 +10,7 @@ export interface SscPortalContext {
   approvedEvents: Ref<SscEvent[]>;
   declinedEvents: Ref<SscEvent[]>;
   scheduledEvents: Ref<SscEvent[]>;
-  handleApprove: (id: string) => boolean;
+  handleApprove: (id: string, opts?: { skipProposalReview?: boolean }) => boolean;
   handleReject: (id: string) => void;
   handleCreateEvent: (e: SscEvent) => void;
   handlePostEvent: (id: string) => void;
@@ -18,6 +18,7 @@ export interface SscPortalContext {
   handleResubmitDeclined: (id: string, input: UpdateEventRequestInput) => Promise<void>;
   submitRequest?: (input: CreateEventRequestInput) => Promise<void>;
   useDb?: Ref<boolean>;
+  busy?: Ref<boolean>;
   pushToast: (title: string, description?: string, variant?: "success" | "error") => void;
 }
 

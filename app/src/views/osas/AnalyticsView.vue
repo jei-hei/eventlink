@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed } from "vue";
 import {
   TrendingUp,
   CalendarDays,
@@ -10,64 +10,45 @@ import {
 } from "lucide-vue-next";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import PortalStatSkeleton from "@/components/portal/PortalStatSkeleton.vue";
-import { fetchAnalyticsOverview, type SdgUsagePoint } from "@/services/analyticsDb";
+import AnalyticsMonthFilter from "@/components/portal/AnalyticsMonthFilter.vue";
+import AnalyticsRecordsModal from "@/components/portal/AnalyticsRecordsModal.vue";
+import { useAnalyticsDashboard } from "@/composables/useAnalyticsDashboard";
 
-const monthlyEvents = ref([
-  { id: "m1", month: "Jan", events: 0, approved: 0, rejected: 0 },
-]);
-const eventStatusData = ref([
-  { name: "Approved" as const, value: 0, color: "#4ADE80" },
-  { name: "Pending" as const, value: 0, color: "#D97706" },
-  { name: "Rejected" as const, value: 0, color: "#DC2626" },
-]);
-const sdgUsage = ref<SdgUsagePoint[]>([]);
-const recentActivity = ref<{ id: number; action: string; event: string; time: string; org: string; icon: string }[]>([]);
-const totals = ref({
-  totalThisYear: 0,
-  approvedThisMonth: 0,
-  approvedLastMonth: 0,
-  pendingCount: 0,
-  awaitingPublishCount: 0,
-  allTimeCount: 0,
-});
-const peakMonthLabel = ref("No data yet");
-const analyticsError = ref<string | null>(null);
-const analyticsLoading = ref(true);
+const {
+  period,
+  data,
+  loading: analyticsLoading,
+  error: analyticsError,
+  monthLabel,
+  canNextMonth,
+  topSdgs,
+  topOrganizations,
+  drilldown,
+  setPeriod,
+  shiftMonth,
+  closeDrilldown,
+  openOrganizations,
+  openSdgs,
+  openStatus,
+  openAllEvents,
+  selectSummaryRow,
+} = useAnalyticsDashboard("osas");
 
-async function loadAnalytics() {
-  analyticsLoading.value = true;
-  try {
-    const data = await fetchAnalyticsOverview("osas");
-    monthlyEvents.value = data.monthlyEvents.length ? data.monthlyEvents : monthlyEvents.value;
-    eventStatusData.value = data.eventStatusData;
-    sdgUsage.value = data.sdgUsage;
-    recentActivity.value = data.recentActivity;
-    totals.value = {
-      totalThisYear: data.totals.totalThisYear,
-      approvedThisMonth: data.totals.approvedThisMonth,
-      approvedLastMonth: data.totals.approvedLastMonth,
-      pendingCount: data.totals.pendingCount,
-      awaitingPublishCount: data.totals.awaitingPublishCount,
-      allTimeCount: data.totals.allTimeCount,
-    };
-    peakMonthLabel.value = data.peakMonthLabel;
-  } catch (e) {
-    analyticsError.value = e instanceof Error ? e.message : "Could not load analytics.";
-  } finally {
-    analyticsLoading.value = false;
-  }
-}
-
-onMounted(() => {
-  void loadAnalytics();
-});
+const monthlyEvents = computed(() => data.value.monthlyEvents);
+const eventStatusData = computed(() => data.value.eventStatusData);
+const sdgUsage = topSdgs;
+const recentActivity = computed(() => data.value.recentActivity);
+const totals = computed(() => data.value.totals);
+const peakMonthLabel = computed(() => data.value.peakMonthLabel);
+const organizationData = topOrganizations;
+const maxOrgEvents = computed(() => Math.max(...organizationData.value.map((o) => o.events), 1));
 
 const approvedDelta = computed(() => totals.value.approvedThisMonth - totals.value.approvedLastMonth);
 const statCards = computed(() => [
   {
-    label: "Total Events (This Year)",
+    label: `Events in ${monthLabel.value}`,
     value: String(totals.value.totalThisYear),
-    change: "Live from requests",
+    change: "Click to view records",
     changePositive: true,
     icon: CalendarDays,
     accent: "#16A34A",
@@ -157,11 +138,17 @@ const sdgGradient = computed(() => {
         <h1 class="font-bold text-gray-800 text-base">Dashboard</h1>
         <p class="text-gray-500 text-xs">OSAS portal · Reports &amp; analytics</p>
       </div>
-      <div
-        class="sm:ml-auto flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm w-fit"
-      >
-        <TrendingUp :size="14" class="text-[#16A34A]" />
-        <span class="text-xs font-semibold text-gray-700">Peak: {{ peakMonthLabel }}</span>
+      <div class="sm:ml-auto flex flex-wrap items-center gap-2">
+        <AnalyticsMonthFilter
+          :period="period"
+          :can-next="canNextMonth"
+          @update:period="setPeriod"
+          @shift="shiftMonth"
+        />
+        <div class="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 shadow-sm">
+          <TrendingUp :size="14" class="text-[#16A34A]" />
+          <span class="text-xs font-semibold text-gray-700">Peak: {{ peakMonthLabel }}</span>
+        </div>
       </div>
     </div>
     <p v-if="analyticsError" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -173,7 +160,8 @@ const sdgGradient = computed(() => {
       <div
         v-for="card in statCards"
         :key="card.label"
-        :class="[card.bg, 'rounded-xl p-4 border border-gray-100 shadow-sm']"
+        :class="[card.bg, 'rounded-xl p-4 border border-gray-100 shadow-sm cursor-pointer hover:ring-1 hover:ring-emerald-200']"
+        @click="openAllEvents"
       >
         <div class="flex items-start justify-between mb-3">
           <div
@@ -262,10 +250,14 @@ const sdgGradient = computed(() => {
         </svg>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <button
+        type="button"
+        class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:ring-1 hover:ring-emerald-200"
+        @click="openStatus"
+      >
         <div class="mb-4">
           <h3 class="font-bold text-gray-800 text-sm">Event Status</h3>
-          <p class="text-gray-400 text-xs">All time · {{ totals.allTimeCount }} events</p>
+          <p class="text-gray-400 text-xs">{{ monthLabel }} · {{ totals.allTimeCount }} events · click to view all</p>
         </div>
         <div class="flex items-center justify-center py-2">
           <div
@@ -287,13 +279,18 @@ const sdgGradient = computed(() => {
             <span class="text-xs font-bold text-gray-700">{{ item.value }}</span>
           </div>
         </div>
-      </div>
+      </button>
 
-      <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+      <button
+        type="button"
+        class="rounded-xl border border-gray-100 bg-white p-4 text-left shadow-sm hover:ring-1 hover:ring-emerald-200"
+        @click="openSdgs"
+      >
         <div class="mb-4">
           <h3 class="text-sm font-bold text-gray-800">SDG Analysis</h3>
           <p class="text-xs text-gray-400">
             {{ mostUsedSdg ? `Most used · SDG ${mostUsedSdg.id}` : "No SDG data yet" }}
+            · click for all SDGs
           </p>
         </div>
         <div v-if="sdgUsage.length" class="flex items-center justify-center py-2">
@@ -325,7 +322,7 @@ const sdgGradient = computed(() => {
             <span class="shrink-0 text-xs font-bold text-gray-700">{{ item.value }}</span>
           </div>
         </div>
-      </div>
+      </button>
     </div>
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -369,6 +366,33 @@ const sdgGradient = computed(() => {
       </div>
     </div>
 
+    <button
+      type="button"
+      class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:ring-1 hover:ring-emerald-200"
+      @click="openOrganizations"
+    >
+      <div class="mb-4">
+        <h3 class="font-bold text-gray-800 text-sm">Events by Organization</h3>
+        <p class="text-gray-400 text-xs">{{ monthLabel }} · Top {{ organizationData.length || 0 }} · click for all organizations</p>
+      </div>
+      <div class="space-y-3">
+        <div v-for="row in organizationData" :key="row.org">
+          <div class="flex justify-between text-xs text-gray-600 mb-1">
+            <span class="font-semibold text-gray-800 truncate pr-2">{{ row.org }}</span>
+            <span>{{ row.events }}</span>
+          </div>
+          <div class="h-6 bg-gray-100 rounded overflow-hidden">
+            <div
+              class="h-full bg-[#16A34A] rounded-r transition-all"
+              :style="{ width: `${(row.events / maxOrgEvents) * 100}%` }"
+            />
+          </div>
+        </div>
+        <p v-if="!organizationData.length" class="py-4 text-center text-xs text-gray-400">No organization data this month.</p>
+      </div>
+    </button>
+
+    <AnalyticsRecordsModal :drilldown="drilldown" @close="closeDrilldown" @select="selectSummaryRow" />
     <div class="h-4" />
   </div>
 </template>

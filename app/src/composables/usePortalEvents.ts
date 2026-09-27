@@ -153,9 +153,14 @@ export function usePortalEvents(
     return events.value.find((e) => e.id === id) ?? mock.events.value.find((e) => e.id === id);
   }
 
-  function handleApprove(id: string): boolean {
+  function handleApprove(id: string, opts?: { skipProposalReview?: boolean }): boolean {
     const ev = pendingById(id);
-    if (!requireProposalReviewed(ev?.letterPath)) return false;
+    const skipPdf =
+      opts?.skipProposalReview ||
+      role === "gso" ||
+      role === "it_infrastructure" ||
+      role === "sports_office";
+    if (!skipPdf && !requireProposalReviewed(ev?.letterPath)) return false;
     const label = ev?.name?.trim() || "this event";
     if (!window.confirm(`Are you sure you want to approve "${label}"?`)) return false;
     if (useDb.value) {

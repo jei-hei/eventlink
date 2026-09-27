@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from "vue";
+import { computed } from "vue";
 import { Calendar, CheckCircle, XCircle } from "lucide-vue-next";
 import type { GsoEvent } from "./types";
 import { useGsoPortal } from "./portalContext";
@@ -9,19 +9,12 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 import { useDashboardLifecycleLog } from "@/composables/useDashboardLifecycleLog";
-import { isProposalReviewed, PROPOSAL_REVIEW_HINT } from "@/utils/proposalReview";
 
 useDashboardLifecycleLog("gso/DashboardView");
-
-const GsoEventDetailModal = defineAsyncComponent(
-  () => import("./components/GsoEventDetailModal.vue"),
-);
 
 const { events, scheduledEvents, handleApprove, handleReject, busy } = useGsoPortal();
 const eventsLoading = useEventsTableLoading();
 const eventStore = useEventRequestsStore();
-
-const selectedEvent = ref<GsoEvent | null>(null);
 
 function gsoAssignments(event: GsoEvent) {
   return (event.resourceAssignments ?? []).filter(
@@ -51,21 +44,6 @@ function equipmentLabel(event: GsoEvent) {
   return event.itemsEquipment || "N/A";
 }
 
-function onApprove(event: GsoEvent) {
-  handleApprove(event.id);
-}
-
-function onModalApprove() {
-  if (!selectedEvent.value) return;
-  if (!handleApprove(selectedEvent.value.id)) return;
-  selectedEvent.value = null;
-}
-
-function onModalReject() {
-  if (!selectedEvent.value) return;
-  handleReject(selectedEvent.value.id);
-  selectedEvent.value = null;
-}
 </script>
 
 <template>
@@ -119,10 +97,9 @@ function onModalReject() {
                   v-for="event in gsoEvents"
                   :key="event.id"
                   :class="[
-                    'cursor-pointer border-b border-slate-100 transition hover:bg-emerald-50/50',
+                    'border-b border-slate-100 transition hover:bg-emerald-50/50',
                     event.status === 'Conflict' ? 'bg-amber-50/80' : '',
                   ]"
-                  @click="selectedEvent = event"
                 >
                   <td class="border-r border-slate-100 px-3 py-2.5 text-sm font-medium text-slate-800">{{ event.name }}</td>
                   <td class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">{{ event.organization }}</td>
@@ -141,15 +118,13 @@ function onModalReject() {
                   </td>
                   <td
                     class="sticky right-0 z-10 bg-white/95 px-2 py-2 text-center shadow-[-6px_0_10px_-6px_rgba(15,23,42,0.15)] sm:px-3"
-                    @click.stop
                   >
                     <div class="flex flex-col items-stretch gap-1.5 sm:flex-row sm:flex-wrap sm:justify-center">
                       <button
                         type="button"
-                        class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-700 px-2 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-emerald-500 hover:to-teal-600 disabled:cursor-not-allowed disabled:opacity-60 sm:text-xs"
-                        :disabled="busy || !isProposalReviewed(event.letterPath)"
-                        :title="isProposalReviewed(event.letterPath) ? '' : PROPOSAL_REVIEW_HINT"
-                        @click="onApprove(event)"
+                        class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-700 px-2 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-emerald-500 hover:to-teal-600 disabled:opacity-60 sm:text-xs"
+                        :disabled="busy"
+                        @click="handleApprove(event.id)"
                       >
                         <CheckCircle :size="12" />
                         Approve
@@ -179,13 +154,5 @@ function onModalReject() {
         <ScheduledEventsCalendar :events="calendarEvents" class="h-full min-h-0" />
       </div>
     </div>
-
-    <GsoEventDetailModal
-      v-if="selectedEvent"
-      :event="selectedEvent"
-      @close="selectedEvent = null"
-      @approve="onModalApprove"
-      @reject="onModalReject"
-    />
   </div>
 </template>

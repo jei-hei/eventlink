@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { Calendar, CheckCircle, Eye } from "lucide-vue-next";
+import { computed } from "vue";
+import { Calendar, CheckCircle, XCircle } from "lucide-vue-next";
 import type { PortalEvent } from "@/types/portalEvent";
 import ScheduledEventsCalendar from "@/components/ScheduledEventsCalendar.vue";
 import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalendar";
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
-import EventLetterLink from "@/components/EventLetterLink.vue";
-import { isProposalReviewed, PROPOSAL_REVIEW_HINT } from "@/utils/proposalReview";
 import { resourceOfficeLabel, type ResourceOffice } from "@/types/resourceOffice";
 
 const props = defineProps<{
@@ -25,7 +23,6 @@ const emit = defineEmits<{
 }>();
 
 const eventsLoading = useEventsTableLoading();
-const selectedEvent = ref<PortalEvent | null>(null);
 
 const resourceKindFilter = computed(() => null as "venue" | "equipment" | null);
 
@@ -65,16 +62,6 @@ function assignedQuantity(event: PortalEvent) {
   return qty || "—";
 }
 
-function onApprove(event: PortalEvent) {
-  emit("approve", event.id);
-  selectedEvent.value = null;
-}
-
-function onReject(event: PortalEvent) {
-  emit("reject", event.id);
-  selectedEvent.value = null;
-}
-
 const colCount = computed(() => (showQuantity.value ? 7 : 6));
 </script>
 
@@ -109,7 +96,11 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
                     Quantity
                   </th>
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Status</th>
-                  <th class="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-slate-600">Actions</th>
+                  <th
+                    class="sticky right-0 z-20 min-w-[8.5rem] bg-slate-50 px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-slate-600 shadow-[-6px_0_10px_-6px_rgba(15,23,42,0.2)]"
+                  >
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -123,8 +114,7 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
                   <tr
                     v-for="event in pending"
                     :key="event.id"
-                    class="cursor-pointer border-b border-slate-100 transition hover:bg-emerald-50/50"
-                    @click="selectedEvent = event"
+                    class="border-b border-slate-100 transition hover:bg-emerald-50/50"
                   >
                     <td class="border-r border-slate-100 px-3 py-2.5 text-sm font-medium text-slate-800">{{ event.name }}</td>
                     <td class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">{{ event.organization }}</td>
@@ -148,14 +138,29 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
                         {{ event.status }}
                       </span>
                     </td>
-                    <td class="px-2 py-2 text-center" @click.stop>
-                      <button
-                        type="button"
-                        class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                        @click="selectedEvent = event"
-                      >
-                        <Eye :size="12" /> Open
-                      </button>
+                    <td
+                      class="sticky right-0 z-10 bg-white/95 px-2 py-2 text-center shadow-[-6px_0_10px_-6px_rgba(15,23,42,0.15)] sm:px-3"
+                    >
+                      <div class="flex flex-col items-stretch gap-1.5 sm:flex-row sm:flex-wrap sm:justify-center">
+                        <button
+                          type="button"
+                          class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-700 px-2 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-emerald-500 hover:to-teal-600 disabled:opacity-60 sm:text-xs"
+                          :disabled="busy"
+                          @click="emit('approve', event.id)"
+                        >
+                          <CheckCircle :size="12" />
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          class="inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-red-600 to-red-700 px-2 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:from-red-500 hover:to-red-600 disabled:opacity-60 sm:text-xs"
+                          :disabled="busy"
+                          @click="emit('reject', event.id)"
+                        >
+                          <XCircle :size="12" />
+                          Reject
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 </template>
@@ -167,48 +172,6 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
 
       <div class="flex min-h-0 min-w-0 flex-col">
         <ScheduledEventsCalendar :events="calendarEvents" class="h-full min-h-0" />
-      </div>
-    </div>
-
-    <div
-      v-if="selectedEvent"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      @click.self="selectedEvent = null"
-    >
-      <div class="mx-4 w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
-        <div class="flex items-center justify-between bg-[#16A34A] px-6 py-4 text-white">
-          <h3 class="text-base font-bold">Event Details</h3>
-          <button type="button" class="rounded-lg p-1.5 hover:bg-[#15803D]" @click="selectedEvent = null">✕</button>
-        </div>
-        <div class="space-y-3 p-6 text-sm">
-          <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-gray-500">Activity</p>
-            <p class="font-medium text-gray-800">{{ selectedEvent.name }}</p>
-          </div>
-          <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-gray-500">Organization</p>
-            <p class="font-medium text-gray-800">{{ selectedEvent.organization }}</p>
-          </div>
-          <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-gray-500">Date / time</p>
-            <p class="font-medium text-gray-800">{{ selectedEvent.date }} · {{ selectedEvent.startTime }} – {{ selectedEvent.endTime }}</p>
-          </div>
-          <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-gray-500">Assigned to {{ resourceOfficeLabel(office) }}</p>
-            <p class="font-medium text-gray-800">{{ assignedSummary(selectedEvent) || "—" }}</p>
-          </div>
-          <EventLetterLink
-            v-if="selectedEvent.letterPath"
-            :letter-path="selectedEvent.letterPath"
-            label="Proposal PDF"
-            :current="true"
-          />
-        </div>
-        <div class="flex justify-end gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
-          <button type="button" class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold" @click="selectedEvent = null">Close</button>
-          <button type="button" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" :disabled="busy" @click="onReject(selectedEvent)">Decline</button>
-          <button type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60" :disabled="busy || !isProposalReviewed(selectedEvent.letterPath)" :title="isProposalReviewed(selectedEvent.letterPath) ? '' : PROPOSAL_REVIEW_HINT" @click="onApprove(selectedEvent)">Approve</button>
-        </div>
       </div>
     </div>
   </div>

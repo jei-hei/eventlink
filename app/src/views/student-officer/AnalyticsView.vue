@@ -1,74 +1,42 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed } from "vue";
 import { TrendingUp, CalendarDays, CheckCircle2, BarChart2, Clock } from "lucide-vue-next";
 import OrgFeedbackSection from "@/components/portal/OrgFeedbackSection.vue";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import PortalStatSkeleton from "@/components/portal/PortalStatSkeleton.vue";
-import { fetchAnalyticsOverview, type ActivityItem } from "@/services/analyticsDb";
-import { useAuthStore } from "@/stores/auth";
+import AnalyticsMonthFilter from "@/components/portal/AnalyticsMonthFilter.vue";
+import AnalyticsRecordsModal from "@/components/portal/AnalyticsRecordsModal.vue";
+import { useAnalyticsDashboard } from "@/composables/useAnalyticsDashboard";
 
-const auth = useAuthStore();
+const {
+  period,
+  data,
+  loading: analyticsLoading,
+  error: analyticsError,
+  monthLabel,
+  canNextMonth,
+  drilldown,
+  setPeriod,
+  shiftMonth,
+  closeDrilldown,
+  openStatus,
+  openAllEvents,
+  selectSummaryRow,
+} = useAnalyticsDashboard("student_officer");
 
-const monthlyEvents = ref([
-  { id: "m1", month: "Jan", events: 0, approved: 0, rejected: 0 },
-]);
-
-const eventStatusData = ref([
-  { name: "Approved", value: 0, color: "#4ADE80" },
-  { name: "Pending", value: 0, color: "#D97706" },
-  { name: "Rejected", value: 0, color: "#DC2626" },
-]);
-
-const recentActivity = ref<ActivityItem[]>([]);
-
-const totals = ref({
-  totalThisYear: 0,
-  approvedThisMonth: 0,
-  approvedLastMonth: 0,
-  pendingCount: 0,
-  allTimeCount: 0,
-});
-const peakMonthLabel = ref("No data yet");
-const analyticsError = ref<string | null>(null);
-const analyticsLoading = ref(true);
-
-async function loadAnalytics() {
-  analyticsLoading.value = true;
-  try {
-    const data = await fetchAnalyticsOverview("student_officer", {
-      organizationId: auth.organizationId,
-      userId: auth.userId,
-      collegeId: auth.collegeId,
-    });
-    monthlyEvents.value = data.monthlyEvents;
-    eventStatusData.value = data.eventStatusData;
-    recentActivity.value = data.recentActivity;
-    totals.value = {
-      totalThisYear: data.totals.totalThisYear,
-      approvedThisMonth: data.totals.approvedThisMonth,
-      approvedLastMonth: data.totals.approvedLastMonth,
-      pendingCount: data.totals.pendingCount,
-      allTimeCount: data.totals.allTimeCount,
-    };
-    peakMonthLabel.value = data.peakMonthLabel;
-  } catch (e) {
-    analyticsError.value = e instanceof Error ? e.message : "Could not load analytics.";
-  } finally {
-    analyticsLoading.value = false;
-  }
-}
-
-onMounted(() => {
-  void loadAnalytics();
-});
+const monthlyEvents = computed(() => data.value.monthlyEvents);
+const eventStatusData = computed(() => data.value.eventStatusData);
+const recentActivity = computed(() => data.value.recentActivity);
+const totals = computed(() => data.value.totals);
+const peakMonthLabel = computed(() => data.value.peakMonthLabel);
 
 const approvedDelta = computed(() => totals.value.approvedThisMonth - totals.value.approvedLastMonth);
 
 const statCards = computed(() => [
   {
-    label: "Total Events (2026)",
+    label: `Events in ${monthLabel.value}`,
     value: String(totals.value.totalThisYear),
-    change: "Live from event requests",
+    change: "Click to view records",
     changePositive: true,
     icon: CalendarDays,
     accent: "#16A34A",
@@ -137,11 +105,17 @@ const pieGradient = computed(() => {
         <h1 class="font-bold text-gray-800 text-base">Dashboard</h1>
         <p class="text-gray-500 text-xs">Student Officer portal · Reports &amp; analytics</p>
       </div>
-      <div
-        class="sm:ml-auto flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm w-fit"
-      >
-        <TrendingUp :size="14" class="text-[#16A34A]" />
-        <span class="text-xs font-semibold text-gray-700">Peak: {{ peakMonthLabel }}</span>
+      <div class="sm:ml-auto flex flex-wrap items-center gap-2">
+        <AnalyticsMonthFilter
+          :period="period"
+          :can-next="canNextMonth"
+          @update:period="setPeriod"
+          @shift="shiftMonth"
+        />
+        <div class="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 shadow-sm">
+          <TrendingUp :size="14" class="text-[#16A34A]" />
+          <span class="text-xs font-semibold text-gray-700">Peak: {{ peakMonthLabel }}</span>
+        </div>
       </div>
     </div>
 
@@ -154,7 +128,8 @@ const pieGradient = computed(() => {
       <div
         v-for="card in statCards"
         :key="card.label"
-        :class="[card.bg, 'rounded-xl p-4 border border-gray-100 shadow-sm']"
+        :class="[card.bg, 'rounded-xl p-4 border border-gray-100 shadow-sm cursor-pointer hover:ring-1 hover:ring-emerald-200']"
+        @click="openAllEvents"
       >
         <div class="flex items-start justify-between mb-3">
           <div
@@ -302,10 +277,14 @@ const pieGradient = computed(() => {
         </svg>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <button
+        type="button"
+        class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:ring-1 hover:ring-emerald-200"
+        @click="openStatus"
+      >
         <div class="mb-4">
           <h3 class="font-bold text-gray-800 text-sm">Event Status</h3>
-          <p class="text-gray-400 text-xs">All time · {{ totals.allTimeCount }} events</p>
+          <p class="text-gray-400 text-xs">{{ monthLabel }} · {{ totals.allTimeCount }} events · click to view all</p>
         </div>
         <div class="flex items-center justify-center py-2">
           <div
@@ -327,10 +306,11 @@ const pieGradient = computed(() => {
             <span class="text-xs font-bold text-gray-700">{{ item.value }}</span>
           </div>
         </div>
-      </div>
+      </button>
     </div>
 
     <OrgFeedbackSection />
+    <AnalyticsRecordsModal :drilldown="drilldown" @close="closeDrilldown" @select="selectSummaryRow" />
 
     <div class="h-4" />
   </div>

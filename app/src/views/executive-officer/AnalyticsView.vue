@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed } from "vue";
 import {
   TrendingUp,
   CalendarDays,
@@ -11,82 +11,53 @@ import {
 import EventsLogPanel from "@/components/portal/EventsLogPanel.vue";
 import ViewAllDashboardButton from "@/components/portal/ViewAllDashboardButton.vue";
 import PortalStatSkeleton from "@/components/portal/PortalStatSkeleton.vue";
-import { fetchAnalyticsOverview, type ActivityItem } from "@/services/analyticsDb";
+import AnalyticsMonthFilter from "@/components/portal/AnalyticsMonthFilter.vue";
+import AnalyticsRecordsModal from "@/components/portal/AnalyticsRecordsModal.vue";
+import { useAnalyticsDashboard } from "@/composables/useAnalyticsDashboard";
 
-const monthlyEvents = ref([
-  { id: "m1", month: "Jan", events: 0, approved: 0, rejected: 0 },
-]);
+const {
+  period,
+  data,
+  loading: analyticsLoading,
+  error: analyticsError,
+  monthLabel,
+  canNextMonth,
+  topOrganizations,
+  topColleges,
+  drilldown,
+  setPeriod,
+  shiftMonth,
+  closeDrilldown,
+  openOrganizations,
+  openColleges,
+  openStatus,
+  openAllEvents,
+  selectSummaryRow,
+} = useAnalyticsDashboard("eo");
 
-const eventStatusData = ref([
-  { name: "Approved", value: 0, color: "#4ADE80" },
-  { name: "Pending", value: 0, color: "#D97706" },
-  { name: "Rejected", value: 0, color: "#DC2626" },
-]);
-
-const organizationData = ref([
-  { org: "No data yet", events: 0 },
-]);
-const collegeData = ref([
-  { college: "No data yet", events: 0 },
-]);
+const monthlyEvents = computed(() => data.value.monthlyEvents);
+const eventStatusData = computed(() => data.value.eventStatusData);
+const organizationData = topOrganizations;
+const collegeData = topColleges;
+const recentActivity = computed(() => data.value.recentActivity);
+const totals = computed(() => data.value.totals);
+const peakMonthLabel = computed(() => data.value.peakMonthLabel);
 
 const maxOrgEvents = computed(() => Math.max(...organizationData.value.map((o) => o.events), 1));
 const maxCollegeEvents = computed(() => Math.max(...collegeData.value.map((c) => c.events), 1));
-
-const recentActivity = ref<ActivityItem[]>([]);
-
-const totals = ref({
-  totalThisYear: 0,
-  approvedThisMonth: 0,
-  approvedLastMonth: 0,
-  pendingCount: 0,
-  awaitingPublishCount: 0,
-  allTimeCount: 0,
-});
-const peakMonthLabel = ref("No data yet");
-const analyticsError = ref<string | null>(null);
-const analyticsLoading = ref(true);
-
-async function loadAnalytics() {
-  analyticsLoading.value = true;
-  try {
-    const data = await fetchAnalyticsOverview("eo");
-    monthlyEvents.value = data.monthlyEvents;
-    eventStatusData.value = data.eventStatusData;
-    recentActivity.value = data.recentActivity;
-    organizationData.value = data.organizationData;
-    collegeData.value = data.collegeData;
-    totals.value = {
-      totalThisYear: data.totals.totalThisYear,
-      approvedThisMonth: data.totals.approvedThisMonth,
-      approvedLastMonth: data.totals.approvedLastMonth,
-      pendingCount: data.totals.pendingCount,
-      awaitingPublishCount: data.totals.awaitingPublishCount,
-      allTimeCount: data.totals.allTimeCount,
-    };
-    peakMonthLabel.value = data.peakMonthLabel;
-  } catch (e) {
-    analyticsError.value = e instanceof Error ? e.message : "Could not load analytics.";
-  } finally {
-    analyticsLoading.value = false;
-  }
-}
-
-onMounted(() => {
-  void loadAnalytics();
-});
 
 const approvedDelta = computed(() => totals.value.approvedThisMonth - totals.value.approvedLastMonth);
 
 const statCards = computed(() => [
   {
-    label: "Total Events (2026)",
+    label: `Events in ${monthLabel.value}`,
     value: String(totals.value.totalThisYear),
-    change: "Live from event requests",
+    change: "Click to view all records",
     changePositive: true,
     icon: CalendarDays,
     accent: "#16A34A",
     bg: "bg-green-50",
+    onClick: openAllEvents,
   },
   {
     label: "Approved This Month",
@@ -99,24 +70,27 @@ const statCards = computed(() => [
     icon: CheckCircle2,
     accent: "#4ADE80",
     bg: "bg-emerald-50",
+    onClick: openAllEvents,
   },
   {
-    label: "Pending Approval",
+    label: "Pending This Month",
     value: String(totals.value.pendingCount),
-    change: "Action needed",
+    change: "In selected month",
     changePositive: false,
     icon: Clock,
     accent: "#F59E0B",
     bg: "bg-yellow-50",
+    onClick: openStatus,
   },
   {
     label: "Awaiting Publish",
     value: String(totals.value.awaitingPublishCount),
-    change: "EO publish queue",
+    change: "EO publish queue this month",
     changePositive: false,
     icon: AlertTriangle,
     accent: "#DC2626",
     bg: "bg-red-50",
+    onClick: openAllEvents,
   },
 ]);
 
@@ -160,11 +134,17 @@ const pieGradient = computed(() => {
         <h1 class="font-bold text-gray-800 text-base">Dashboard</h1>
         <p class="text-gray-500 text-xs">Executive Officer portal · Reports &amp; analytics</p>
       </div>
-      <div
-        class="sm:ml-auto flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm w-fit"
-      >
-        <TrendingUp :size="14" class="text-[#16A34A]" />
-        <span class="text-xs font-semibold text-gray-700">Peak: {{ peakMonthLabel }}</span>
+      <div class="sm:ml-auto flex flex-wrap items-center gap-2">
+        <AnalyticsMonthFilter
+          :period="period"
+          :can-next="canNextMonth"
+          @update:period="setPeriod"
+          @shift="shiftMonth"
+        />
+        <div class="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 shadow-sm">
+          <TrendingUp :size="14" class="text-[#16A34A]" />
+          <span class="text-xs font-semibold text-gray-700">Peak: {{ peakMonthLabel }}</span>
+        </div>
       </div>
     </div>
 
@@ -177,7 +157,8 @@ const pieGradient = computed(() => {
       <div
         v-for="card in statCards"
         :key="card.label"
-        :class="[card.bg, 'rounded-xl p-4 border border-gray-100 shadow-sm']"
+        :class="[card.bg, 'rounded-xl p-4 border border-gray-100 shadow-sm cursor-pointer hover:ring-1 hover:ring-emerald-200']"
+        @click="card.onClick()"
       >
         <div class="flex items-start justify-between mb-3">
           <div
@@ -247,7 +228,7 @@ const pieGradient = computed(() => {
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
           <div>
             <h3 class="font-bold text-gray-800 text-sm">Monthly Event Trend</h3>
-            <p class="text-gray-400 text-xs">Jan – Jun 2026</p>
+            <p class="text-gray-400 text-xs">Last 6 months through {{ monthLabel }}</p>
           </div>
           <div class="flex items-center gap-3">
             <div class="flex items-center gap-1.5">
@@ -307,10 +288,14 @@ const pieGradient = computed(() => {
         </svg>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <button
+        type="button"
+        class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:ring-1 hover:ring-emerald-200"
+        @click="openStatus"
+      >
         <div class="mb-4">
           <h3 class="font-bold text-gray-800 text-sm">Event Status</h3>
-          <p class="text-gray-400 text-xs">All time · {{ totals.allTimeCount }} events</p>
+          <p class="text-gray-400 text-xs">{{ monthLabel }} · {{ totals.allTimeCount }} events · click to view all</p>
         </div>
         <div class="flex items-center justify-center py-2">
           <div
@@ -332,14 +317,20 @@ const pieGradient = computed(() => {
             <span class="text-xs font-bold text-gray-700">{{ item.value }}</span>
           </div>
         </div>
-      </div>
+      </button>
     </div>
 
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <button
+        type="button"
+        class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:ring-1 hover:ring-emerald-200"
+        @click="openOrganizations"
+      >
         <div class="mb-4">
           <h3 class="font-bold text-gray-800 text-sm">Events by Organization</h3>
-          <p class="text-gray-400 text-xs">All time · Top {{ organizationData.length || 0 }} organizations</p>
+          <p class="text-gray-400 text-xs">
+            {{ monthLabel }} · Top {{ organizationData.length || 0 }} · click for all organizations
+          </p>
         </div>
         <div class="space-y-3">
           <div v-for="row in organizationData" :key="row.org">
@@ -354,12 +345,19 @@ const pieGradient = computed(() => {
               />
             </div>
           </div>
+          <p v-if="!organizationData.length" class="py-4 text-center text-xs text-gray-400">No organization data this month.</p>
         </div>
-      </div>
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      </button>
+      <button
+        type="button"
+        class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:ring-1 hover:ring-emerald-200"
+        @click="openColleges"
+      >
         <div class="mb-4">
           <h3 class="font-bold text-gray-800 text-sm">Events by College</h3>
-          <p class="text-gray-400 text-xs">All time · Top {{ collegeData.length || 0 }} colleges</p>
+          <p class="text-gray-400 text-xs">
+            {{ monthLabel }} · Top {{ collegeData.length || 0 }} · click for all colleges
+          </p>
         </div>
         <div class="space-y-3">
           <div v-for="row in collegeData" :key="row.college">
@@ -374,11 +372,13 @@ const pieGradient = computed(() => {
               />
             </div>
           </div>
+          <p v-if="!collegeData.length" class="py-4 text-center text-xs text-gray-400">No college data this month.</p>
         </div>
-      </div>
+      </button>
     </div>
 
     <EventsLogPanel role="eo" />
+    <AnalyticsRecordsModal :drilldown="drilldown" @close="closeDrilldown" @select="selectSummaryRow" />
 
     <div class="h-4" />
   </div>

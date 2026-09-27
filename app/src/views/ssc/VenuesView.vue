@@ -9,7 +9,11 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import type { PortalEvent } from "@/types/portalEvent";
 import { mapRowToPortalEvent } from "@/services/eventRequestsDb";
 
-const { handleApprove, handleReject, scheduledEvents, useDb } = useSscPortal();
+const { handleApprove, handleReject, scheduledEvents, useDb, busy } = useSscPortal();
+
+function approveVenueRequest(id: string) {
+  handleApprove(id, { skipProposalReview: true });
+}
 const store = useEventRequestsStore();
 
 const resourceEvents = computed<PortalEvent[]>(() => {
@@ -25,7 +29,8 @@ const resourceEvents = computed<PortalEvent[]>(() => {
       title="SSC-managed venue / equipment requests"
       :events="resourceEvents"
       :scheduled-events="scheduledEvents"
-      @approve="handleApprove"
+      :busy="busy"
+      @approve="approveVenueRequest"
       @reject="handleReject"
     />
     <ResourceVenueManager office="ssc" title="SSC Venues" />
