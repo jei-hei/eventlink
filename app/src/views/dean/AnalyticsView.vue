@@ -150,8 +150,8 @@ const pieGradient = computed(() => {
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 min-w-0">
         <div class="flex items-center justify-between mb-4 gap-2">
           <div>
             <h3 class="font-bold text-gray-800 text-sm">Recent Activity</h3>
@@ -192,7 +192,7 @@ const pieGradient = computed(() => {
         </div>
       </div>
 
-      <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 min-w-0">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
           <div>
             <h3 class="font-bold text-gray-800 text-sm">Monthly event trend</h3>
@@ -258,64 +258,66 @@ const pieGradient = computed(() => {
 
       <button
         type="button"
-        class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:ring-1 hover:ring-emerald-200"
+        class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:ring-1 hover:ring-emerald-200 min-w-0"
+        @click="openOrganizations"
+      >
+        <div class="mb-4">
+          <h3 class="font-bold text-gray-800 text-sm">Events by Organization</h3>
+          <p class="text-gray-400 text-xs">
+            {{ monthLabel }} · Top orgs in your college · click for all
+          </p>
+        </div>
+        <div class="space-y-3">
+          <div v-for="row in organizationData" :key="row.org">
+            <div class="flex justify-between text-xs text-gray-600 mb-1">
+              <span class="font-semibold text-gray-800 truncate pr-2">{{ row.org }}</span>
+              <span>{{ row.events }}</span>
+            </div>
+            <div class="h-4 bg-gray-100 rounded overflow-hidden">
+              <div
+                class="h-full bg-[#16A34A] rounded-r transition-all"
+                :style="{ width: `${(row.events / maxOrgEvents) * 100}%` }"
+              />
+            </div>
+          </div>
+          <p v-if="!organizationData.length" class="py-4 text-center text-xs text-gray-400">
+            No organization data this month.
+          </p>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:ring-1 hover:ring-emerald-200 min-w-0"
         @click="openStatus"
       >
         <div class="mb-4">
           <h3 class="font-bold text-gray-800 text-sm">Event Status Overview</h3>
-            <p class="text-gray-400 text-xs">{{ monthLabel }} · {{ totals.allTimeCount }} events · click to view all</p>
+          <p class="text-gray-400 text-xs">{{ monthLabel }} · {{ totals.allTimeCount }} events · click to view all</p>
         </div>
-        <div class="flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
-          <div class="shrink-0 flex justify-center w-full sm:w-[40%] max-w-[200px]">
-            <div
-              class="w-44 h-44 sm:w-48 sm:h-48 rounded-full border border-gray-100 shadow-inner relative"
-              :style="{
-                background: pieGradient,
-                mask: 'radial-gradient(transparent 58%, black 59%)',
-                WebkitMask: 'radial-gradient(transparent 58%, black 59%)',
-              }"
-              role="img"
-              aria-label="Event status distribution"
-            />
-          </div>
-          <div class="flex-1 w-full space-y-3 min-w-0">
-            <div v-for="item in eventStatusData" :key="item.name" class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2 min-w-0">
-                <div class="w-4 h-4 rounded shrink-0" :style="{ backgroundColor: item.color }" />
-                <span class="text-sm font-medium text-gray-700 truncate">{{ item.name }}</span>
-              </div>
-              <span class="text-lg font-bold text-gray-800 shrink-0">{{ item.value }}</span>
+        <div class="flex items-center justify-center py-2">
+          <div
+            class="w-36 h-36 rounded-full border border-gray-100 shadow-inner relative"
+            :style="{
+              background: pieGradient,
+              mask: 'radial-gradient(transparent 52%, black 53%)',
+              WebkitMask: 'radial-gradient(transparent 52%, black 53%)',
+            }"
+            role="img"
+            aria-label="Event status distribution"
+          />
+        </div>
+        <div class="mt-2 space-y-1.5">
+          <div v-for="item in eventStatusData" :key="item.name" class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <div class="w-2.5 h-2.5 rounded-sm shrink-0" :style="{ backgroundColor: item.color }" />
+              <span class="text-xs text-gray-600 truncate">{{ item.name }}</span>
             </div>
+            <span class="text-xs font-bold text-gray-700 shrink-0">{{ item.value }}</span>
           </div>
         </div>
       </button>
     </div>
-
-    <button
-      type="button"
-      class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:ring-1 hover:ring-emerald-200"
-      @click="openOrganizations"
-    >
-      <div class="mb-4">
-        <h3 class="font-bold text-gray-800 text-sm">Events by Organization</h3>
-        <p class="text-gray-400 text-xs">{{ monthLabel }} · Top {{ organizationData.length || 0 }} · click for all organizations</p>
-      </div>
-      <div class="space-y-3">
-        <div v-for="row in organizationData" :key="row.org">
-          <div class="flex justify-between text-xs text-gray-600 mb-1">
-            <span class="font-semibold text-gray-800 truncate pr-2">{{ row.org }}</span>
-            <span>{{ row.events }}</span>
-          </div>
-          <div class="h-6 bg-gray-100 rounded overflow-hidden">
-            <div
-              class="h-full bg-[#16A34A] rounded-r transition-all"
-              :style="{ width: `${(row.events / maxOrgEvents) * 100}%` }"
-            />
-          </div>
-        </div>
-        <p v-if="!organizationData.length" class="py-4 text-center text-xs text-gray-400">No organization data this month.</p>
-      </div>
-    </button>
 
     <AnalyticsRecordsModal :drilldown="drilldown" @close="closeDrilldown" @select="selectSummaryRow" />
     <div class="h-4" />

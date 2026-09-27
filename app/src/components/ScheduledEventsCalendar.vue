@@ -769,7 +769,6 @@ const weekRowTemplate = computed(() => {
       </div>
 
     <aside
-      v-if="groupedEventList.length"
       :class="[
         'border-t border-slate-200/90 bg-[#faf8f5] px-3 py-2',
         listLayout === 'management'
@@ -779,7 +778,10 @@ const weekRowTemplate = computed(() => {
             : 'shrink-0',
       ]"
     >
-      <p class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">List of events</p>
+      <p class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">Events</p>
+      <p v-if="!groupedEventList.length" class="py-6 text-center text-xs text-slate-400">
+        No upcoming events.
+      </p>
       <div v-for="group in groupedEventList" :key="group.key" class="mb-3 last:mb-0">
         <p class="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{{ group.label }}</p>
         <ul class="space-y-1">

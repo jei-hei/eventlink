@@ -82,10 +82,10 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
 </script>
 
 <template>
-  <div class="dash-page dash-page-flow">
+  <div class="dash-page">
     <div class="dash-split">
       <div class="flex min-h-0 min-w-0 flex-col">
-        <div class="dash-card flex min-h-0 flex-1 flex-col overflow-visible">
+        <div class="dash-card dash-card-fill">
           <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
             <div class="flex items-center gap-2">
               <Calendar :size="18" class="text-[#16A34A]" />
@@ -109,21 +109,14 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
 
           <p
             v-if="showApprovedReminder"
-            class="mx-3 mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 sm:mx-4"
+            class="mx-3 mt-3 shrink-0 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 sm:mx-4"
           >
             {{ approvedNoticeCount }} request(s) are already approved. Check the Events page.
           </p>
 
-          <div class="min-w-0">
-            <table class="w-full table-fixed">
-              <colgroup>
-                <col class="w-[28%]" />
-                <col class="w-[16%]" />
-                <col class="w-[20%]" />
-                <col class="w-[20%]" />
-                <col class="w-[16%]" />
-              </colgroup>
-              <thead class="hidden bg-gray-50 md:table-header-group">
+          <div class="min-h-0 flex-1 overflow-auto">
+            <table class="w-full">
+              <thead class="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th
                     class="px-3 py-2.5 text-left font-bold border-r border-gray-200 text-xs text-gray-600 uppercase tracking-wide"
@@ -148,10 +141,10 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
                   <th class="px-3 py-2.5 text-left font-bold text-xs text-gray-600 uppercase tracking-wide">Status</th>
                 </tr>
               </thead>
-              <tbody class="block md:table-row-group">
-                <PortalTableSkeleton v-if="eventsLoading" :rows="4" :columns="5" />
-                <tr v-else-if="events.length === 0" class="block md:table-row">
-                  <td colspan="5" class="block py-12 text-center text-sm text-gray-400 md:table-cell">
+              <tbody>
+                <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="5" />
+                <tr v-else-if="events.length === 0">
+                  <td colspan="5" class="py-12 text-center text-gray-400 text-sm">
                     No requests waiting for approval.
                   </td>
                 </tr>
@@ -159,33 +152,33 @@ async function publishFeedPost(payload: Parameters<typeof handleCreateFeedPost>[
                   <tr
                     v-for="event in events"
                     :key="event.id"
-                    class="block border-b border-gray-100 px-3 py-2 hover:bg-gray-50 transition cursor-pointer md:table-row md:px-0 md:py-0"
+                    class="border-b border-gray-100 hover:bg-gray-50 transition cursor-pointer"
                     @click="selectedEvent = event"
                   >
-                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-800 md:table-cell md:border-r md:px-3 md:py-2.5">
-                      <span class="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Event</span>
-                      <span class="min-w-0 flex-1 break-words whitespace-normal font-medium">{{ event.name }}</span>
+                    <td class="px-3 py-2.5 border-r border-gray-100 text-sm font-medium text-gray-800">
+                      {{ event.name }}
                     </td>
-                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-700 md:table-cell md:border-r md:px-3 md:py-2.5">
-                      <span class="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Date</span>
-                      <span class="min-w-0 flex-1 break-words whitespace-normal">{{ event.date || "—" }}</span>
+                    <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">
+                      {{ event.date || "—" }}
                     </td>
-                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-700 md:table-cell md:border-r md:px-3 md:py-2.5">
-                      <span class="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Time</span>
-                      <span class="min-w-0 flex-1 break-words whitespace-normal">
-                        {{ event.startTime && event.endTime ? `${event.startTime} – ${event.endTime}` : event.startTime || event.endTime || "—" }}
-                      </span>
+                    <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">
+                      {{
+                        event.startTime && event.endTime
+                          ? `${event.startTime} – ${event.endTime}`
+                          : event.startTime || event.endTime || "—"
+                      }}
                     </td>
-                    <td class="flex min-w-0 gap-3 border-gray-100 py-1.5 text-sm text-gray-700 md:table-cell md:border-r md:px-3 md:py-2.5">
-                      <span class="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Venue</span>
-                      <span class="min-w-0 flex-1 break-words whitespace-normal">{{ event.venue || "—" }}</span>
+                    <td class="px-3 py-2.5 border-r border-gray-100 text-sm text-gray-600">
+                      {{ event.venue || "—" }}
                     </td>
-                    <td class="flex min-w-0 gap-3 py-1.5 md:table-cell md:px-3 md:py-2.5">
-                      <span class="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-gray-500 md:hidden">Status</span>
-                      <span class="min-w-0 flex-1">
-                        <span :class="['inline-block max-w-full break-words whitespace-normal px-2 py-1 rounded text-xs font-semibold', workflowRowClass(event)]">
-                          {{ publishStatusLabel(event) }}
-                        </span>
+                    <td class="px-3 py-2.5">
+                      <span
+                        :class="[
+                          'inline-block max-w-full break-words whitespace-normal px-2 py-1 rounded text-xs font-semibold',
+                          workflowRowClass(event),
+                        ]"
+                      >
+                        {{ publishStatusLabel(event) }}
                       </span>
                     </td>
                   </tr>
