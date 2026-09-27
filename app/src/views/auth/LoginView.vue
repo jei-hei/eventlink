@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter, RouterLink } from "vue-router";
-import { Eye, EyeOff, GraduationCap, Lock, Mail, ShieldCheck } from "lucide-vue-next";
+import { Eye, EyeOff, GraduationCap, Lock, Mail, ShieldCheck, X } from "lucide-vue-next";
 import { formatAuthError, useAuthStore } from "@/stores/auth";
 import { useProfileStore } from "@/stores/profile";
 import { useUiStore } from "@/stores/ui";
@@ -37,6 +37,8 @@ let clockTimer: ReturnType<typeof setInterval> | null = null;
 const MAX_FAILED_PASSWORD_ATTEMPTS = 3;
 const LOCKOUT_MS = 60 * 1000;
 const LOCKOUT_KEY_PREFIX = "eventlink:login-lockout:";
+const NEW_USER_HINT_KEY = "eventlink:dismissed-new-user-hint";
+const showNewUserHint = ref(false);
 
 const lockRemainingSeconds = computed(() =>
   Math.max(0, Math.ceil((lockedUntilMs.value - nowMs.value) / 1000)),
@@ -73,6 +75,9 @@ function syncClock() {
 
 onMounted(() => {
   syncClock();
+  if (typeof window !== "undefined" && window.localStorage.getItem(NEW_USER_HINT_KEY) !== "1") {
+    showNewUserHint.value = true;
+  }
   if (route.query.notice === "signup-disabled") {
     ui.pushToast(
       "Student signup removed",
@@ -286,10 +291,47 @@ function cancelOtpFlow() {
   password.value = "";
   error.value = "";
 }
+
+function dismissNewUserHint() {
+  showNewUserHint.value = false;
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(NEW_USER_HINT_KEY, "1");
+  }
+}
 </script>
 
 <template>
   <div class="portal-root flex min-h-dvh flex-col">
+    <div
+      v-if="showNewUserHint && !otpRequired"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+    >
+      <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-labelledby="new-user-hint-title">
+        <button
+          type="button"
+          class="absolute right-3 top-3 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
+          aria-label="Close"
+          @click="dismissNewUserHint"
+        >
+          <X class="h-4 w-4" />
+        </button>
+        <h2 id="new-user-hint-title" class="pr-8 text-lg font-semibold text-slate-900">New to EventLink?</h2>
+        <p class="mt-2 text-sm text-slate-600">
+          If an office just created your account, use <span class="font-semibold">Forgot password</span> with your
+          school email. Open the reset link, set your own password, then sign in here.
+        </p>
+        <div class="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button type="button" class="portal-btn-secondary text-sm" @click="dismissNewUserHint">Close</button>
+          <RouterLink
+            to="/forgot-password"
+            class="portal-btn inline-flex items-center justify-center text-sm"
+            @click="dismissNewUserHint"
+          >
+            Forgot password
+          </RouterLink>
+        </div>
+      </div>
+    </div>
     <div class="flex flex-1 flex-col items-center justify-center px-3 py-10 sm:px-4">
       <div class="mb-6 text-center">
         <div
