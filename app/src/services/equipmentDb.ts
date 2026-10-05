@@ -55,8 +55,20 @@ export async function fetchAllEquipment(): Promise<EquipmentRow[]> {
 
 /** @deprecated Prefer fetchEquipmentPage. */
 export async function fetchEquipmentForOffice(office: ResourceOffice): Promise<EquipmentRow[]> {
-  const page = await fetchEquipmentPage({ page: 1, pageSize: 100, office });
-  return page.rows;
+  return fetchAllEquipmentForOffice(office);
+}
+
+export async function fetchAllEquipmentForOffice(office: ResourceOffice): Promise<EquipmentRow[]> {
+  const rows: EquipmentRow[] = [];
+  let page = 1;
+  for (;;) {
+    const result = await fetchEquipmentPage({ page, pageSize: 100, office });
+    rows.push(...result.rows);
+    if (!result.rows.length || rows.length >= result.total) break;
+    page += 1;
+    if (page > 50) break;
+  }
+  return rows;
 }
 
 export type EquipmentPageFilters = PaginationParams & {

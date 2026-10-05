@@ -258,7 +258,6 @@ const router = createRouter({
         { path: "events", name: "ssc-events", component: () => import("@/components/portal/EventMonitoringView.vue") },
         { path: "analytics", name: "ssc-analytics", component: () => import("@/views/ssc/AnalyticsView.vue") },
         { path: "venues", name: "ssc-venues", component: () => import("@/views/ssc/VenuesView.vue") },
-        { path: "equipment", name: "ssc-equipment", component: () => import("@/views/ssc/EquipmentView.vue") },
         {
           path: "profile",
           name: "ssc-profile",

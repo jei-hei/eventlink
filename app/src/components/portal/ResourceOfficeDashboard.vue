@@ -8,14 +8,21 @@ import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 import { resourceOfficeLabel, type ResourceOffice } from "@/types/resourceOffice";
 
-const props = defineProps<{
-  office: ResourceOffice;
-  events: PortalEvent[];
-  scheduledEvents: PortalEvent[];
-  title: string;
-  busy?: boolean;
-  pendingCount?: number;
-}>();
+const props = withDefaults(
+  defineProps<{
+    office: ResourceOffice;
+    events: PortalEvent[];
+    scheduledEvents?: PortalEvent[];
+    title: string;
+    busy?: boolean;
+    pendingCount?: number;
+    showCalendar?: boolean;
+  }>(),
+  {
+    scheduledEvents: () => [],
+    showCalendar: true,
+  },
+);
 
 const emit = defineEmits<{
   approve: [id: string];
@@ -26,7 +33,9 @@ const eventsLoading = useEventsTableLoading();
 
 const resourceKindFilter = computed(() => null as "venue" | "equipment" | null);
 
-const resourceColumnLabel = computed(() => "Assigned resources");
+const resourceColumnLabel = computed(() =>
+  props.office === "ssc" ? "Assigned venue" : "Assigned resources",
+);
 
 const showQuantity = computed(() =>
   props.events.some((e) =>
@@ -49,7 +58,7 @@ function officeAssignments(event: PortalEvent) {
 const pending = computed(() => props.events);
 const badgeCount = computed(() => Math.max(props.pendingCount ?? 0, pending.value.length));
 
-const calendarEvents = computed(() => mapPortalEventsToCalendar(props.scheduledEvents));
+const calendarEvents = computed(() => mapPortalEventsToCalendar(props.scheduledEvents ?? []));
 
 function assignedSummary(event: PortalEvent) {
   return officeAssignments(event)
@@ -67,7 +76,7 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
 
 <template>
   <div class="dash-page">
-    <div class="dash-split">
+    <div :class="showCalendar ? 'dash-split' : 'flex min-h-0 min-w-0 flex-1 flex-col'">
       <div class="flex min-h-0 min-w-0 flex-col">
         <div class="dash-card dash-card-fill">
           <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2.5 sm:px-4">
@@ -170,7 +179,7 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
         </div>
       </div>
 
-      <div class="flex min-h-0 min-w-0 flex-col">
+      <div v-if="showCalendar" class="flex min-h-0 min-w-0 flex-col">
         <ScheduledEventsCalendar :events="calendarEvents" class="h-full min-h-0" />
       </div>
     </div>
