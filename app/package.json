@@ -38,8 +38,5 @@
     "vite": "^8.2.2",
     "vite-plugin-vue-devtools": "^8.1.1",
     "vue-tsc": "^3.2.6"
-  },
-  "engines": {
-    "node": "20.x"
   }
 }
