@@ -3,5 +3,5 @@ import ResourceEquipmentManager from "@/components/portal/ResourceEquipmentManag
 </script>
 
 <template>
-  <ResourceEquipmentManager office="gso" title="GSO Equipment" readonly />
+  <ResourceEquipmentManager title="Equipment" readonly />
 </template>

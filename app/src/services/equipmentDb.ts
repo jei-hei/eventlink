@@ -53,16 +53,12 @@ export async function fetchAllEquipment(): Promise<EquipmentRow[]> {
   return page.rows;
 }
 
-/** @deprecated Prefer fetchEquipmentPage. */
-export async function fetchEquipmentForOffice(office: ResourceOffice): Promise<EquipmentRow[]> {
-  return fetchAllEquipmentForOffice(office);
-}
-
-export async function fetchAllEquipmentForOffice(office: ResourceOffice): Promise<EquipmentRow[]> {
+/** Every equipment row in the shared catalog (all offices). */
+export async function fetchAllEquipmentCatalog(): Promise<EquipmentRow[]> {
   const rows: EquipmentRow[] = [];
   let page = 1;
   for (;;) {
-    const result = await fetchEquipmentPage({ page, pageSize: 100, office });
+    const result = await fetchEquipmentPage({ page, pageSize: 100 });
     rows.push(...result.rows);
     if (!result.rows.length || rows.length >= result.total) break;
     page += 1;

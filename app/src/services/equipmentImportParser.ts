@@ -1,6 +1,4 @@
 import { downloadCsv } from "@/utils/downloadCsv";
-import type { ResourceOffice } from "@/types/resourceOffice";
-
 export const EQUIPMENT_IMPORT_MAX_BYTES = 1_000_000;
 export const EQUIPMENT_IMPORT_MAX_ROWS = 200;
 
@@ -142,15 +140,14 @@ export async function parseEquipmentXlsx(buffer: ArrayBuffer): Promise<Equipment
   return parseGrid(sheetRows.map((row) => row.map((value) => String(value ?? "").trim())));
 }
 
-export function downloadEquipmentTemplate(office: ResourceOffice): void {
-  downloadCsv(`eventlink-${office}-equipment-template.csv`, [
+export function downloadEquipmentTemplate(): void {
+  downloadCsv("eventlink-equipment-template.csv", [
     ["name", "quantity", "description", "status", "availability"],
     ["EXAMPLE Projector", "5", "Example row — replace before upload", "active", "available"],
   ]);
 }
 
 export function downloadEquipmentData(
-  office: ResourceOffice,
   rows: Array<{
     name: string;
     quantity_available: number;
@@ -159,7 +156,7 @@ export function downloadEquipmentData(
     availability: string;
   }>,
 ): void {
-  downloadCsv(`eventlink-${office}-equipment.csv`, [
+  downloadCsv("eventlink-equipment.csv", [
     ["name", "quantity", "description", "status", "availability"],
     ...rows.map((row) => [
       row.name,
@@ -210,7 +207,7 @@ export function validateEquipmentImportRows(
         preview.message = "Duplicate name in this file.";
       } else if (existing.has(key)) {
         preview.statusLabel = "Duplicate";
-        preview.message = "Already in this office catalog. Row will be skipped.";
+        preview.message = "Already in the equipment catalog. Row will be skipped.";
       }
       seen.add(key);
     }

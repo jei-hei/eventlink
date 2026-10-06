@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { Download, FileSpreadsheet, Package, Plus, Pencil, Search, Upload } from "lucide-vue-next";
 import PaginationControls from "@/components/PaginationControls.vue";
 import StatusBadge from "@/components/portal/StatusBadge.vue";
@@ -7,7 +7,7 @@ import { usePaginatedQuery } from "@/composables/usePaginatedQuery";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   createEquipment,
-  fetchAllEquipmentForOffice,
+  fetchAllEquipmentCatalog,
   fetchEquipmentPage,
   updateEquipment,
   type EquipmentRow,
@@ -23,14 +23,11 @@ import {
   validateEquipmentImportRows,
   type EquipmentImportPreviewRow,
 } from "@/services/equipmentImportParser";
-import type { ResourceOffice } from "@/types/resourceOffice";
-import { resourceOfficeLabel } from "@/types/resourceOffice";
 import { emptyPage } from "@/types/pagination";
 import { toUserFacingError } from "@/utils/userFacingError";
 import { useUiStore } from "@/stores/ui";
 
-const props = defineProps<{
-  office: ResourceOffice;
+defineProps<{
   title?: string;
   /** Offices view their list only; Admin adds, edits, and imports (enforced by equipment RLS). */
   readonly?: boolean;
@@ -69,25 +66,14 @@ const {
   refresh,
   setPage,
   setPageSize,
-} = usePaginatedQuery<EquipmentRow, { office: ResourceOffice }>({
+} = usePaginatedQuery<EquipmentRow>({
   fetcher: (params) => {
     if (!isSupabaseConfigured) return Promise.resolve(emptyPage<EquipmentRow>());
     return fetchEquipmentPage(params);
   },
-  filters: computed(() => ({ office: props.office })),
   search: searchQuery,
   immediate: isSupabaseConfigured,
 });
-
-watch(
-  () => props.office,
-  () => {
-    previewRows.value = [];
-    lastImportSummary.value = null;
-    formOpen.value = false;
-    refresh();
-  },
-);
 
 function statusTone(status: EquipmentImportPreviewRow["statusLabel"]) {
   if (status === "Valid") return "success" as const;
@@ -127,7 +113,6 @@ async function save() {
       name: form.value.name,
       description: form.value.description,
       quantityAvailable: form.value.quantity,
-      responsibleOffice: props.office,
       availability: form.value.availability || "available",
       status: form.value.status,
       active: form.value.status !== "inactive",
@@ -149,7 +134,7 @@ function triggerUpload() {
 }
 
 function downloadTemplate() {
-  downloadEquipmentTemplate(props.office);
+  downloadEquipmentTemplate();
   ui.pushToast(
     "Template downloaded",
     "Replace the EXAMPLE row before uploading. Example rows are not imported.",
@@ -160,8 +145,8 @@ function downloadTemplate() {
 async function downloadCurrentData() {
   exporting.value = true;
   try {
-    const rows = isSupabaseConfigured ? await fetchAllEquipmentForOffice(props.office) : items.value;
-    downloadEquipmentData(props.office, rows);
+    const rows = isSupabaseConfigured ? await fetchAllEquipmentCatalog() : items.value;
+    downloadEquipmentData(rows);
     ui.pushToast("Downloaded", `${rows.length} equipment row(s) exported.`, "success");
   } catch (e) {
     ui.pushToast("Download failed", toUserFacingError(e, "Could not export equipment."), "error");
@@ -203,7 +188,7 @@ async function onImportFile(e: Event) {
       return;
     }
     const existing = isSupabaseConfigured
-      ? (await fetchAllEquipmentForOffice(props.office)).map((r) => r.name)
+      ? (await fetchAllEquipmentCatalog()).map((r) => r.name)
       : items.value.map((r) => r.name);
     previewRows.value = validateEquipmentImportRows(rows, existing);
     ui.pushToast(
@@ -230,14 +215,13 @@ async function confirmImport() {
         name: row.name,
         description: row.description,
         quantityAvailable: row.quantity,
-        responsibleOffice: props.office,
         availability: row.availability,
         status: row.status,
         active: row.status !== "inactive",
       });
       created += 1;
     }
-    lastImportSummary.value = `Imported ${created} equipment item(s) for ${resourceOfficeLabel(props.office)}.`;
+    lastImportSummary.value = `Imported ${created} equipment item(s) into the shared catalog.`;
     previewRows.value = [];
     ui.pushToast("Import complete", lastImportSummary.value, "success");
     await refresh();
@@ -260,10 +244,10 @@ async function confirmImport() {
       <div>
         <h1 class="text-2xl font-bold text-gray-800">{{ title ?? "Equipment" }}</h1>
         <p v-if="readonly" class="mt-1 text-sm text-gray-500">
-          Equipment for {{ resourceOfficeLabel(office) }}. Only Admin can add, edit, or import equipment.
+          Shared equipment catalog for all offices. Only Admin can add, edit, or import equipment.
         </p>
         <p v-else class="mt-1 text-sm text-gray-500">
-          Manage equipment for {{ resourceOfficeLabel(office) }}. These appear in event request forms.
+          One shared catalog for all offices. Items appear in event request forms, and EO assigns them to any office.
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
@@ -379,10 +363,6 @@ async function confirmImport() {
           <textarea v-model="form.description" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
         </label>
         <label class="block text-sm">
-          <span class="mb-1 block text-xs font-semibold text-gray-500">Responsible office</span>
-          <input :value="resourceOfficeLabel(office)" type="text" disabled class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm" />
-        </label>
-        <label class="block text-sm">
           <span class="mb-1 block text-xs font-semibold text-gray-500">Status</span>
           <select v-model="form.status" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
             <option value="active">Active</option>
@@ -450,7 +430,7 @@ async function confirmImport() {
             </tr>
             <tr v-if="!items.length">
               <td :colspan="readonly ? 3 : 4" class="px-4 py-10 text-center text-sm text-gray-400">
-                {{ readonly ? "No equipment yet. Admin adds equipment for this office." : "No equipment yet. Add items to make them selectable in event requests." }}
+                {{ readonly ? "No equipment yet. Admin adds equipment to the shared catalog." : "No equipment yet. Add items to make them selectable in event requests." }}
               </td>
             </tr>
           </tbody>
