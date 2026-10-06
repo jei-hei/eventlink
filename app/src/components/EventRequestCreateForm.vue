@@ -11,6 +11,7 @@ import {
 } from "@/services/organizationsDb";
 import { fetchActiveVenues, type VenueRow } from "@/services/venuesDb";
 import { fetchActiveEquipment, type EquipmentRow } from "@/services/equipmentDb";
+import EquipmentSearchSelect from "@/components/EquipmentSearchSelect.vue";
 import { formatSdgsForStorage } from "@/constants/sdgs";
 import SdgCheckboxGroup from "@/components/SdgCheckboxGroup.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -591,28 +592,10 @@ defineExpose({ resetForm });
         </button>
       </div>
       <div v-if="!equipment.length" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-        No active equipment in database yet. GSO/Admin can add equipment entries first.
+        No active equipment in database yet. Admin can add equipment entries first.
       </div>
       <div v-for="(row, idx) in equipmentRows" :key="idx" class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr,140px,auto]">
-        <select
-          v-model="row.equipmentId"
-          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-        >
-          <option value="" disabled>Select equipment</option>
-          <option
-            v-for="eq in equipment"
-            :key="eq.id"
-            :value="eq.id"
-            :disabled="
-              eq.quantity_available <= 0 ||
-              (selectedEquipmentIds.has(eq.id) && eq.id !== row.equipmentId)
-            "
-          >
-            {{ eq.name }}
-            <template v-if="eq.quantity_available <= 0"> — unavailable</template>
-            <template v-else> ({{ eq.quantity_available }} available)</template>
-          </option>
-        </select>
+        <EquipmentSearchSelect v-model="row.equipmentId" :options="equipment" :taken-ids="selectedEquipmentIds" />
         <input
           v-model.number="row.quantity"
           type="number"

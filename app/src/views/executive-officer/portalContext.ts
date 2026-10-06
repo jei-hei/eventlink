@@ -9,7 +9,7 @@ export interface ExecutivePortalContext {
   approvedEvents: Ref<EoEvent[]>;
   scheduledEvents: Ref<EoEvent[]>;
   handleApprove: (id: string) => boolean;
-  handleReject: (id: string) => void;
+  handleReject: (id: string) => Promise<boolean>;
   handleApproveAndForward: (
     id: string,
     assignments: import("@/types/resourceOffice").ResourceAssignmentInput[],

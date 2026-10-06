@@ -53,7 +53,7 @@ function isReadyForCalendarPost(event: EoEvent) {
 
 /** Table Cancel: decline pending request (reason required). */
 function onTableCancel(event: EoEvent) {
-  handleReject(event.id);
+  void handleReject(event.id);
 }
 
 async function onApproveAndForward(
@@ -64,9 +64,8 @@ async function onApproveAndForward(
   selectedEvent.value = null;
 }
 
-function onDetailReject(id: string) {
-  handleReject(id);
-  selectedEvent.value = null;
+async function onDetailReject(id: string) {
+  if (await handleReject(id)) selectedEvent.value = null;
 }
 
 async function onRequestRevision(id: string, comment: string, attachmentFile: File | null) {

@@ -34,17 +34,15 @@ function mapEquipment(row: Record<string, unknown>): EquipmentRow {
   };
 }
 
-/** Active equipment for forms/pickers — capped intentionally. */
-export async function fetchActiveEquipment(limit = 100): Promise<EquipmentRow[]> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("equipment")
-    .select(EQUIPMENT_SELECT)
-    .eq("active", true)
-    .order("name", { ascending: true })
-    .limit(Math.min(100, Math.max(1, limit)));
-  if (error) throw error;
-  return (data ?? []).map((r) => mapEquipment(r as Record<string, unknown>));
+/** Every active equipment row for the request form's searchable picker. */
+export async function fetchActiveEquipment(): Promise<EquipmentRow[]> {
+  const rows: EquipmentRow[] = [];
+  for (let page = 1; page <= 50; page += 1) {
+    const result = await fetchEquipmentPage({ page, pageSize: 100, activeOnly: true });
+    rows.push(...result.rows);
+    if (!result.rows.length || rows.length >= result.total) break;
+  }
+  return rows;
 }
 
 /** @deprecated Prefer fetchEquipmentPage for manager UIs. */

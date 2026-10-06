@@ -2,6 +2,7 @@
 import { watch } from "vue";
 import { RouterView } from "vue-router";
 import PortalToastHost from "@/components/portal/PortalToastHost.vue";
+import DeclineReasonModal from "@/components/portal/DeclineReasonModal.vue";
 import { usePageVisibility } from "@/composables/usePageVisibility";
 import { useAuthStore } from "@/stores/auth";
 import { useNotificationsStore } from "@/stores/notifications";
@@ -43,6 +44,7 @@ watch(visible, (isVisible) => {
   </div>
   <RouterView />
   <PortalToastHost />
+  <DeclineReasonModal />
 </template>
 
 <style scoped>

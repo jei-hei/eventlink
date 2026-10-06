@@ -1,4 +1,5 @@
 import { computed, onMounted, onUnmounted, ref, watch, type Ref } from "vue";
+import { useDeclineReasonDialog } from "@/composables/useDeclineReasonDialog";
 import { usePageVisibility } from "@/composables/usePageVisibility";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
@@ -25,6 +26,7 @@ export function usePortalEvents(
   const auth = useAuthStore();
   const store = useEventRequestsStore();
   const ui = useUiStore();
+  const { askDeclineReason } = useDeclineReasonDialog();
   const { visible: pageVisible } = usePageVisibility();
   const useDb = computed(() => isSupabaseConfigured && !!auth.userId && !auth.useMock);
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -177,18 +179,17 @@ export function usePortalEvents(
     return true;
   }
 
-  function handleReject(id: string) {
-    if (!window.confirm("Are you sure you want to decline this event?")) return;
+  /** Resolves false when the reviewer cancels the decline dialog. */
+  async function handleReject(id: string): Promise<boolean> {
+    const label = pendingById(id)?.name?.trim() || "this event";
+    const reason = await askDeclineReason(label);
+    if (!reason) return false;
     if (useDb.value) {
-      const reason = window.prompt("Reason for decline (required):") ?? "";
-      if (!reason.trim()) {
-        window.alert("A decline reason is required.");
-        return;
-      }
-      void runAction(() => store.decline(id, reason.trim()));
-      return;
+      await runAction(() => store.decline(id, reason));
+      return true;
     }
     mock.events.value = mock.events.value.filter((e) => e.id !== id);
+    return true;
   }
 
   async function handleApproveAndForward(
