@@ -275,6 +275,7 @@ const router = createRouter({
         { path: "users", name: "admin-users", component: () => import("@/views/admin/UsersView.vue") },
         { path: "ssc", name: "admin-ssc", component: () => import("@/views/admin/SscView.vue") },
         { path: "colleges", name: "admin-colleges", component: () => import("@/views/admin/CollegesView.vue") },
+        { path: "equipment", name: "admin-equipment", component: () => import("@/views/admin/EquipmentView.vue") },
         { path: "reports", redirect: { name: "admin-dashboard" } },
         { path: "settings", name: "admin-settings", component: () => import("@/views/admin/SettingsView.vue") },
         {

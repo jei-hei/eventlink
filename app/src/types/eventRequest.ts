@@ -67,6 +67,10 @@ export type EventRequestRow = {
     status: "pending" | "approved" | "declined";
     decline_reason: string | null;
   }> | null;
+  event_request_office_notes?: Array<{
+    assigned_office: string;
+    note: string;
+  }> | null;
   event_request_letters?: Array<{
     id: string;
     letter_path: string;

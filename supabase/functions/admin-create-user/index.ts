@@ -220,7 +220,13 @@ Deno.serve(async (req) => {
     if (listErr) {
       return json(500, { error: listErr.message });
     }
-    existing = usersPage.users.find((u) => (u.email ?? "").toLowerCase() === email) ?? null;
+    const taken = usersPage.users.some((u) => (u.email ?? "").toLowerCase() === email);
+    if (taken) {
+      return json(409, {
+        error: "This email is already used by another account. Edit that user instead.",
+        source: "email_validation",
+      });
+    }
   }
 
   if (!existing && password.length < 8) {

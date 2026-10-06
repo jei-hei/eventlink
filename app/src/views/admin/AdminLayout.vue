@@ -10,6 +10,7 @@ import {
   UserCircle,
   LogOut,
   LayoutDashboard,
+  Package,
 } from "lucide-vue-next";
 import NotificationDropdown from "@/components/portal/NotificationDropdown.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -38,6 +39,7 @@ const navItems = [
   { to: "/admin", name: "admin-dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/admin/users", name: "admin-users", label: "Users", icon: Users },
   { to: "/admin/colleges", name: "admin-colleges", label: "Colleges", icon: Building2 },
+  { to: "/admin/equipment", name: "admin-equipment", label: "Equipment", icon: Package },
   { to: "/admin/settings", name: "admin-settings", label: "Settings", icon: Settings },
   { to: "/admin/profile", name: "admin-profile", label: "Profile", icon: UserCircle },
 ] as const;

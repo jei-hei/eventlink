@@ -95,6 +95,8 @@ export interface PortalEvent {
   awaitingCalendarPost?: boolean;
   awaitingResourceAssignment?: boolean;
   resourceAssignments?: PortalResourceAssignment[];
+  /** EO instructions per resource office; RLS returns only notes the viewer may read. */
+  officeNotes?: Partial<Record<ResourceOffice, string>>;
   workflowHistory?: WorkflowStepUi[];
   declineReason?: string;
   cancellationReason?: string;

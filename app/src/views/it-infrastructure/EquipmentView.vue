@@ -3,5 +3,5 @@ import ResourceEquipmentManager from "@/components/portal/ResourceEquipmentManag
 </script>
 
 <template>
-  <ResourceEquipmentManager office="it_infrastructure" title="IT Equipment" />
+  <ResourceEquipmentManager office="it_infrastructure" title="IT Equipment" readonly />
 </template>

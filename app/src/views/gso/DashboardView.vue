@@ -9,6 +9,7 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 import { useDashboardLifecycleLog } from "@/composables/useDashboardLifecycleLog";
+import { useOfficeAssignmentColumns } from "@/composables/useOfficeAssignmentColumns";
 
 useDashboardLifecycleLog("gso/DashboardView");
 
@@ -16,33 +17,26 @@ const { events, scheduledEvents, handleApprove, handleReject, busy } = useGsoPor
 const eventsLoading = useEventsTableLoading();
 const eventStore = useEventRequestsStore();
 
-function gsoAssignments(event: GsoEvent) {
-  return (event.resourceAssignments ?? []).filter(
-    (a) => a.assignedOffice === "gso" && a.status === "pending",
-  );
-}
-
-const gsoEvents = computed(() => events.value);
+const gsoEvents = computed<GsoEvent[]>(() => events.value);
 
 const pendingCount = computed(() => Math.max(eventStore.pendingActionCount, gsoEvents.value.length));
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(scheduledEvents.value));
 
-function venueLabel(event: GsoEvent) {
-  const venues = gsoAssignments(event)
-    .filter((a) => a.resourceKind === "venue")
-    .map((a) => a.resourceName);
-  if (venues.length) return venues.join(", ");
-  return event.venue || "—";
-}
+const {
+  showVenueColumn,
+  showEquipmentColumn,
+  showNoteColumn,
+  venueLabel,
+  equipmentLabel,
+  officeNote,
+  isNoteExpanded,
+  toggleNote,
+} = useOfficeAssignmentColumns(() => "gso", gsoEvents);
 
-function equipmentLabel(event: GsoEvent) {
-  const equipment = gsoAssignments(event)
-    .filter((a) => a.resourceKind === "equipment")
-    .map((a) => `${a.resourceName} (x${a.quantity})`);
-  if (equipment.length) return equipment.join(", ");
-  return event.itemsEquipment || "N/A";
-}
+const colCount = computed(
+  () => 4 + Number(showVenueColumn.value) + Number(showEquipmentColumn.value) + Number(showNoteColumn.value),
+);
 
 </script>
 
@@ -77,11 +71,14 @@ function equipmentLabel(event: GsoEvent) {
                   <th class="border-r border-slate-200 px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-slate-600">
                     Date / time
                   </th>
-                  <th class="border-r border-slate-200 px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-slate-600">
+                  <th v-if="showVenueColumn" class="border-r border-slate-200 px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-slate-600">
                     Venue
                   </th>
-                  <th class="border-r border-slate-200 px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-slate-600">
+                  <th v-if="showEquipmentColumn" class="border-r border-slate-200 px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-slate-600">
                     Equipment
+                  </th>
+                  <th v-if="showNoteColumn" class="border-r border-slate-200 px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-slate-600">
+                    EO note
                   </th>
                   <th
                     class="sticky right-0 z-20 min-w-[8.5rem] bg-slate-50 px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-slate-600 shadow-[-6px_0_10px_-6px_rgba(15,23,42,0.2)]"
@@ -91,7 +88,7 @@ function equipmentLabel(event: GsoEvent) {
                 </tr>
               </thead>
               <tbody>
-                <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="6" />
+                <PortalTableSkeleton v-if="eventsLoading" :rows="5" :columns="colCount" />
                 <tr
                   v-else
                   v-for="event in gsoEvents"
@@ -109,12 +106,28 @@ function equipmentLabel(event: GsoEvent) {
                       {{ event.startTime }} – {{ event.endTime }}
                     </div>
                   </td>
-                  <td class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">{{ venueLabel(event) }}</td>
+                  <td v-if="showVenueColumn" class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">{{ venueLabel(event) }}</td>
                   <td
+                    v-if="showEquipmentColumn"
                     class="max-w-[14rem] truncate border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600"
                     :title="equipmentLabel(event)"
                   >
                     {{ equipmentLabel(event) }}
+                  </td>
+                  <td v-if="showNoteColumn" class="max-w-[16rem] border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
+                    <template v-if="officeNote(event)">
+                      <p :class="isNoteExpanded(event.id) ? 'whitespace-pre-line break-words' : 'truncate'" :title="officeNote(event)">
+                        {{ officeNote(event) }}
+                      </p>
+                      <button
+                        type="button"
+                        class="mt-0.5 text-xs font-semibold text-emerald-700 hover:underline"
+                        @click="toggleNote(event.id)"
+                      >
+                        {{ isNoteExpanded(event.id) ? "Show less" : "Show full note" }}
+                      </button>
+                    </template>
+                    <span v-else>—</span>
                   </td>
                   <td
                     class="sticky right-0 z-10 bg-white/95 px-2 py-2 text-center shadow-[-6px_0_10px_-6px_rgba(15,23,42,0.15)] sm:px-3"
@@ -142,7 +155,7 @@ function equipmentLabel(event: GsoEvent) {
                   </td>
                 </tr>
                 <tr v-if="!eventsLoading && gsoEvents.length === 0">
-                  <td colspan="6" class="py-12 text-center text-sm text-slate-400">No events requiring venue or equipment</td>
+                  <td :colspan="colCount" class="py-12 text-center text-sm text-slate-400">No events requiring venue or equipment</td>
                 </tr>
               </tbody>
             </table>

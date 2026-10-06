@@ -43,7 +43,11 @@ export type ResourceAssignmentInput = {
   resourceName: string;
   quantity: number;
   assignedOffice: ResourceOffice;
+  /** EO instructions for the assigned office; the same note is sent on each of its rows. */
+  officeNote?: string;
 };
+
+export const OFFICE_NOTE_MAX_LENGTH = 500;
 
 export type EventResourceAssignmentRow = {
   id: string;

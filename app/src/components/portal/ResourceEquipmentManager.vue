@@ -32,6 +32,8 @@ import { useUiStore } from "@/stores/ui";
 const props = defineProps<{
   office: ResourceOffice;
   title?: string;
+  /** Offices view their list only; Admin adds, edits, and imports (enforced by equipment RLS). */
+  readonly?: boolean;
 }>();
 
 const ui = useUiStore();
@@ -82,6 +84,7 @@ watch(
   () => {
     previewRows.value = [];
     lastImportSummary.value = null;
+    formOpen.value = false;
     refresh();
   },
 );
@@ -256,12 +259,16 @@ async function confirmImport() {
     <div class="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 class="text-2xl font-bold text-gray-800">{{ title ?? "Equipment" }}</h1>
-        <p class="mt-1 text-sm text-gray-500">
+        <p v-if="readonly" class="mt-1 text-sm text-gray-500">
+          Equipment for {{ resourceOfficeLabel(office) }}. Only Admin can add, edit, or import equipment.
+        </p>
+        <p v-else class="mt-1 text-sm text-gray-500">
           Manage equipment for {{ resourceOfficeLabel(office) }}. These appear in event request forms.
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <input
+          v-if="!readonly"
           ref="fileInput"
           type="file"
           accept=".csv,.xlsx,.xls"
@@ -269,6 +276,7 @@ async function confirmImport() {
           @change="onImportFile"
         />
         <button
+          v-if="!readonly"
           type="button"
           class="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
           @click="downloadTemplate"
@@ -286,6 +294,7 @@ async function confirmImport() {
           {{ exporting ? "Exporting…" : "Download data" }}
         </button>
         <button
+          v-if="!readonly"
           type="button"
           class="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
           :disabled="parsing || importing"
@@ -295,6 +304,7 @@ async function confirmImport() {
           {{ parsing ? "Reading…" : "Upload file" }}
         </button>
         <button
+          v-if="!readonly"
           type="button"
           class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
           @click="openAdd"
@@ -305,7 +315,7 @@ async function confirmImport() {
       </div>
     </div>
 
-    <div class="dash-card shrink-0 p-4">
+    <div v-if="!readonly" class="dash-card shrink-0 p-4">
       <h2 class="text-sm font-bold uppercase tracking-wide text-gray-700">Import equipment</h2>
       <p class="mt-1 text-sm text-gray-500">
         Download the template or current data, then upload a CSV or XLSX. Example rows and names that already exist are skipped. Nothing is saved until you confirm.
@@ -351,7 +361,7 @@ async function confirmImport() {
       </div>
     </div>
 
-    <div v-if="formOpen" class="dash-card shrink-0 p-4">
+    <div v-if="formOpen && !readonly" class="dash-card shrink-0 p-4">
       <h2 class="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">
         {{ editingId ? "Edit equipment" : "Add equipment" }}
       </h2>
@@ -418,7 +428,7 @@ async function confirmImport() {
               <th class="px-4 py-3">Equipment</th>
               <th class="px-4 py-3">Qty available</th>
               <th class="px-4 py-3">Status</th>
-              <th class="px-4 py-3">Actions</th>
+              <th v-if="!readonly" class="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -432,14 +442,16 @@ async function confirmImport() {
               </td>
               <td class="px-4 py-3 text-sm text-gray-600">{{ item.quantity_available }}</td>
               <td class="px-4 py-3 text-sm capitalize text-gray-600">{{ item.status }}</td>
-              <td class="px-4 py-3">
+              <td v-if="!readonly" class="px-4 py-3">
                 <button type="button" class="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700" @click="openEdit(item)">
                   <Pencil :size="14" /> Edit
                 </button>
               </td>
             </tr>
             <tr v-if="!items.length">
-              <td colspan="4" class="px-4 py-10 text-center text-sm text-gray-400">No equipment yet. Add items to make them selectable in event requests.</td>
+              <td :colspan="readonly ? 3 : 4" class="px-4 py-10 text-center text-sm text-gray-400">
+                {{ readonly ? "No equipment yet. Admin adds equipment for this office." : "No equipment yet. Add items to make them selectable in event requests." }}
+              </td>
             </tr>
           </tbody>
         </table>

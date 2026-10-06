@@ -59,6 +59,16 @@ async function invokeAdminCreateUser(body: Record<string, unknown>): Promise<Cre
   }
 
   if (error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      const body = (await context
+        .clone()
+        .json()
+        .catch(() => null)) as { error?: string; source?: string } | null;
+      if (body?.error) {
+        throw new AdminCreateUserError(body.error, body.source || "edge_function");
+      }
+    }
     const msg = error.message || "Could not save user account.";
     const lowered = msg.toLowerCase();
     if (

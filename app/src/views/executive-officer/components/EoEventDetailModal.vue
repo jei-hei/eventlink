@@ -7,6 +7,7 @@ import type { EoEvent } from "../types";
 import type { ResourceAssignmentInput, ResourceOffice } from "@/types/resourceOffice";
 import {
   EQUIPMENT_OFFICES,
+  OFFICE_NOTE_MAX_LENGTH,
   VENUE_OFFICES,
   resourceOfficeLabel,
 } from "@/types/resourceOffice";
@@ -58,6 +59,7 @@ const venuePickerOpen = ref(false);
 const equipmentPickerOpen = ref(false);
 const revisionOpen = ref(false);
 const revisionSubmitting = ref(false);
+const officeNotes = ref<Partial<Record<ResourceOffice, string>>>({});
 
 function buildResourceDrafts(event: EoEvent): { venue: ResourceDraft[]; equipment: ResourceDraft[] } {
   if (event.resourceAssignments?.length) {
@@ -181,6 +183,7 @@ watch(
       selectedVenueOffices.value = [];
       selectedEquipmentOffices.value = [];
     }
+    officeNotes.value = {};
     venuePickerOpen.value = false;
     equipmentPickerOpen.value = false;
   },
@@ -189,6 +192,16 @@ watch(
 
 const needsAssignment = computed(() => !!props.event.awaitingResourceAssignment);
 const requiresEquipmentOffices = computed(() => equipmentResources.value.length > 0);
+const notedOffices = computed(() =>
+  uniqueOffices([
+    ...selectedVenueOffices.value,
+    ...(requiresEquipmentOffices.value ? selectedEquipmentOffices.value : []),
+  ]),
+);
+
+function noteFor(office: ResourceOffice): string | undefined {
+  return officeNotes.value[office]?.trim() || undefined;
+}
 
 function statusClass(status: EoEvent["status"]) {
   if (status === "Conflict") return "bg-red-100 text-red-700";
@@ -223,6 +236,7 @@ function expandAssignments(): ResourceAssignmentInput[] {
         resourceName: resource.resourceName,
         quantity: resource.quantity,
         assignedOffice: office,
+        officeNote: noteFor(office),
       });
     }
   }
@@ -236,6 +250,7 @@ function expandAssignments(): ResourceAssignmentInput[] {
         resourceName: resource.resourceName,
         quantity: resource.quantity,
         assignedOffice: office,
+        officeNote: noteFor(office),
       });
     }
   }
@@ -465,6 +480,26 @@ async function onRevisionSubmit(payload: { comment: string; attachmentFile: File
                 </span>
               </div>
             </template>
+          </div>
+
+          <div v-if="notedOffices.length" class="mt-4 rounded-lg border border-white bg-white p-3">
+            <p class="text-xs font-bold uppercase tracking-wider text-gray-500">Notes to offices (optional)</p>
+            <p class="mt-1 text-xs text-gray-500">
+              Each office sees only its own note. Requesters never see these notes.
+            </p>
+            <label v-for="o in notedOffices" :key="`note-${o}`" class="mt-3 block">
+              <span class="mb-1 block text-xs font-semibold text-gray-600">Note to {{ resourceOfficeLabel(o) }}</span>
+              <textarea
+                v-model="officeNotes[o]"
+                rows="2"
+                :maxlength="OFFICE_NOTE_MAX_LENGTH"
+                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                :placeholder="`Instructions for ${resourceOfficeLabel(o)}…`"
+              />
+              <span class="mt-0.5 block text-right text-[11px] text-gray-400">
+                {{ (officeNotes[o] ?? "").length }} / {{ OFFICE_NOTE_MAX_LENGTH }}
+              </span>
+            </label>
           </div>
         </div>
       </div>

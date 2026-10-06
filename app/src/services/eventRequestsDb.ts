@@ -235,6 +235,11 @@ export function mapRowToPortalEvent(
       status: a.status,
       declineReason: a.decline_reason,
     })),
+    officeNotes: Object.fromEntries(
+      (row.event_request_office_notes ?? [])
+        .filter((n) => isResourceOffice(n.assigned_office) && n.note.trim())
+        .map((n) => [n.assigned_office, n.note]),
+    ) as PortalEvent["officeNotes"],
     declineReason: row.decline_reason ?? undefined,
     cancellationReason: row.cancellation_reason ?? undefined,
     cancelledAt: row.cancelled_at ?? null,
@@ -318,7 +323,8 @@ const EVENT_REQUEST_LIST_SELECT = `
   event_request_resource_assignments (
     id, resource_kind, venue_id, equipment_id, resource_name, quantity,
     assigned_office, status, decline_reason
-  )
+  ),
+  event_request_office_notes ( assigned_office, note )
 `;
 
 const EVENT_REQUEST_LIST_SELECT_INNER_ORG = `
@@ -335,7 +341,8 @@ const EVENT_REQUEST_LIST_SELECT_INNER_ORG = `
   event_request_resource_assignments (
     id, resource_kind, venue_id, equipment_id, resource_name, quantity,
     assigned_office, status, decline_reason
-  )
+  ),
+  event_request_office_notes ( assigned_office, note )
 `;
 
 const EVENT_REQUEST_LIST_FALLBACK_SELECT = `
@@ -833,6 +840,7 @@ export async function approveAndForwardEventRequest(
     resource_name: a.resourceName.trim(),
     quantity: Math.max(1, Math.floor(a.quantity || 1)),
     assigned_office: a.assignedOffice,
+    office_note: a.officeNote?.trim() || null,
   }));
   const supabase = getSupabase();
   const { error } = await supabase.rpc("eo_forward_event_request", {

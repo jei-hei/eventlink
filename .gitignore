@@ -24,6 +24,10 @@ app/.env
 app/.env.local
 app/.env.seed
 
+# Supabase CLI cache
+supabase/.temp/
+app/supabase/.temp/
+
 # Editor / OS
 .DS_Store
 Thumbs.db

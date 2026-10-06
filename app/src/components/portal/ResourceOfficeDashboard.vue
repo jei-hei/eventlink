@@ -7,6 +7,7 @@ import { mapPortalEventsToCalendar } from "@/composables/mapPortalEventsToCalend
 import { useEventsTableLoading } from "@/composables/useEventsTableLoading";
 import PortalTableSkeleton from "@/components/portal/PortalTableSkeleton.vue";
 import { resourceOfficeLabel, type ResourceOffice } from "@/types/resourceOffice";
+import { useOfficeAssignmentColumns } from "@/composables/useOfficeAssignmentColumns";
 
 const props = withDefaults(
   defineProps<{
@@ -31,47 +32,25 @@ const emit = defineEmits<{
 
 const eventsLoading = useEventsTableLoading();
 
-const resourceKindFilter = computed(() => null as "venue" | "equipment" | null);
-
-const resourceColumnLabel = computed(() =>
-  props.office === "ssc" ? "Assigned venue" : "Assigned resources",
-);
-
-const showQuantity = computed(() =>
-  props.events.some((e) =>
-    (e.resourceAssignments ?? []).some(
-      (a) => a.assignedOffice === props.office && a.resourceKind === "equipment",
-    ),
-  ),
-);
-
-function officeAssignments(event: PortalEvent) {
-  const kind = resourceKindFilter.value;
-  return (event.resourceAssignments ?? []).filter(
-    (a) =>
-      a.assignedOffice === props.office &&
-      a.status === "pending" &&
-      (kind == null || a.resourceKind === kind),
-  );
-}
-
 const pending = computed(() => props.events);
 const badgeCount = computed(() => Math.max(props.pendingCount ?? 0, pending.value.length));
 
 const calendarEvents = computed(() => mapPortalEventsToCalendar(props.scheduledEvents ?? []));
 
-function assignedSummary(event: PortalEvent) {
-  return officeAssignments(event)
-    .map((a) => (a.resourceKind === "equipment" ? `${a.resourceName} (x${a.quantity})` : a.resourceName))
-    .join(", ");
-}
+const {
+  showVenueColumn,
+  showEquipmentColumn,
+  showNoteColumn,
+  venueLabel,
+  equipmentLabel,
+  officeNote,
+  isNoteExpanded,
+  toggleNote,
+} = useOfficeAssignmentColumns(() => props.office, pending);
 
-function assignedQuantity(event: PortalEvent) {
-  const qty = officeAssignments(event).reduce((sum, a) => sum + Math.max(1, Number(a.quantity || 1)), 0);
-  return qty || "—";
-}
-
-const colCount = computed(() => (showQuantity.value ? 7 : 6));
+const colCount = computed(
+  () => 5 + Number(showVenueColumn.value) + Number(showEquipmentColumn.value) + Number(showNoteColumn.value),
+);
 </script>
 
 <template>
@@ -97,13 +76,9 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Activity</th>
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Organization</th>
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Date / time</th>
-                  <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">{{ resourceColumnLabel }}</th>
-                  <th
-                    v-if="showQuantity"
-                    class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600"
-                  >
-                    Quantity
-                  </th>
+                  <th v-if="showVenueColumn" class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Venue</th>
+                  <th v-if="showEquipmentColumn" class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Equipment</th>
+                  <th v-if="showNoteColumn" class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">EO note</th>
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Status</th>
                   <th
                     class="sticky right-0 z-20 min-w-[8.5rem] bg-slate-50 px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-slate-600 shadow-[-6px_0_10px_-6px_rgba(15,23,42,0.2)]"
@@ -133,14 +108,26 @@ const colCount = computed(() => (showQuantity.value ? 7 : 6));
                         {{ event.startTime }} – {{ event.endTime }}
                       </div>
                     </td>
-                    <td class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
-                      {{ assignedSummary(event) || event.venue || event.itemsEquipment || "—" }}
+                    <td v-if="showVenueColumn" class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
+                      {{ venueLabel(event) }}
                     </td>
-                    <td
-                      v-if="showQuantity"
-                      class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600"
-                    >
-                      {{ assignedQuantity(event) }}
+                    <td v-if="showEquipmentColumn" class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
+                      {{ equipmentLabel(event) }}
+                    </td>
+                    <td v-if="showNoteColumn" class="max-w-[16rem] border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
+                      <template v-if="officeNote(event)">
+                        <p :class="isNoteExpanded(event.id) ? 'whitespace-pre-line break-words' : 'truncate'" :title="officeNote(event)">
+                          {{ officeNote(event) }}
+                        </p>
+                        <button
+                          type="button"
+                          class="mt-0.5 text-xs font-semibold text-emerald-700 hover:underline"
+                          @click="toggleNote(event.id)"
+                        >
+                          {{ isNoteExpanded(event.id) ? "Show less" : "Show full note" }}
+                        </button>
+                      </template>
+                      <span v-else>—</span>
                     </td>
                     <td class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
                       <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
