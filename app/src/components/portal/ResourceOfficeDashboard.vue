@@ -48,8 +48,12 @@ const {
   toggleNote,
 } = useOfficeAssignmentColumns(() => props.office, pending);
 
+/** SSC Venue Management lists venues only. IT and Sports Office still show equipment. */
+const showEquipment = computed(() => props.office !== "ssc" && showEquipmentColumn.value);
+const showVenue = computed(() => props.office === "ssc" || showVenueColumn.value);
+
 const colCount = computed(
-  () => 5 + Number(showVenueColumn.value) + Number(showEquipmentColumn.value) + Number(showNoteColumn.value),
+  () => 5 + Number(showVenue.value) + Number(showEquipment.value) + Number(showNoteColumn.value),
 );
 </script>
 
@@ -76,8 +80,8 @@ const colCount = computed(
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Activity</th>
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Organization</th>
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Date / time</th>
-                  <th v-if="showVenueColumn" class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Venue</th>
-                  <th v-if="showEquipmentColumn" class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Equipment</th>
+                  <th v-if="showVenue" class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Venue</th>
+                  <th v-if="showEquipment" class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Equipment</th>
                   <th v-if="showNoteColumn" class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">EO note</th>
                   <th class="border-r border-slate-200 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600">Status</th>
                   <th
@@ -108,10 +112,10 @@ const colCount = computed(
                         {{ event.startTime }} – {{ event.endTime }}
                       </div>
                     </td>
-                    <td v-if="showVenueColumn" class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
+                    <td v-if="showVenue" class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
                       {{ venueLabel(event) }}
                     </td>
-                    <td v-if="showEquipmentColumn" class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
+                    <td v-if="showEquipment" class="border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">
                       {{ equipmentLabel(event) }}
                     </td>
                     <td v-if="showNoteColumn" class="max-w-[16rem] border-r border-slate-100 px-3 py-2.5 text-sm text-slate-600">

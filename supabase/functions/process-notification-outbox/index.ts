@@ -35,12 +35,13 @@ Deno.serve(async (req) => {
 
   const url = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const resendKey = Deno.env.get("RESEND_API_KEY");
+  const brevoKey = Deno.env.get("BREVO_API_KEY");
   const fromEmail = Deno.env.get("NOTIFICATION_FROM_EMAIL");
+  const fromName = Deno.env.get("NOTIFICATION_FROM_NAME") || "Eventlink";
   const workerSecret = Deno.env.get("OUTBOX_WORKER_SECRET");
   const suppliedSecret = req.headers.get("x-outbox-secret") ?? "";
 
-  if (!url || !serviceKey || !resendKey || !fromEmail || !workerSecret) {
+  if (!url || !serviceKey || !brevoKey || !fromEmail || !workerSecret) {
     return json(500, { error: "Service unavailable." });
   }
   if (!constantTimeEqual(suppliedSecret, workerSecret)) {
@@ -66,19 +67,19 @@ Deno.serve(async (req) => {
     let delivered = false;
     let errorCode: "network_error" | "provider_error" | null = null;
     try {
-      const response = await fetch("https://api.resend.com/emails", {
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         signal: AbortSignal.timeout(10_000),
         headers: {
-          Authorization: `Bearer ${resendKey}`,
+          "api-key": brevoKey,
+          accept: "application/json",
           "Content-Type": "application/json",
-          "Idempotency-Key": `eventlink-notification-${message.notification_id}`,
         },
         body: JSON.stringify({
-          from: fromEmail,
-          to: [message.recipient_email],
+          sender: { email: fromEmail, name: fromName },
+          to: [{ email: message.recipient_email }],
           subject: String(message.email_subject).slice(0, 160),
-          text: String(message.email_text).slice(0, 4000),
+          textContent: String(message.email_text).slice(0, 4000),
         }),
       });
       delivered = response.ok;

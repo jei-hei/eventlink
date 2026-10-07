@@ -5,6 +5,7 @@ import {
   enqueueNotification,
   type NotificationEventType,
 } from "@/services/notificationsDb";
+import { sendNotificationEmail } from "@/services/notificationEmail";
 import type { PublishStudentPostInput } from "@/types/studentPost";
 import type { AppRole } from "@/types/appRole";
 import type {
@@ -74,6 +75,20 @@ type NotificationPayload = {
   dedupKey: string;
   detail?: string;
 };
+
+async function notifyCurrentStepReviewers(requestId: string): Promise<void> {
+  try {
+    const supabase = getSupabase();
+    const { data, error } = await supabase.rpc("enqueue_current_step_review_notifications", {
+      p_request_id: requestId,
+    });
+    if (error || !data) return;
+    const ids = (Array.isArray(data) ? data : [data]).map((id) => String(id ?? "")).filter(Boolean);
+    await Promise.all(ids.map((notificationId) => sendNotificationEmail({ notificationId }).catch(() => undefined)));
+  } catch {
+    // Workflow already committed; reviewer email remains best effort.
+  }
+}
 
 async function notifyUser(payload: NotificationPayload): Promise<void> {
   try {
@@ -666,6 +681,7 @@ export async function createEventRequest(
     requestId,
     dedupKey: `created:${requestId}`,
   });
+  await notifyCurrentStepReviewers(requestId);
 
   return requestId;
 }
@@ -760,6 +776,7 @@ export async function approveEventRequest(
     dedupKey: `${id}:${row.current_step ?? "unknown"}:approved`,
     detail: `Approved at ${stepLabel(row.current_step)}. Next: ${nextLabel}.`,
   });
+  await notifyCurrentStepReviewers(id);
 }
 
 /**
@@ -1769,4 +1786,5 @@ export async function resubmitDeclinedEventRequest(
     dedupKey: `${id}:${row.updated_at ?? "current"}:resubmitted`,
     detail: `Next: ${stepLabel(resumeStep)}.`,
   });
+  await notifyCurrentStepReviewers(id);
 }

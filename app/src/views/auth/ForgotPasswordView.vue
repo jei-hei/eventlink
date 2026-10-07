@@ -18,7 +18,11 @@ async function submit() {
   try {
     await auth.resetPassword(email.value.trim());
     sent.value = true;
-    ui.pushToast("Check your inbox", "If this email exists, reset instructions were sent.", "info");
+    ui.pushToast(
+      "Check your inbox and spam",
+      "If this email exists, the reset link was sent. Look in Spam or Junk if it is not in your inbox.",
+      "info",
+    );
   } catch (e) {
     ui.pushToast(
       "Could not send reset",
@@ -71,9 +75,16 @@ async function submit() {
           </button>
         </form>
 
-        <div v-else class="mt-6 rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-sm text-emerald-900">
-          If <span class="font-mono font-semibold">{{ email }}</span> is registered, you will receive next steps
-          shortly.
+        <div
+          v-else
+          class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+          role="note"
+        >
+          <p class="font-semibold">Check your inbox and spam</p>
+          <p class="mt-1 leading-relaxed">
+            If <span class="font-semibold">{{ email }}</span> is registered, a reset link was sent. Look in your inbox,
+            and also in Spam or Junk. The message may be marked as dangerous. Open it, then choose Reset Password.
+          </p>
         </div>
 
         <RouterLink

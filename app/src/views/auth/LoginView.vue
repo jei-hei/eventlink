@@ -318,7 +318,8 @@ function dismissNewUserHint() {
         <h2 id="new-user-hint-title" class="pr-8 text-lg font-semibold text-slate-900">New to EventLink?</h2>
         <p class="mt-2 text-sm text-slate-600">
           If an office just created your account, use <span class="font-semibold">Forgot password</span> with your
-          school email. Open the reset link, set your own password, then sign in here.
+          school email. Open the reset link, set your own password, then sign in here. If the email is not in your
+          inbox, check Spam or Junk.
         </p>
         <div class="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
           <button type="button" class="portal-btn-secondary text-sm" @click="dismissNewUserHint">Close</button>

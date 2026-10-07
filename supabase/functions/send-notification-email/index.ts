@@ -50,15 +50,16 @@ Deno.serve(async (req) => {
   const url = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const resendKey = Deno.env.get("RESEND_API_KEY");
+  const brevoKey = Deno.env.get("BREVO_API_KEY");
   const fromEmail = Deno.env.get("NOTIFICATION_FROM_EMAIL");
+  const fromName = Deno.env.get("NOTIFICATION_FROM_NAME") || "Eventlink";
   const authHeader = req.headers.get("Authorization");
   const accessToken = authHeader?.replace("Bearer ", "").trim();
 
   if (!url || !anonKey || !serviceKey || !accessToken) {
     return json(req, 401, { error: "Unauthorized." });
   }
-  if (!resendKey || !fromEmail) {
+  if (!brevoKey || !fromEmail) {
     return json(req, 500, { error: "Email service unavailable." });
   }
   const contentLength = Number(req.headers.get("content-length") ?? "0");
@@ -110,19 +111,19 @@ Deno.serve(async (req) => {
   let errorCode: "network_error" | "provider_error" | null = null;
   let providerStatus: number | null = null;
   try {
-    const res = await fetch("https://api.resend.com/emails", {
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       signal: AbortSignal.timeout(10_000),
       headers: {
-        Authorization: `Bearer ${resendKey}`,
+        "api-key": brevoKey,
+        accept: "application/json",
         "Content-Type": "application/json",
-        "Idempotency-Key": `eventlink-notification-${notificationId}`,
       },
       body: JSON.stringify({
-        from: fromEmail,
-        to: [message.recipient_email],
+        sender: { email: fromEmail, name: fromName },
+        to: [{ email: message.recipient_email }],
         subject: String(message.email_subject).slice(0, 160),
-        text: String(message.email_text).slice(0, 4000),
+        textContent: String(message.email_text).slice(0, 4000),
       }),
     });
     delivered = res.ok;
