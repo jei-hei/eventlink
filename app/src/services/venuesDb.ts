@@ -81,7 +81,7 @@ export async function fetchVenuesPage(params: VenuesPageFilters = {}): Promise<P
   if (params.activeOnly) query = query.eq("active", true);
   const q = params.search?.trim();
   if (q) {
-    query = query.or(`name.ilike.%${q}%,location.ilike.%${q}%,description.ilike.%${q}%`);
+    query = query.ilike("name", `%${q}%`);
   }
 
   const { data, error, count } = await query;
