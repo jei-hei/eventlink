@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { X } from "lucide-vue-next";
-import EventLetterLink from "@/components/EventLetterLink.vue";
+import ProposalLetterList from "@/components/ProposalLetterList.vue";
 import type { SscEvent } from "../types";
 
 defineProps<{ event: SscEvent | null }>();
@@ -110,17 +110,8 @@ const emit = defineEmits<{ close: [] }>();
           </p>
         </div>
 
-        <EventLetterLink v-if="event.letterPath" :letter-path="event.letterPath" label="Proposal PDF" :current="true" />
-        <div v-if="event.letterHistory && event.letterHistory.length > 1" class="space-y-2">
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider">Document history</label>
-          <EventLetterLink
-            v-for="doc in event.letterHistory"
-            :key="doc.id"
-            :letter-path="doc.letterPath"
-            :label="doc.label"
-          />
-        </div>
-        <div v-else-if="event.letterContent">
+        <ProposalLetterList :request-id="event.id" :letter-path="event.letterPath" />
+        <div v-if="!event.letterPath && event.letterContent">
           <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
             Full Event Letter Content
           </label>

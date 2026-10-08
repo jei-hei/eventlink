@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { CheckCircle, X, XCircle } from "lucide-vue-next";
-import EventLetterLink from "@/components/EventLetterLink.vue";
+import ProposalLetterList from "@/components/ProposalLetterList.vue";
 import ComplianceRevisionModal from "@/components/portal/ComplianceRevisionModal.vue";
 import type { DeanEvent } from "../types";
 import { isProposalReviewed, PROPOSAL_REVIEW_HINT } from "@/utils/proposalReview";
@@ -92,8 +92,8 @@ async function onRevisionSubmit(payload: { comment: string; attachmentFile: File
           <p class="text-gray-800 text-sm whitespace-pre-wrap">{{ event.itemsEquipment || "No items or equipment specified." }}</p>
         </div>
 
-        <EventLetterLink v-if="event.letterPath" :letter-path="event.letterPath" label="Proposal PDF" :current="true" />
-        <div v-else-if="event.letterContent">
+        <ProposalLetterList :request-id="event.id" :letter-path="event.letterPath" />
+        <div v-if="!event.letterPath && event.letterContent">
           <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Full Event Letter Content</label>
           <div class="text-gray-800 text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded-lg border border-gray-200">
             {{ event.letterContent }}

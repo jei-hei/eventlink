@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { FileText, Upload, X } from "lucide-vue-next";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { isPdfProposalFile } from "@/services/eventLetterStorage";
+import { isPdfProposalFile, MAX_PROPOSAL_PDFS } from "@/services/eventLetterStorage";
 import {
   fetchOrganizationsForSubmit,
   fetchSscOrganization,
@@ -31,6 +31,7 @@ export type EventRequestFormPayload = {
   sdgs: string;
   needsGso: boolean;
   letterFile: File;
+  letterFiles: File[];
   equipment: { equipmentId: string; equipmentName: string; quantity: number }[];
 };
 
@@ -50,7 +51,7 @@ const organizations = ref<OrganizationOption[]>([]);
 const venues = ref<VenueRow[]>([]);
 const equipment = ref<EquipmentRow[]>([]);
 const orgLoading = ref(false);
-const letterFile = ref<File | null>(null);
+const letterFiles = ref<File[]>([]);
 const letterError = ref("");
 const equipmentRows = ref<Array<{ equipmentId: string; quantity: number }>>([]);
 
@@ -233,23 +234,41 @@ onMounted(async () => {
 function onLetterChange(ev: Event) {
   letterError.value = "";
   const input = ev.target as HTMLInputElement;
-  const file = input.files?.[0] ?? null;
-  if (!file) {
-    letterFile.value = null;
+  const picked = Array.from(input.files ?? []);
+  input.value = "";
+  if (!picked.length) return;
+
+  const room = MAX_PROPOSAL_PDFS - letterFiles.value.length;
+  if (room <= 0) {
+    letterError.value = "You can upload up to 3 PDF files.";
     return;
   }
-  if (!isPdfProposalFile(file)) {
-    letterError.value = "Only PDF files (.pdf) are allowed.";
-    letterFile.value = null;
-    input.value = "";
-    return;
+
+  const accepted: File[] = [];
+  let rejected = false;
+  for (const file of picked) {
+    if (!isPdfProposalFile(file)) {
+      rejected = true;
+      continue;
+    }
+    const alreadyAdded =
+      letterFiles.value.some((current) => current.name === file.name && current.size === file.size) ||
+      accepted.some((current) => current.name === file.name && current.size === file.size);
+    if (alreadyAdded) continue;
+    if (letterFiles.value.length + accepted.length >= MAX_PROPOSAL_PDFS) break;
+    accepted.push(file);
   }
-  letterFile.value = file;
+
+  if (rejected) letterError.value = "Only PDF files (.pdf) are allowed.";
+  else if (picked.length > room) letterError.value = "You can upload up to 3 PDF files.";
+  letterFiles.value = [...letterFiles.value, ...accepted].slice(0, MAX_PROPOSAL_PDFS);
 }
 
-function clearLetter() {
-  if (letterFile.value && !window.confirm("Are you sure you want to remove this attachment?")) return;
-  letterFile.value = null;
+function removeLetter(index: number) {
+  const file = letterFiles.value[index];
+  if (!file) return;
+  if (!window.confirm("Are you sure you want to remove this attachment?")) return;
+  letterFiles.value = letterFiles.value.filter((_, current) => current !== index);
   letterError.value = "";
 }
 
@@ -267,7 +286,7 @@ function resetForm() {
   form.numberOfParticipants = 50;
   selectedSdgs.value = [];
   form.needsGso = false;
-  letterFile.value = null;
+  letterFiles.value = [];
   letterError.value = "";
   equipmentRows.value = [];
 }
@@ -314,7 +333,7 @@ function handleSubmit() {
     window.alert("Please select the event start date.");
     return;
   }
-  if (!letterFile.value) {
+  if (!letterFiles.value.length) {
     window.alert("Please upload your PDF proposal (.pdf).");
     return;
   }
@@ -380,7 +399,8 @@ function handleSubmit() {
     numberOfParticipants: form.numberOfParticipants,
     sdgs: formatSdgsForStorage(selectedSdgs.value),
     needsGso: form.needsGso,
-    letterFile: letterFile.value,
+    letterFile: letterFiles.value[0]!,
+    letterFiles: letterFiles.value,
     equipment: normalizedEquipment.map(({ equipmentId, equipmentName, quantity }) => ({
       equipmentId,
       equipmentName,
@@ -405,32 +425,38 @@ defineExpose({ resetForm });
           id="event-letter-upload"
           type="file"
           accept=".pdf,application/pdf"
+          multiple
           class="sr-only"
+          :disabled="letterFiles.length >= MAX_PROPOSAL_PDFS"
           @change="onLetterChange"
         />
         <label
           for="event-letter-upload"
           class="flex cursor-pointer flex-col items-center gap-2 text-center sm:flex-row sm:text-left"
+          :class="letterFiles.length >= MAX_PROPOSAL_PDFS ? 'pointer-events-none opacity-60' : ''"
         >
           <div class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
             <Upload :size="20" />
           </div>
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-semibold text-gray-800">Choose PDF file</p>
-            <p class="text-xs text-gray-500">Official proposal document from your organization</p>
+            <p class="text-sm font-semibold text-gray-800">Choose PDF files</p>
+            <p class="text-xs text-gray-500">Up to 3 PDF files. At least 1 is required.</p>
           </div>
         </label>
-        <div
-          v-if="letterFile"
-          class="mt-3 flex items-center justify-between gap-2 rounded-md border border-emerald-200 bg-white px-3 py-2"
-        >
-          <span class="flex min-w-0 items-center gap-2 text-sm text-gray-800">
-            <FileText :size="16" class="shrink-0 text-emerald-600" />
-            <span class="truncate">{{ letterFile.name }}</span>
-          </span>
-          <button type="button" class="shrink-0 rounded p-1 text-gray-500 hover:bg-gray-100" @click="clearLetter">
-            <X :size="16" />
-          </button>
+        <div v-if="letterFiles.length" class="mt-3 space-y-2">
+          <div
+            v-for="(file, index) in letterFiles"
+            :key="`${file.name}-${file.size}-${index}`"
+            class="flex items-center justify-between gap-2 rounded-md border border-emerald-200 bg-white px-3 py-2"
+          >
+            <span class="flex min-w-0 items-center gap-2 text-sm text-gray-800">
+              <FileText :size="16" class="shrink-0 text-emerald-600" />
+              <span class="truncate">{{ file.name }}</span>
+            </span>
+            <button type="button" class="shrink-0 rounded p-1 text-gray-500 hover:bg-gray-100" @click="removeLetter(index)">
+              <X :size="16" />
+            </button>
+          </div>
         </div>
         <p v-if="letterError" class="mt-2 text-xs text-red-600">{{ letterError }}</p>
       </div>

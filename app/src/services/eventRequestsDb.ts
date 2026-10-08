@@ -1,5 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
-import { uploadEventLetter } from "@/services/eventLetterStorage";
+import { MAX_PROPOSAL_PDFS, uploadEventLetter } from "@/services/eventLetterStorage";
 import { getEventPostImagePublicUrl, uploadEventPostImage } from "@/services/eventPostImageStorage";
 import {
   enqueueNotification,
@@ -619,22 +619,45 @@ export async function createEventRequest(
   const { assertRateLimitAllowed } = await import("@/services/rateLimitDb");
   await assertRateLimitAllowed("event_submit");
 
+  const letterFiles = (
+    input.letterFiles?.length ? input.letterFiles : input.letterFile ? [input.letterFile] : []
+  ).slice(0, MAX_PROPOSAL_PDFS);
   if (
     (input.requestType === "student_officer" || input.requestType === "ssc") &&
-    !input.letterFile
+    letterFiles.length === 0
   ) {
     throw new Error("Please upload your PDF proposal (.pdf).");
   }
 
   const supabase = getSupabase();
   const requestId = crypto.randomUUID();
-  let letterPath: string | null = null;
-  if (input.letterFile) {
+  const letterPaths: string[] = [];
+  async function removeUploadedLetters() {
+    if (!letterPaths.length) return;
+    try {
+      const { error: cleanupError } = await supabase.storage.from("event-letters").remove(letterPaths);
+      if (cleanupError) {
+        console.warn("Could not remove failed event proposal upload:", cleanupError.message);
+      }
+    } catch {
+      // Best effort: storage cannot participate in the database transaction.
+    }
+  }
+  if (letterFiles.length) {
     const { error: prepareError } = await supabase.rpc("prepare_event_request_upload", {
       p_request_id: requestId,
     });
     if (prepareError) throw prepareError;
-    letterPath = await uploadEventLetter(input.letterFile, submittedBy, requestId);
+    try {
+      for (let index = 0; index < letterFiles.length; index += 1) {
+        const file = letterFiles[index];
+        if (!file) continue;
+        letterPaths.push(await uploadEventLetter(file, submittedBy, requestId, index + 1));
+      }
+    } catch (uploadError) {
+      await removeUploadedLetters();
+      throw uploadError;
+    }
   }
 
   const { error } = await supabase.rpc("create_event_request_transactional", {
@@ -653,8 +676,9 @@ export async function createEventRequest(
       sdgs: input.sdgs?.trim() ?? "",
       purpose: input.purpose?.trim() ?? "",
       needs_gso: input.needsGso,
+      letter_paths: letterPaths,
     },
-    p_letter_path: letterPath,
+    p_letter_path: letterPaths[0] ?? null,
     p_equipment: (input.equipment ?? []).map((line) => ({
       equipment_id: line.equipmentId,
       quantity: line.quantity,
@@ -662,16 +686,7 @@ export async function createEventRequest(
   });
 
   if (error) {
-    if (letterPath) {
-      try {
-        const { error: cleanupError } = await supabase.storage.from("event-letters").remove([letterPath]);
-        if (cleanupError) {
-          console.warn("Could not remove failed event proposal upload:", cleanupError.message);
-        }
-      } catch {
-        // Best effort: storage cannot participate in the database transaction.
-      }
-    }
+    await removeUploadedLetters();
     throw error;
   }
 

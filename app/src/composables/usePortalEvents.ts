@@ -367,9 +367,11 @@ export function usePortalEvents(
         input.requestType === "eo_direct" ? "Event created successfully." : "Request submitted successfully.",
         input.requestType === "eo_direct"
           ? "The calendar event was saved with an Event Trail record."
-          : input.letterFile
-            ? "Your event request was submitted with the proposal PDF."
-            : "The event request entered the approval workflow.",
+          : (input.letterFiles?.length ?? (input.letterFile ? 1 : 0)) > 1
+            ? `Your event request was submitted with ${input.letterFiles?.length} proposal PDFs.`
+            : input.letterFile || input.letterFiles?.length
+              ? "Your event request was submitted with the proposal PDF."
+              : "The event request entered the approval workflow.",
         "success",
       );
     } finally {

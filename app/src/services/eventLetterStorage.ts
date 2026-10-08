@@ -5,6 +5,8 @@ const BUCKET = "event-letters";
 const PDF_TYPES = new Set(["application/pdf"]);
 const PDF_EXT = /\.pdf$/i;
 
+export const MAX_PROPOSAL_PDFS = 3;
+
 export function isPdfProposalFile(file: File): boolean {
   if (PDF_TYPES.has(file.type)) return true;
   return PDF_EXT.test(file.name);
@@ -19,13 +21,15 @@ export async function uploadEventLetter(
   file: File,
   userId: string,
   requestId: string,
+  slot = 1,
 ): Promise<string> {
   if (!isPdfProposalFile(file)) {
     throw new Error("Please upload a PDF proposal (.pdf).");
   }
 
-  const safeName = file.name.replace(/[^\w.\-() ]+/g, "_").trim() || "proposal.pdf";
-  const path = `${userId}/${requestId}/${Date.now()}-${safeName}`;
+  let safeName = file.name.replace(/[^\w.\-() ]+/g, "_").trim() || "proposal.pdf";
+  if (!PDF_EXT.test(safeName)) safeName = `${safeName}.pdf`;
+  const path = `${userId}/${requestId}/${Date.now()}-${slot}-${safeName}`;
 
   const supabase = getSupabase();
   const { error } = await supabase.storage.from(BUCKET).upload(path, file, {

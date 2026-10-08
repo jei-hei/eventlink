@@ -47,6 +47,7 @@ async function onSubmit(payload: EventRequestFormPayload) {
         sdgs: payload.sdgs,
         needsGso: payload.needsGso,
         letterFile: payload.letterFile,
+        letterFiles: payload.letterFiles,
         equipment: payload.equipment,
       });
       emit("close");

@@ -116,5 +116,6 @@ export type CreateEventRequestInput = {
   purpose?: string;
   needsGso: boolean;
   letterFile?: File | null;
+  letterFiles?: File[];
   equipment?: { equipmentId: string; quantity: number }[];
 };

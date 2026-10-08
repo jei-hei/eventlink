@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { X } from "lucide-vue-next";
-import EventLetterLink from "@/components/EventLetterLink.vue";
+import ProposalLetterList from "@/components/ProposalLetterList.vue";
 import type { AdviserEvent } from "../types";
 
 defineProps<{ event: AdviserEvent }>();
@@ -43,7 +43,7 @@ const emit = defineEmits<{ close: [] }>();
           </div>
         </div>
 
-        <EventLetterLink v-if="event.letterPath" :letter-path="event.letterPath" />
+        <ProposalLetterList :request-id="event.id" :letter-path="event.letterPath" />
       </div>
 
       <div class="px-6 py-4 bg-gray-50 flex justify-end border-t border-gray-200 shrink-0">
