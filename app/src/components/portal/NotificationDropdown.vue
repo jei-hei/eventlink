@@ -3,9 +3,13 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { Bell, CheckCheck } from "lucide-vue-next";
 import { useNotificationsStore } from "@/stores/notifications";
+import { useUiStore } from "@/stores/ui";
+import { enqueueWaitingRequestFollowups } from "@/services/notificationsDb";
+import { sendNotificationEmail } from "@/services/notificationEmail";
 import { useClickOutside } from "@/composables/useClickOutside";
 
 const store = useNotificationsStore();
+const ui = useUiStore();
 const { items, unreadCount } = storeToRefs(store);
 const open = ref(false);
 const root = ref<HTMLElement | null>(null);
@@ -18,11 +22,32 @@ function onKey(e: KeyboardEvent) {
   if (e.key === "Escape") open.value = false;
 }
 
+let followupTimer = 0;
+
+async function showWaitingFollowups() {
+  try {
+    const rows = await enqueueWaitingRequestFollowups();
+    if (!rows.length) return;
+    await store.hydrate(true);
+    for (const row of rows) {
+      ui.pushToast(row.title, row.body, "warning", 12000);
+      void sendNotificationEmail({ notificationId: row.id }).catch(() => undefined);
+    }
+  } catch {
+    // The bell still works if the follow-up check is unavailable.
+  }
+}
+
 onMounted(() => {
   void store.hydrate(false);
+  void showWaitingFollowups();
+  followupTimer = window.setInterval(() => void showWaitingFollowups(), 15 * 60 * 1000);
   window.addEventListener("keydown", onKey);
 });
-onUnmounted(() => window.removeEventListener("keydown", onKey));
+onUnmounted(() => {
+  window.clearInterval(followupTimer);
+  window.removeEventListener("keydown", onKey);
+});
 
 const grouped = computed(() => {
   const buckets: Record<string, typeof items.value> = {

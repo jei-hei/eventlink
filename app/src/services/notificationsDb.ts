@@ -128,3 +128,11 @@ export async function markAllNotificationsRead(): Promise<void> {
   const { error } = await supabase.rpc("mark_all_notifications_read");
   if (error) throw error;
 }
+
+export async function enqueueWaitingRequestFollowups(): Promise<Array<{ id: string; title: string; body: string }>> {
+  if (!isSupabaseConfigured) return [];
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc("enqueue_waiting_request_followups");
+  if (error) throw error;
+  return ((data ?? []) as Array<{ id: string; title: string; body: string }>).filter((row) => row?.id);
+}
