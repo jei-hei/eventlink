@@ -9,7 +9,7 @@ import {
   officerNamesByOrganizationId,
   type AdminOrgAssignmentRow,
 } from "@/services/adminUsersDb";
-import { fetchRequireIsuEmail } from "@/services/appSettingsDb";
+import { fetchAllowMultipleAccounts, fetchRequireIsuEmail } from "@/services/appSettingsDb";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { EMAIL_FORMAT_ERROR, ISU_EMAIL_ERROR, emailMeetsAdminPolicy } from "@/utils/isuEmail";
 
@@ -44,6 +44,7 @@ const loadingOptions = ref(false);
 const colleges = ref<CollegeWithOrgs[]>([]);
 const orgAssignments = ref<AdminOrgAssignmentRow[]>([]);
 const requireIsuEmail = ref(true);
+const allowMultipleAccounts = ref(false);
 
 const roleOptions: Array<{ label: string; value: Exclude<RoleValue, ""> }> = [
   { label: "Student Officer", value: "student_officer" },
@@ -88,17 +89,20 @@ watch(
       if (isSupabaseConfigured) {
         loadingOptions.value = true;
         try {
-          const [collegeRows, isuRequired, assignments] = await Promise.all([
+          const [collegeRows, isuRequired, assignments, multipleAccounts] = await Promise.all([
             fetchCollegesWithOrganizations(),
             fetchRequireIsuEmail().catch(() => true),
             fetchAdminOrgAssignments().catch(() => [] as AdminOrgAssignmentRow[]),
+            fetchAllowMultipleAccounts(),
           ]);
           colleges.value = collegeRows;
           requireIsuEmail.value = isuRequired;
           orgAssignments.value = assignments;
+          allowMultipleAccounts.value = multipleAccounts;
         } catch {
           colleges.value = [];
           requireIsuEmail.value = true;
+          allowMultipleAccounts.value = false;
           orgAssignments.value = [];
         } finally {
           loadingOptions.value = false;
@@ -248,7 +252,7 @@ async function handleSubmit(e: Event) {
           </div>
 
           <div
-            v-if="role === 'osas' || role === 'eo' || role === 'gso'"
+            v-if="!allowMultipleAccounts && (role === 'osas' || role === 'eo' || role === 'gso')"
             class="rounded-lg border border-yellow-200 bg-yellow-50 p-4"
           >
             <p class="text-sm text-yellow-800">
@@ -257,7 +261,7 @@ async function handleSubmit(e: Event) {
           </div>
 
           <div
-            v-if="role === 'dean'"
+            v-if="!allowMultipleAccounts && role === 'dean'"
             class="rounded-lg border border-amber-200 bg-amber-50 p-4"
           >
             <p class="text-sm text-amber-900">
@@ -266,7 +270,7 @@ async function handleSubmit(e: Event) {
           </div>
 
           <div
-            v-if="role === 'student_officer' && selectedOrgOfficer"
+            v-if="!allowMultipleAccounts && role === 'student_officer' && selectedOrgOfficer"
             class="rounded-lg border border-amber-200 bg-amber-50 p-4"
           >
             <p class="text-sm text-amber-900">

@@ -57,23 +57,47 @@ function emailPolicyError(requireIsuEmail: boolean): string {
   return requireIsuEmail ? ISU_EMAIL_ERROR : "Enter a valid email address.";
 }
 
-async function loadRequireIsuEmail(
+async function loadAccountPolicy(
   admin: ReturnType<typeof createClient>,
-): Promise<{ ok: true; value: boolean } | { ok: false; response: Response }> {
-  const { data, error } = await admin
+): Promise<
+  | { ok: true; requireIsuEmail: boolean; allowMultipleAccounts: boolean }
+  | { ok: false; response: Response }
+> {
+  const full = await admin
     .from("app_settings")
-    .select("require_isu_email")
+    .select("require_isu_email, allow_multiple_accounts")
     .eq("id", 1)
     .maybeSingle();
-  if (error) {
-    console.error("[admin-create-user] app_settings", error);
+  if (!full.error) {
+    return {
+      ok: true,
+      requireIsuEmail: full.data?.require_isu_email !== false,
+      allowMultipleAccounts: full.data?.allow_multiple_accounts === true,
+    };
+  }
+
+  const message = full.error.message ?? "";
+  if (!/allow_multiple_accounts/i.test(message)) {
+    console.error("[admin-create-user] app_settings", full.error);
     return {
       ok: false,
       response: json(500, { error: "Could not load application settings.", source: "app_settings" }),
     };
   }
-  // Fail closed: missing row means ISU email is required.
-  return { ok: true, value: data?.require_isu_email !== false };
+
+  const fallback = await admin.from("app_settings").select("require_isu_email").eq("id", 1).maybeSingle();
+  if (fallback.error) {
+    console.error("[admin-create-user] app_settings", fallback.error);
+    return {
+      ok: false,
+      response: json(500, { error: "Could not load application settings.", source: "app_settings" }),
+    };
+  }
+  return {
+    ok: true,
+    requireIsuEmail: fallback.data?.require_isu_email !== false,
+    allowMultipleAccounts: false,
+  };
 }
 
 const singletonRoles = new Set(["osas", "eo", "gso"]);
@@ -164,9 +188,10 @@ Deno.serve(async (req) => {
     return json(400, { error: "Display name is required.", source: "validation" });
   }
 
-  const settings = await loadRequireIsuEmail(admin);
+  const settings = await loadAccountPolicy(admin);
   if (!settings.ok) return settings.response;
-  const requireIsuEmail = settings.value;
+  const requireIsuEmail = settings.requireIsuEmail;
+  const allowMultipleAccounts = settings.allowMultipleAccounts;
 
   if (!requestedUserId) {
     if (!emailMeetsAdminPolicy(email, requireIsuEmail)) {
@@ -237,8 +262,28 @@ Deno.serve(async (req) => {
   }
 
   const existingUserId = existing?.id ?? null;
+  let currentRole: string | null = null;
+  let currentCollegeId: string | null = null;
+  if (existingUserId) {
+    const { data: roleRow, error: roleReadErr } = await admin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", existingUserId)
+      .maybeSingle();
+    if (roleReadErr) return json(500, { error: roleReadErr.message, source: "user_roles" });
+    currentRole = (roleRow?.role as string | null) ?? null;
 
-  if (singletonRoles.has(role)) {
+    const { data: profileRow, error: profileReadErr } = await admin
+      .from("profiles")
+      .select("college_id")
+      .eq("id", existingUserId)
+      .maybeSingle();
+    if (profileReadErr) return json(500, { error: profileReadErr.message, source: "profiles" });
+    currentCollegeId = (profileRow?.college_id as string | null) ?? null;
+  }
+
+  const keepsCurrentSingleton = singletonRoles.has(role) && currentRole === role;
+  if (!allowMultipleAccounts && singletonRoles.has(role) && !keepsCurrentSingleton) {
     let singletonQuery = admin.from("user_roles").select("user_id").eq("role", role).limit(1);
     if (existingUserId) {
       singletonQuery = singletonQuery.neq("user_id", existingUserId);
@@ -252,7 +297,8 @@ Deno.serve(async (req) => {
     }
   }
 
-  if (role === "dean" && collegeId) {
+  const keepsCurrentDeanSeat = role === "dean" && currentRole === "dean" && currentCollegeId === collegeId;
+  if (!allowMultipleAccounts && role === "dean" && collegeId && !keepsCurrentDeanSeat) {
     const { data: deanRoles, error: deanRoleErr } = await admin
       .from("user_roles")
       .select("user_id")

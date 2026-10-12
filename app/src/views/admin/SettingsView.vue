@@ -1,13 +1,19 @@
 <script setup lang="ts">
-import { ShieldCheck, Database, Bell, Mail } from "lucide-vue-next";
+import { ShieldCheck, Database, Bell, Mail, Users } from "lucide-vue-next";
 import { onMounted, ref } from "vue";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { fetchRequireIsuEmail, updateRequireIsuEmail } from "@/services/appSettingsDb";
+import {
+  fetchAppSettings,
+  updateAllowMultipleAccounts,
+  updateRequireIsuEmail,
+} from "@/services/appSettingsDb";
 import { useUiStore } from "@/stores/ui";
 import { toUserFacingError } from "@/utils/userFacingError";
 
 const ui = useUiStore();
 const requireIsuEmail = ref(true);
+const allowMultipleAccounts = ref(false);
+const allowMultipleAccountsReady = ref(true);
 const loading = ref(false);
 const saving = ref(false);
 const loadError = ref<string | null>(null);
@@ -20,9 +26,12 @@ async function loadSetting() {
   loading.value = true;
   loadError.value = null;
   try {
-    requireIsuEmail.value = await fetchRequireIsuEmail();
+    const settings = await fetchAppSettings();
+    requireIsuEmail.value = settings.requireIsuEmail;
+    allowMultipleAccounts.value = settings.allowMultipleAccounts;
+    allowMultipleAccountsReady.value = settings.allowMultipleAccountsReady;
   } catch (e) {
-    loadError.value = toUserFacingError(e, "Could not load email setting.");
+    loadError.value = toUserFacingError(e, "Could not load settings.");
   } finally {
     loading.value = false;
   }
@@ -49,6 +58,34 @@ async function onRequireIsuChange(event: Event) {
     );
   } catch (e) {
     requireIsuEmail.value = previous;
+    input.checked = previous;
+    ui.pushToast("Could not save setting", toUserFacingError(e, "The previous value was restored."), "error");
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function onAllowMultipleChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const next = input.checked;
+  if (saving.value || loading.value || !allowMultipleAccountsReady.value || next === allowMultipleAccounts.value) {
+    input.checked = allowMultipleAccounts.value;
+    return;
+  }
+  const previous = allowMultipleAccounts.value;
+  allowMultipleAccounts.value = next;
+  saving.value = true;
+  try {
+    await updateAllowMultipleAccounts(next);
+    ui.pushToast(
+      "Account limit saved",
+      next
+        ? "More than one account can be created for the same role, college, or organization."
+        : "OSAS, Executive Officer, and GSO stay limited to one account. Each college keeps one Dean, and import keeps one Adviser per organization.",
+      "success",
+    );
+  } catch (e) {
+    allowMultipleAccounts.value = previous;
     input.checked = previous;
     ui.pushToast("Could not save setting", toUserFacingError(e, "The previous value was restored."), "error");
   } finally {
@@ -103,6 +140,49 @@ onMounted(() => {
         </div>
         <p class="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
           {{ requireIsuEmail ? "ON" : "OFF" }}
+          <span v-if="saving" class="ml-2 font-medium normal-case tracking-normal text-slate-400">Saving…</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="dash-card mb-4 p-5">
+      <div class="mb-3 flex items-center gap-2">
+        <Users class="h-5 w-5 text-emerald-600" />
+        <h2 class="text-base font-semibold text-slate-900">Account limits</h2>
+      </div>
+      <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-sm font-semibold text-slate-800">Allow multiple accounts for the same role</p>
+            <p class="mt-1 text-xs text-slate-600">
+              {{
+                allowMultipleAccounts
+                  ? "More than one account can share a role. That includes more than one user in the same organization, more than one Dean in a college, and more than one OSAS, Executive Officer, or GSO account."
+                  : "One OSAS, one Executive Officer, and one GSO. One Dean per college. Spreadsheet import keeps one Adviser per organization."
+              }}
+            </p>
+            <p v-if="!allowMultipleAccountsReady" class="mt-2 text-xs text-amber-700">
+              Apply the latest database migration before this switch can be saved.
+            </p>
+            <p class="mt-2 text-xs text-slate-500">
+              Each person still uses their own email. Signing in on a second browser still ends that same account’s other session. Accounts already created stay if this is turned off later.
+            </p>
+          </div>
+          <label class="relative inline-flex cursor-pointer items-center">
+            <input
+              type="checkbox"
+              class="peer sr-only"
+              :checked="allowMultipleAccounts"
+              :disabled="loading || saving || !!loadError || !allowMultipleAccountsReady || !isSupabaseConfigured"
+              @change="onAllowMultipleChange"
+            />
+            <div
+              class="h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-emerald-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-300 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all peer-checked:after:translate-x-full peer-disabled:opacity-50"
+            />
+          </label>
+        </div>
+        <p class="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          {{ allowMultipleAccounts ? "ON" : "OFF" }}
           <span v-if="saving" class="ml-2 font-medium normal-case tracking-normal text-slate-400">Saving…</span>
         </p>
       </div>

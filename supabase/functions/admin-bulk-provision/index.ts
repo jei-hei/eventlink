@@ -119,10 +119,27 @@ function inviteRedirect(): string | undefined {
   return `${origins[0].replace(/\/$/, "")}/reset-password`;
 }
 
-async function loadRequireIsuEmail(admin: SupabaseClient): Promise<boolean> {
-  const { data, error } = await admin.from("app_settings").select("require_isu_email").eq("id", 1).maybeSingle();
-  if (error) throw error;
-  return data?.require_isu_email !== false;
+async function loadAccountPolicy(
+  admin: SupabaseClient,
+): Promise<{ requireIsuEmail: boolean; allowMultipleAccounts: boolean }> {
+  const full = await admin
+    .from("app_settings")
+    .select("require_isu_email, allow_multiple_accounts")
+    .eq("id", 1)
+    .maybeSingle();
+  if (!full.error) {
+    return {
+      requireIsuEmail: full.data?.require_isu_email !== false,
+      allowMultipleAccounts: full.data?.allow_multiple_accounts === true,
+    };
+  }
+  if (!/allow_multiple_accounts/i.test(full.error.message ?? "")) throw full.error;
+  const fallback = await admin.from("app_settings").select("require_isu_email").eq("id", 1).maybeSingle();
+  if (fallback.error) throw fallback.error;
+  return {
+    requireIsuEmail: fallback.data?.require_isu_email !== false,
+    allowMultipleAccounts: false,
+  };
 }
 
 async function emailAlreadyRegistered(admin: SupabaseClient, email: string): Promise<boolean> {
@@ -220,8 +237,11 @@ Deno.serve(async (req) => {
   }
 
   let requireIsuEmail = true;
+  let allowMultipleAccounts = false;
   try {
-    requireIsuEmail = await loadRequireIsuEmail(admin);
+    const policy = await loadAccountPolicy(admin);
+    requireIsuEmail = policy.requireIsuEmail;
+    allowMultipleAccounts = policy.allowMultipleAccounts;
   } catch (error) {
     console.error("[admin-bulk-provision] app_settings", error);
     return json(500, { error: "Could not load application settings." });
@@ -378,14 +398,14 @@ Deno.serve(async (req) => {
         result.collegeId = college.id;
 
         if (forcedRole === "dean") {
-          if (seenCollege.has(college.id)) {
+          if (!allowMultipleAccounts && seenCollege.has(college.id)) {
             result.status = "Invalid";
             result.message = `Duplicate row: college "${college.name}" already has a Dean in this file.`;
-          } else if (deanByCollegeId.has(college.id)) {
+          } else if (!allowMultipleAccounts && deanByCollegeId.has(college.id)) {
             result.status = "Duplicate";
             result.message = `College "${college.name}" already has a registered Dean.`;
           } else {
-            seenCollege.add(college.id);
+            if (!allowMultipleAccounts) seenCollege.add(college.id);
             result.status = "Valid";
             result.message = `Will invite this user as Dean of ${college.name}.`;
           }
@@ -404,14 +424,14 @@ Deno.serve(async (req) => {
             const org = orgMatches[0]!;
             result.organizationId = org.id;
             if (forcedRole === "adviser") {
-              if (seenOrg.has(org.id)) {
+              if (!allowMultipleAccounts && seenOrg.has(org.id)) {
                 result.status = "Invalid";
                 result.message = `Duplicate row: organization "${org.name}" already has an Adviser in this file.`;
-              } else if (adviserByOrgId.has(org.id)) {
+              } else if (!allowMultipleAccounts && adviserByOrgId.has(org.id)) {
                 result.status = "Duplicate";
                 result.message = `Organization "${org.name}" already has a registered Adviser.`;
               } else {
-                seenOrg.add(org.id);
+                if (!allowMultipleAccounts) seenOrg.add(org.id);
                 result.status = "Valid";
                 result.message = `Will invite this user as Adviser of ${org.name}.`;
               }

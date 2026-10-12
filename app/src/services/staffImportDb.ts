@@ -1,6 +1,6 @@
 import { getSupabase } from "@/lib/supabase";
 import { fetchCollegesWithOrganizations } from "@/services/collegesDb";
-import { fetchRequireIsuEmail } from "@/services/appSettingsDb";
+import { fetchAllowMultipleAccounts, fetchRequireIsuEmail } from "@/services/appSettingsDb";
 import { fetchAdminOrgAssignments, fetchAdminPortalUsers, type AdminPortalUserRow } from "@/services/adminUsersDb";
 import type {
   StaffImportCatalog,
@@ -29,8 +29,9 @@ export type StaffImportResult = {
 };
 
 export async function fetchStaffImportCatalog(): Promise<StaffImportCatalog> {
-  const [requireIsuEmail, colleges, users, assignments] = await Promise.all([
+  const [requireIsuEmail, allowMultipleAccounts, colleges, users, assignments] = await Promise.all([
     fetchRequireIsuEmail().catch(() => true),
+    fetchAllowMultipleAccounts(),
     fetchCollegesWithOrganizations(),
     fetchAdminPortalUsers(),
     fetchAdminOrgAssignments().catch(() => []),
@@ -38,6 +39,7 @@ export async function fetchStaffImportCatalog(): Promise<StaffImportCatalog> {
 
   return {
     requireIsuEmail,
+    allowMultipleAccounts,
     colleges: colleges.map((c) => ({
       id: c.id,
       name: c.name,

@@ -23,6 +23,8 @@ export type StaffImportPreviewRow = StaffImportRow & {
 
 export type StaffImportCatalog = {
   requireIsuEmail: boolean;
+  /** When true, more than one Dean per college and more than one Adviser per organization are allowed. */
+  allowMultipleAccounts?: boolean;
   colleges: Array<{
     id: string;
     name: string;
@@ -200,6 +202,7 @@ export function validateStaffImportRows(
   catalog: StaffImportCatalog,
   kind: StaffImportKind,
 ): StaffImportPreviewRow[] {
+  const allowMultiple = catalog.allowMultipleAccounts === true;
   const label = staffRoleLabel(kind);
   const portalEmails = new Set(catalog.portalUsers.map((u) => u.email.trim().toLowerCase()).filter(Boolean));
   const deanByCollege = new Map(
@@ -254,14 +257,17 @@ export function validateStaffImportRows(
         const college = collegeMatches[0]!;
         if (kind === "dean") {
           const collegeKey = college.name.trim().toLowerCase();
-          if (seenCollege.has(collegeKey)) {
+          if (!allowMultiple && seenCollege.has(collegeKey)) {
             preview.status = "Invalid";
             preview.message = `Duplicate row: college "${college.name}" already has a Dean in this file.`;
-          } else if (deanByCollege.has(collegeKey) || deanByCollege.has((college.code ?? "").toLowerCase())) {
+          } else if (
+            !allowMultiple &&
+            (deanByCollege.has(collegeKey) || deanByCollege.has((college.code ?? "").toLowerCase()))
+          ) {
             preview.status = "Duplicate";
             preview.message = `College "${college.name}" already has a registered Dean.`;
           } else {
-            seenCollege.add(collegeKey);
+            if (!allowMultiple) seenCollege.add(collegeKey);
             preview.status = "Valid";
             preview.message = `Will invite this user as Dean of ${college.name}.`;
           }
@@ -289,14 +295,14 @@ export function validateStaffImportRows(
           } else if (orgMatches.length > 1) {
             preview.status = "Invalid";
             preview.message = `Multiple organizations match "${row.organization}" in "${college.name}".`;
-          } else if (seenOrg.has(orgMatches[0]!.id)) {
+          } else if (!allowMultiple && seenOrg.has(orgMatches[0]!.id)) {
             preview.status = "Invalid";
             preview.message = `Duplicate row: organization "${orgMatches[0]!.name}" already has an Adviser in this file.`;
-          } else if (adviserByOrg.has(orgMatches[0]!.id)) {
+          } else if (!allowMultiple && adviserByOrg.has(orgMatches[0]!.id)) {
             preview.status = "Duplicate";
             preview.message = `Organization "${orgMatches[0]!.name}" already has a registered Adviser.`;
           } else {
-            seenOrg.add(orgMatches[0]!.id);
+            if (!allowMultiple) seenOrg.add(orgMatches[0]!.id);
             preview.status = "Valid";
             preview.message = `Will invite this user as Adviser of ${orgMatches[0]!.name}.`;
           }

@@ -4,7 +4,7 @@ import { X } from "lucide-vue-next";
 import { useUiStore } from "@/stores/ui";
 import { updatePortalUser } from "@/services/adminCreateUser";
 import { fetchCollegesWithOrganizations, type CollegeWithOrgs } from "@/services/collegesDb";
-import { fetchRequireIsuEmail } from "@/services/appSettingsDb";
+import { fetchAllowMultipleAccounts, fetchRequireIsuEmail } from "@/services/appSettingsDb";
 import { EMAIL_FORMAT_ERROR, ISU_EMAIL_ERROR, emailMeetsAdminPolicy } from "@/utils/isuEmail";
 import { LEGACY_STUDENT_ROLE, type AppRole } from "@/types/appRole";
 import {
@@ -49,6 +49,7 @@ const loadingOptions = ref(false);
 const colleges = ref<CollegeWithOrgs[]>([]);
 const orgAssignments = ref<AdminOrgAssignmentRow[]>([]);
 const requireIsuEmail = ref(true);
+const allowMultipleAccounts = ref(false);
 
 const role = ref<EditableRole>("adviser");
 const name = ref("");
@@ -136,19 +137,22 @@ watch(
     resetForm();
     loadingOptions.value = true;
     try {
-      const [collegeRows, assignments, isuRequired] = await Promise.all([
+      const [collegeRows, assignments, isuRequired, multipleAccounts] = await Promise.all([
         fetchCollegesWithOrganizations(),
         fetchAdminOrgAssignments().catch(() => [] as AdminOrgAssignmentRow[]),
         fetchRequireIsuEmail().catch(() => true),
+        fetchAllowMultipleAccounts(),
       ]);
       colleges.value = collegeRows;
       orgAssignments.value = assignments;
       requireIsuEmail.value = isuRequired;
+      allowMultipleAccounts.value = multipleAccounts;
       prefillCollegeAndOrganizationByName();
     } catch {
       colleges.value = [];
       orgAssignments.value = [];
       requireIsuEmail.value = true;
+      allowMultipleAccounts.value = false;
     } finally {
       loadingOptions.value = false;
     }
@@ -258,7 +262,7 @@ async function submitEdit(e: Event) {
         </div>
 
         <div
-          v-if="role === 'dean'"
+          v-if="!allowMultipleAccounts && role === 'dean'"
           class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
         >
           Each college may have only one active Dean. Changing college will fail if that college already has another Dean.
@@ -285,7 +289,7 @@ async function submitEdit(e: Event) {
           </div>
 
           <div
-            v-if="role === 'student_officer' && selectedOrgOfficer"
+            v-if="!allowMultipleAccounts && role === 'student_officer' && selectedOrgOfficer"
             class="rounded-lg border border-amber-200 bg-amber-50 p-4"
           >
             <p class="text-sm text-amber-900">
