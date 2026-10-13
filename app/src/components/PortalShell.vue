@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { Menu, User } from "lucide-vue-next";
+import { RouterLink } from "vue-router";
 import { useProfileStore } from "@/stores/profile";
 import { useAuthStore } from "@/stores/auth";
 import { appRoleLabel } from "@/types/appRole";
@@ -82,6 +83,17 @@ const headerRole = computed(() => {
           </div>
         </div>
       </header>
+
+      <div
+        v-if="auth.isWalkthrough"
+        class="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-950"
+      >
+        <p class="min-w-0 truncate">
+          Viewing as
+          <strong>{{ auth.walkthroughViewLabel || "the selected account" }}</strong>
+        </p>
+        <RouterLink to="/walkthrough" class="shrink-0 font-semibold text-emerald-800">Switch portal</RouterLink>
+      </div>
 
       <main class="portal-main-scroll">
         <slot />

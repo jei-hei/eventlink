@@ -85,6 +85,13 @@ onMounted(() => {
       "info",
     );
   }
+  if (route.query.notice === "walkthrough-off") {
+    ui.pushToast(
+      "Walkthrough is turned off",
+      "An admin turned off the walkthrough account.",
+      "warning",
+    );
+  }
 });
 
 watch(
@@ -199,6 +206,15 @@ async function onSubmit() {
     await assertRateLimitAllowed("login", email.value.trim().toLowerCase());
     await auth.signIn(email.value.trim(), password.value, { provisional: true });
     clearLockoutState(email.value);
+    if (auth.isWalkthrough) {
+      if (!auth.walkthroughEnabled) {
+        await auth.signOut();
+        error.value = "Walkthrough is turned off.";
+        return;
+      }
+      await completeLogin();
+      return;
+    }
     const mail = email.value.trim();
     const skipOtp =
       auth.useMock ||

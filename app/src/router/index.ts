@@ -32,6 +32,11 @@ const router = createRouter({
       component: () => import("@/views/student/EventsHomeView.vue"),
     },
     {
+      path: "/walkthrough",
+      name: "walkthrough",
+      component: () => import("@/views/walkthrough/WalkthroughView.vue"),
+    },
+    {
       path: "/student",
       redirect: "/events",
     },

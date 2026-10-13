@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ShieldCheck, Database, Bell, Mail, Users } from "lucide-vue-next";
+import { ShieldCheck, Database, Bell, Mail, Users, Compass } from "lucide-vue-next";
 import { onMounted, ref } from "vue";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { WALKTHROUGH_LOGIN_EMAIL } from "@/config/walkthroughAccount";
 import {
   fetchAppSettings,
   updateAllowMultipleAccounts,
   updateRequireIsuEmail,
+  updateWalkthroughEnabled,
 } from "@/services/appSettingsDb";
 import { useUiStore } from "@/stores/ui";
 import { toUserFacingError } from "@/utils/userFacingError";
@@ -14,6 +16,8 @@ const ui = useUiStore();
 const requireIsuEmail = ref(true);
 const allowMultipleAccounts = ref(false);
 const allowMultipleAccountsReady = ref(true);
+const walkthroughEnabled = ref(false);
+const walkthroughReady = ref(true);
 const loading = ref(false);
 const saving = ref(false);
 const loadError = ref<string | null>(null);
@@ -30,6 +34,8 @@ async function loadSetting() {
     requireIsuEmail.value = settings.requireIsuEmail;
     allowMultipleAccounts.value = settings.allowMultipleAccounts;
     allowMultipleAccountsReady.value = settings.allowMultipleAccountsReady;
+    walkthroughEnabled.value = settings.walkthroughEnabled;
+    walkthroughReady.value = settings.walkthroughReady;
   } catch (e) {
     loadError.value = toUserFacingError(e, "Could not load settings.");
   } finally {
@@ -86,6 +92,34 @@ async function onAllowMultipleChange(event: Event) {
     );
   } catch (e) {
     allowMultipleAccounts.value = previous;
+    input.checked = previous;
+    ui.pushToast("Could not save setting", toUserFacingError(e, "The previous value was restored."), "error");
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function onWalkthroughChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const next = input.checked;
+  if (saving.value || loading.value || !walkthroughReady.value || next === walkthroughEnabled.value) {
+    input.checked = walkthroughEnabled.value;
+    return;
+  }
+  const previous = walkthroughEnabled.value;
+  walkthroughEnabled.value = next;
+  saving.value = true;
+  try {
+    await updateWalkthroughEnabled(next);
+    ui.pushToast(
+      "Walkthrough setting saved",
+      next
+        ? "The walkthrough login can open an existing account's portal."
+        : "The walkthrough login is refused, and its portal choice is cleared.",
+      "success",
+    );
+  } catch (e) {
+    walkthroughEnabled.value = previous;
     input.checked = previous;
     ui.pushToast("Could not save setting", toUserFacingError(e, "The previous value was restored."), "error");
   } finally {
@@ -183,6 +217,49 @@ onMounted(() => {
         </div>
         <p class="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
           {{ allowMultipleAccounts ? "ON" : "OFF" }}
+          <span v-if="saving" class="ml-2 font-medium normal-case tracking-normal text-slate-400">Saving…</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="dash-card mb-4 p-5">
+      <div class="mb-3 flex items-center gap-2">
+        <Compass class="h-5 w-5 text-emerald-600" />
+        <h2 class="text-base font-semibold text-slate-900">Walkthrough account</h2>
+      </div>
+      <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-sm font-semibold text-slate-800">Allow the walkthrough login</p>
+            <p class="mt-1 text-xs text-slate-600">
+              {{
+                walkthroughEnabled
+                  ? "That login can choose a role, then open one existing account in that role. Several browsers can stay signed in on it at the same time."
+                  : "The walkthrough login is refused. Turning this off also clears the portal it had opened."
+              }}
+            </p>
+            <p class="mt-2 text-xs text-slate-500">
+              Sign in with {{ WALKTHROUGH_LOGIN_EMAIL }}. The account list shows a name, college, organization, or program only.
+            </p>
+            <p v-if="!walkthroughReady" class="mt-2 text-xs text-amber-700">
+              Apply the latest database migration before this switch can be saved.
+            </p>
+          </div>
+          <label class="relative inline-flex cursor-pointer items-center">
+            <input
+              type="checkbox"
+              class="peer sr-only"
+              :checked="walkthroughEnabled"
+              :disabled="loading || saving || !!loadError || !walkthroughReady || !isSupabaseConfigured"
+              @change="onWalkthroughChange"
+            />
+            <div
+              class="h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-emerald-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-300 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all peer-checked:after:translate-x-full peer-disabled:opacity-50"
+            />
+          </label>
+        </div>
+        <p class="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          {{ walkthroughEnabled ? "ON" : "OFF" }}
           <span v-if="saving" class="ml-2 font-medium normal-case tracking-normal text-slate-400">Saving…</span>
         </p>
       </div>

@@ -34,6 +34,15 @@ export function installRouterGuards(router: Router) {
       };
     }
 
+    if (auth.isWalkthrough) {
+      await auth.syncWalkthroughFromServer();
+      if (!auth.isAuthenticated) {
+        return { name: "login", query: { notice: "walkthrough-off" } };
+      }
+      if (String(to.name ?? "") === "walkthrough") return true;
+      if (!auth.appRole) return { name: "walkthrough" };
+    }
+
     if (!auth.appRole) {
       return PUBLIC_EVENTS_PATH;
     }

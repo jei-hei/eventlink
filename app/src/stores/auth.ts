@@ -4,6 +4,7 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { ROLE_HOME_PATH, normalizeLoadedAppRole, PUBLIC_EVENTS_PATH, type AppRole } from "@/types/appRole";
 import { useNotificationsStore } from "@/stores/notifications";
 import { isDevTestEmailAddress } from "@/config/devAuth";
+import { fetchWalkthroughSession, type OpenedWalkthroughPortal } from "@/services/walkthroughDb";
 import { assertRateLimitAllowed } from "@/services/rateLimitDb";
 import { enqueueNotification } from "@/services/notificationsDb";
 import { toUserFacingError } from "@/utils/userFacingError";
@@ -68,6 +69,10 @@ export const useAuthStore = defineStore("auth", () => {
   const appRole = ref<AppRole | null>(null);
   const collegeId = ref<string | null>(null);
   const organizationId = ref<string | null>(null);
+  const isWalkthrough = ref(false);
+  const walkthroughEnabled = ref(false);
+  const walkthroughSubjectName = ref("");
+  const walkthroughPlace = ref("");
   const passwordRecoveryPending = ref(false);
   const useMock = computed(() => import.meta.env.DEV && !isSupabaseConfigured);
   const stayOnlineEnabled = ref(false);
@@ -83,8 +88,16 @@ export const useAuthStore = defineStore("auth", () => {
   );
 
   const homePath = computed(() => {
+    if (isWalkthrough.value && !appRole.value) return "/walkthrough";
     if (appRole.value) return ROLE_HOME_PATH[appRole.value] ?? "/login";
+    if (isWalkthrough.value) return "/walkthrough";
     return PUBLIC_EVENTS_PATH;
+  });
+  const walkthroughViewLabel = computed(() => {
+    const name = walkthroughSubjectName.value.trim();
+    const place = walkthroughPlace.value.trim();
+    if (name && place) return `${name} · ${place}`;
+    return name || place;
   });
 
   let readyResolve: (() => void) | null = null;
@@ -94,6 +107,8 @@ export const useAuthStore = defineStore("auth", () => {
   let idleCheckTimer: ReturnType<typeof setInterval> | null = null;
   let warningTicker: ReturnType<typeof setInterval> | null = null;
   let singleSessionTimer: ReturnType<typeof setInterval> | null = null;
+  let walkthroughTimer: ReturnType<typeof setInterval> | null = null;
+  let walkthroughSyncing = false;
   let inactivityListenersBound = false;
   let currentSessionMarker: string | null = null;
   let sessionClaimEpoch = 0;
@@ -264,6 +279,90 @@ export const useAuthStore = defineStore("auth", () => {
     return isDevTestEmailAddress(mail ?? "");
   }
 
+  function skipsSharedSession(): boolean {
+    return isWalkthrough.value || isSecurityExemptEmail(email.value);
+  }
+
+  function clearWalkthroughState() {
+    isWalkthrough.value = false;
+    walkthroughEnabled.value = false;
+    walkthroughSubjectName.value = "";
+    walkthroughPlace.value = "";
+  }
+
+  function stopWalkthroughWatch() {
+    if (walkthroughTimer) clearInterval(walkthroughTimer);
+    walkthroughTimer = null;
+  }
+
+  async function loadWalkthroughState() {
+    if (!isWalkthrough.value) {
+      walkthroughEnabled.value = false;
+      walkthroughSubjectName.value = "";
+      walkthroughPlace.value = "";
+      return;
+    }
+    try {
+      const state = await fetchWalkthroughSession();
+      isWalkthrough.value = state.isWalkthrough;
+      walkthroughEnabled.value = state.enabled;
+      walkthroughSubjectName.value = state.subjectName;
+      walkthroughPlace.value = state.place;
+    } catch {
+      walkthroughEnabled.value = false;
+    }
+  }
+
+  function startWalkthroughWatch() {
+    if (walkthroughTimer || !isWalkthrough.value || !walkthroughEnabled.value) return;
+    walkthroughTimer = setInterval(() => {
+      void syncWalkthroughFromServer({ redirect: true });
+    }, SINGLE_SESSION_CHECK_MS);
+  }
+
+  async function syncWalkthroughFromServer(opts?: { redirect?: boolean }) {
+    if (walkthroughSyncing || !isWalkthrough.value || !userId.value) return;
+    walkthroughSyncing = true;
+    const previousRole = appRole.value;
+    const previousCollege = collegeId.value;
+    const previousOrg = organizationId.value;
+    try {
+      await Promise.all([loadRole(userId.value), loadProfile(userId.value)]);
+      await loadWalkthroughState();
+      if (!isWalkthrough.value || !walkthroughEnabled.value) {
+        stopWalkthroughWatch();
+        await signOut();
+        if (opts?.redirect) {
+          const { default: router } = await import("@/router");
+          await router.replace({ name: "login", query: { notice: "walkthrough-off" } });
+        }
+        return;
+      }
+      const changed =
+        appRole.value !== previousRole ||
+        collegeId.value !== previousCollege ||
+        organizationId.value !== previousOrg;
+      if (changed && opts?.redirect) {
+        const { default: router } = await import("@/router");
+        if (router.currentRoute.value.name !== "walkthrough") {
+          await router.replace(homePath.value);
+        }
+      }
+    } finally {
+      walkthroughSyncing = false;
+    }
+  }
+
+  function adoptWalkthroughPortal(opened: OpenedWalkthroughPortal) {
+    appRole.value = opened.role;
+    collegeId.value = opened.collegeId;
+    organizationId.value = opened.organizationId;
+    walkthroughSubjectName.value = opened.subjectName;
+    walkthroughPlace.value = opened.place;
+    isWalkthrough.value = true;
+    walkthroughEnabled.value = true;
+  }
+
   function sessionMarkerKey() {
     if (!userId.value) return null;
     return `eventlink:session-marker:${userId.value}`;
@@ -414,7 +513,7 @@ export const useAuthStore = defineStore("auth", () => {
       useMock.value ||
       !userId.value ||
       !currentSessionMarker ||
-      isSecurityExemptEmail(email.value)
+      skipsSharedSession()
     ) {
       return;
     }
@@ -428,7 +527,7 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function activateCurrentSessionSecurity(showLoginAlert: boolean) {
-    if (useMock.value || !userId.value || isSecurityExemptEmail(email.value)) return;
+    if (useMock.value || !userId.value || skipsSharedSession()) return;
     pauseSingleSessionPolling();
     const uid = userId.value;
     const epoch = ++sessionClaimEpoch;
@@ -442,7 +541,7 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   function resumeSingleSessionMonitorFromStorage() {
-    if (useMock.value || !userId.value || isSecurityExemptEmail(email.value)) return;
+    if (useMock.value || !userId.value || skipsSharedSession()) return;
     if (singleSessionTimer && currentSessionMarker) return;
     if (typeof window !== "undefined") {
       const key = sessionMarkerKey();
@@ -517,6 +616,7 @@ export const useAuthStore = defineStore("auth", () => {
     unbindInactivityListeners();
     clearIdleCheckTimer();
     pauseSingleSessionPolling();
+    stopWalkthroughWatch();
   });
 
   function startInactivityMonitor() {
@@ -570,15 +670,40 @@ export const useAuthStore = defineStore("auth", () => {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("profiles")
-      .select("display_name, email, college_id, organization_id")
+      .select("display_name, email, college_id, organization_id, is_walkthrough, walkthrough_subject_name, walkthrough_place")
       .eq("id", uid)
       .maybeSingle();
 
-    if (error) throw error;
+    if (error) {
+      if (/is_walkthrough|walkthrough_subject_name|walkthrough_place/i.test(error.message)) {
+        const basic = await supabase
+          .from("profiles")
+          .select("display_name, email, college_id, organization_id")
+          .eq("id", uid)
+          .maybeSingle();
+        if (basic.error) throw basic.error;
+        displayName.value = basic.data?.display_name ?? displayName.value;
+        if (basic.data?.email) email.value = basic.data.email;
+        collegeId.value = (basic.data?.college_id as string | null | undefined) ?? null;
+        organizationId.value = (basic.data?.organization_id as string | null | undefined) ?? null;
+        clearWalkthroughState();
+        return;
+      }
+      throw error;
+    }
     displayName.value = data?.display_name ?? displayName.value;
     if (data?.email) email.value = data.email;
     collegeId.value = (data?.college_id as string | null | undefined) ?? null;
     organizationId.value = (data?.organization_id as string | null | undefined) ?? null;
+    isWalkthrough.value = data?.is_walkthrough === true;
+    if (!isWalkthrough.value) {
+      walkthroughEnabled.value = false;
+      walkthroughSubjectName.value = "";
+      walkthroughPlace.value = "";
+    } else {
+      walkthroughSubjectName.value = (data?.walkthrough_subject_name as string | null) ?? "";
+      walkthroughPlace.value = (data?.walkthrough_place as string | null) ?? "";
+    }
   }
 
   async function applySession(
@@ -624,6 +749,8 @@ export const useAuthStore = defineStore("auth", () => {
       appRole.value = null;
       collegeId.value = null;
       organizationId.value = null;
+      clearWalkthroughState();
+      stopWalkthroughWatch();
       try {
         useNotificationsStore().clear();
       } catch {
@@ -644,6 +771,7 @@ export const useAuthStore = defineStore("auth", () => {
     } else {
       void repairProfileIfMissing();
     }
+    await loadWalkthroughState();
     try {
       void useNotificationsStore().hydrate(false);
     } catch {
@@ -658,7 +786,7 @@ export const useAuthStore = defineStore("auth", () => {
       loadLastActivityAt();
     }
     startInactivityMonitor();
-    if (isSecurityExemptEmail(session.user.email ?? email.value)) {
+    if (skipsSharedSession()) {
       clearSingleSessionTimer();
       currentSessionMarker = null;
     } else if (opts?.provisional) {
@@ -669,6 +797,8 @@ export const useAuthStore = defineStore("auth", () => {
     } else {
       resumeSingleSessionMonitorFromStorage();
     }
+    if (isWalkthrough.value && walkthroughEnabled.value) startWalkthroughWatch();
+    else stopWalkthroughWatch();
   }
 
   function setStayOnlineEnabled(enabled: boolean) {
@@ -995,6 +1125,7 @@ export const useAuthStore = defineStore("auth", () => {
   function logout() {
     clearIdleCheckTimer();
     clearSingleSessionTimer();
+    stopWalkthroughWatch();
     currentSessionMarker = null;
     clearLastActivityAt();
     stayOnlineEnabled.value = false;
@@ -1003,6 +1134,7 @@ export const useAuthStore = defineStore("auth", () => {
     appRole.value = null;
     collegeId.value = null;
     organizationId.value = null;
+    clearWalkthroughState();
     userId.value = null;
     passwordRecoveryPending.value = false;
   }
@@ -1017,6 +1149,9 @@ export const useAuthStore = defineStore("auth", () => {
     appRole,
     collegeId,
     organizationId,
+    isWalkthrough,
+    walkthroughEnabled,
+    walkthroughViewLabel,
     passwordRecoveryPending,
     stayOnlineEnabled,
     canUseExtendedSession,
@@ -1041,6 +1176,8 @@ export const useAuthStore = defineStore("auth", () => {
     resetPassword,
     updatePassword,
     signOut,
+    syncWalkthroughFromServer,
+    adoptWalkthroughPortal,
     setStayOnlineEnabled,
     loginMock,
     logout,
